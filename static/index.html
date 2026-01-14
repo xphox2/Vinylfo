@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinylfo - Vinyl Music Player</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Vinylfo</h1>
+            <nav>
+                <a href="/#albums">Albums</a>
+                <a href="/#tracks">Tracks</a>
+                <a href="/#sessions">Sessions</a>
+                <a href="/dashboard">Playback</a>
+                <a href="/playlist">Playlists</a>
+                <a href="/sync">Sync</a>
+                <a href="/search">Search</a>
+                <a href="/settings">Settings</a>
+            </nav>
+        </header>
+        
+        <main>
+            <div id="albums-view" class="view">
+                <h2>Albums</h2>
+                <div id="albums-list"></div>
+            </div>
+
+            <div id="tracks-view" class="view" style="display: none;">
+                <h2>Tracks</h2>
+                <div id="tracks-list"></div>
+            </div>
+
+            <div id="track-detail-view" class="view" style="display: none;">
+                <h2>Track Details</h2>
+                <div id="track-detail"></div>
+            </div>
+
+            <div id="sessions-view" class="view" style="display: none;">
+                <h2>Playback Sessions</h2>
+                <div id="sessions-list"></div>
+            </div>
+        </main>
+        
+        <footer>
+            <p>Vinylfo - Vinyl Music Player</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

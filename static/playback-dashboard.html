@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinylfo - Playback Dashboard</title>
+    <link rel="stylesheet" href="/static/css/playback-dashboard.css">
+</head>
+<body>
+    <div id="playback-dashboard">
+        <header>
+            <h1>Vinylfo - Playback Dashboard</h1>
+            <nav>
+                <a href="/#albums">Albums</a>
+                <a href="/#tracks">Tracks</a>
+                <a href="/#sessions">Sessions</a>
+                <a href="/dashboard">Playback</a>
+                <a href="/playlist">Playlists</a>
+            </nav>
+        </header>
+
+        <main>
+            <!-- Resume Modal -->
+            <div id="resume-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h3>Continue Playing?</h3>
+                    <p>You were listening to: <span id="resume-track-name">Unknown Track</span></p>
+                    <div class="modal-actions">
+                        <button id="resume-btn">Resume</button>
+                        <button id="cancel-resume-btn">Start Fresh</button>
+                    </div>
+                    <p class="auto-resume-note"><small>Auto-resuming in 3 seconds...</small></p>
+                </div>
+            </div>
+
+            <div id="current-track">
+                <div class="track-info">
+                    <h2 id="track-title">No Track Playing</h2>
+                    <p id="track-artist">-</p>
+                    <p id="track-album">-</p>
+                    <p id="track-duration">Duration: 00:00</p>
+                    <p id="track-position">Position: 00:00</p>
+                    <p id="playlist-info" style="display: none;">-</p>
+                </div>
+
+                <div class="progress-container">
+                    <div id="progress-bar"></div>
+                </div>
+            </div>
+
+            <div id="playback-controls">
+                <button id="play-btn">Play</button>
+                <button id="pause-btn" disabled>Pause</button>
+                <button id="previous-btn">Previous</button>
+                <button id="next-btn">Next</button>
+                <button id="stop-btn">Stop</button>
+                <button id="toggle-queue-btn">Show Queue</button>
+                <button id="auto-play-btn" class="toggle-btn">Auto-Play: OFF</button>
+            </div>
+
+            <div id="queue-panel" style="display: none;">
+                <h3>Up Next</h3>
+                <div id="queue-list">
+                    <p class="empty-message">Queue is empty</p>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Vinylfo - Vinyl Music Player</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/playback-dashboard.js"></script>
+</body>
+</html>

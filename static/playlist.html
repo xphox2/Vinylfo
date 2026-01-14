@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinylfo - Playlist Management</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Vinylfo</h1>
+            <nav>
+                <a href="#albums">Albums</a>
+                <a href="#tracks">Tracks</a>
+                <a href="#sessions">Sessions</a>
+                <a href="/dashboard">Playback</a>
+                <a href="/playlist">Playlists</a>
+            </nav>
+        </header>
+
+        <main>
+            <div id="playlist-view" class="view">
+                <h2>My Playlists</h2>
+                <button id="create-playlist-btn">Create New Playlist</button>
+                <div id="playlists-container">
+                    <p>Loading playlists...</p>
+                </div>
+            </div>
+
+            <div id="playlist-detail-view" class="view" style="display: none;">
+                <button id="back-to-playlists">Back to Playlists</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <h2 id="playlist-name" style="margin: 0;"></h2>
+                    <div class="playlist-actions">
+                        <button id="delete-playlist-btn">Delete Playlist</button>
+                        <button id="add-tracks-btn">Add Tracks</button>
+                        <button id="play-playlist-btn">Play</button>
+                    </div>
+                </div>
+                <div id="playlist-tracks">
+                    <p>Loading tracks...</p>
+                </div>
+            </div>
+
+            <div id="add-tracks-view" class="view" style="display: none;">
+                <button id="back-to-playlist">Back to Playlist</button>
+                <h3>Add Tracks to Playlist</h3>
+                <div id="available-tracks">
+                    <p>Loading tracks...</p>
+                </div>
+            </div>
+        </main>
+
+        <div id="create-playlist-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close-modal">&times;</span>
+                <h3>Create New Playlist</h3>
+                <input type="text" id="new-playlist-name" placeholder="Playlist Name">
+                <button id="save-playlist-btn">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/playlist.js"></script>
+</body>
+</html>

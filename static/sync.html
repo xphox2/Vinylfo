@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync Collection - VinylFO</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/sync.css">
+</head>
+<body>
+    <nav class="main-nav">
+        <div class="nav-brand">VinylFO</div>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/playlist">Playlists</a>
+            <a href="/sync" class="active">Sync</a>
+            <a href="/search">Search</a>
+            <a href="/settings">Settings</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <h1>Sync Discogs Collection</h1>
+
+        <div id="sync-status" class="sync-status">
+            <div id="not-connected" class="status-message error">
+                <p>You need to connect your Discogs account first.</p>
+                <a href="/settings" class="btn btn-primary">Go to Settings</a>
+            </div>
+            <div id="sync-ready" class="status-message success hidden">
+                <p>Ready to sync your Discogs collection.</p>
+                <button id="start-sync" class="btn btn-primary">Start Sync</button>
+            </div>
+            <div id="sync-running" class="status-message info hidden">
+                <p>Sync in progress...</p>
+                <div class="progress-bar">
+                    <div id="sync-progress" class="progress-fill"></div>
+                </div>
+                <p id="sync-progress-text">Processing batch 1 of 5...</p>
+                <button id="cancel-sync" class="btn btn-danger">Cancel Sync</button>
+            </div>
+            <div id="sync-complete" class="status-message success hidden">
+                <p>Sync completed successfully!</p>
+                <p id="sync-summary"></p>
+                <button id="start-new-sync" class="btn btn-primary">Start New Sync</button>
+            </div>
+        </div>
+
+        <div id="batch-review" class="batch-review hidden">
+            <h2>Review Batch</h2>
+            <p>The following albums will be added to your collection:</p>
+            <div id="batch-albums" class="batch-albums"></div>
+            <div class="batch-actions">
+                <button id="skip-batch" class="btn btn-secondary">Skip Batch</button>
+                <button id="confirm-batch" class="btn btn-primary">Confirm & Sync</button>
+            </div>
+        </div>
+
+        <div id="sync-history" class="sync-history">
+            <h2>Sync History</h2>
+            <div id="sync-log" class="sync-log">
+                <p class="empty-state">No sync history yet.</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/sync.js"></script>
+</body>
+</html>
