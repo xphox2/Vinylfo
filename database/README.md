@@ -1,6 +1,6 @@
-# Database Structure for VinylFO
+# Database Structure for Vinylfo
 
-This document describes the database schema for the VinylFO application.
+This document describes the database schema for the Vinylfo application.
 
 ## Tables
 

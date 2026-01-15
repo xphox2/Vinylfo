@@ -1,0 +1,104 @@
+2026/01/14 19:40:21 Database connected successfully
+2026/01/14 19:40:21 Seeding database with sample data...
+2026/01/14 19:40:21 Database already seeded, skipping...
+=== Validating OAuth Configuration ===
+✓ DISCOGS_CONSUMER_KEY is set: zmtb****YigT
+✓ DISCOGS_CONSUMER_SECRET is set: hGRi****yHaT
+✓ DISCOGS_CALLBACK_URL is set: http://localhost:8080/api/discogs/oauth/callback
+✓ DISCOGS_CALLBACK_URL uses HTTP with localhost (acceptable for development)
+
+=== OAuth Configuration Summary ===
+Current OAuth Settings:
+  DISCOGS_CONSUMER_KEY: zmtb****YigT
+  DISCOGS_CONSUMER_SECRET: hGRi****yHaT
+  DISCOGS_CALLBACK_URL: http://localhost:8080/api/discogs/oauth/callback
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /static/*filepath         --> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1 (3 handlers)
+[GIN-debug] HEAD   /static/*filepath         --> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1 (3 handlers)
+[GIN-debug] GET    /                         --> main.main.func1 (3 handlers)
+[GIN-debug] GET    /dashboard                --> main.main.func2 (3 handlers)
+[GIN-debug] GET    /playlist                 --> main.main.func3 (3 handlers)
+[GIN-debug] GET    /track/:id                --> main.main.func4 (3 handlers)
+[GIN-debug] GET    /settings                 --> main.main.func5 (3 handlers)
+[GIN-debug] GET    /sync                     --> main.main.func6 (3 handlers)
+[GIN-debug] GET    /search                   --> main.main.func7 (3 handlers)
+[GIN-debug] GET    /health                   --> vinylfo/routes.SetupRoutes.func1 (3 handlers)
+[GIN-debug] GET    /albums                   --> vinylfo/controllers.(*AlbumController).GetAlbums-fm (3 handlers)
+[GIN-debug] GET    /albums/:id               --> vinylfo/controllers.(*AlbumController).GetAlbumByID-fm (3 handlers)
+[GIN-debug] GET    /albums/:id/tracks        --> vinylfo/controllers.(*AlbumController).GetTracksByAlbumID-fm (3 handlers)
+[GIN-debug] POST   /albums                   --> vinylfo/controllers.(*AlbumController).CreateAlbum-fm (3 handlers)
+[GIN-debug] PUT    /albums/:id               --> vinylfo/controllers.(*AlbumController).UpdateAlbum-fm (3 handlers)
+[GIN-debug] DELETE /albums/:id               --> vinylfo/controllers.(*AlbumController).DeleteAlbum-fm (3 handlers)
+[GIN-debug] GET    /tracks                   --> vinylfo/controllers.(*TrackController).GetTracks-fm (3 handlers)
+[GIN-debug] GET    /tracks/:id               --> vinylfo/controllers.(*TrackController).GetTrackByID-fm (3 handlers)
+[GIN-debug] POST   /tracks                   --> vinylfo/controllers.(*TrackController).CreateTrack-fm (3 handlers)
+[GIN-debug] PUT    /tracks/:id               --> vinylfo/controllers.(*TrackController).UpdateTrack-fm (3 handlers)
+[GIN-debug] DELETE /tracks/:id               --> vinylfo/controllers.(*TrackController).DeleteTrack-fm (3 handlers)
+[GIN-debug] GET    /playback                 --> vinylfo/controllers.(*PlaybackController).GetCurrent-fm (3 handlers)
+[GIN-debug] GET    /playback/current         --> vinylfo/controllers.(*PlaybackController).GetPlaybackState-fm (3 handlers)
+[GIN-debug] POST   /playback/start           --> vinylfo/controllers.(*PlaybackController).Start-fm (3 handlers)
+[GIN-debug] POST   /playback/start-playlist  --> vinylfo/controllers.(*PlaybackController).StartPlaylist-fm (3 handlers)
+[GIN-debug] POST   /playback/pause           --> vinylfo/controllers.(*PlaybackController).Pause-fm (3 handlers)
+[GIN-debug] POST   /playback/resume          --> vinylfo/controllers.(*PlaybackController).Resume-fm (3 handlers)
+[GIN-debug] POST   /playback/skip            --> vinylfo/controllers.(*PlaybackController).Skip-fm (3 handlers)
+[GIN-debug] POST   /playback/previous        --> vinylfo/controllers.(*PlaybackController).Previous-fm (3 handlers)
+[GIN-debug] POST   /playback/stop            --> vinylfo/controllers.(*PlaybackController).Stop-fm (3 handlers)
+[GIN-debug] POST   /playback/clear           --> vinylfo/controllers.(*PlaybackController).Clear-fm (3 handlers)
+[GIN-debug] POST   /playback/update-progress --> vinylfo/controllers.(*PlaybackController).UpdateProgress-fm (3 handlers)
+[GIN-debug] GET    /playback/state           --> vinylfo/controllers.(*PlaybackController).GetState-fm (3 handlers)
+[GIN-debug] GET    /playback/history         --> vinylfo/controllers.(*PlaybackController).GetHistory-fm (3 handlers)
+[GIN-debug] GET    /playback/history/most-played --> vinylfo/controllers.(*PlaybackController).GetMostPlayed-fm (3 handlers)
+[GIN-debug] GET    /playback/history/recent  --> vinylfo/controllers.(*PlaybackController).GetRecent-fm (3 handlers)
+[GIN-debug] GET    /playback/history/:track_id --> vinylfo/controllers.(*PlaybackController).GetTrackHistory-fm (3 handlers)
+[GIN-debug] POST   /playback/update-history  --> vinylfo/controllers.(*PlaybackController).UpdateHistory-fm (3 handlers)
+[GIN-debug] GET    /sessions                 --> vinylfo/controllers.(*PlaylistController).GetSessions-fm (3 handlers)
+[GIN-debug] GET    /playback-sessions/:id    --> vinylfo/controllers.(*PlaylistController).GetSessionByID-fm (3 handlers)
+[GIN-debug] POST   /sessions                 --> vinylfo/controllers.(*PlaylistController).CreateSession-fm (3 handlers)
+[GIN-debug] PUT    /playback-sessions/:id    --> vinylfo/controllers.(*PlaylistController).UpdateSession-fm (3 handlers)
+[GIN-debug] DELETE /playback-sessions/:id    --> vinylfo/controllers.(*PlaylistController).DeleteSession-fm (3 handlers)
+[GIN-debug] POST   /sessions/playlist        --> vinylfo/controllers.(*PlaylistController).CreatePlaylistSession-fm (3 handlers)
+[GIN-debug] GET    /sessions/playlist        --> vinylfo/controllers.(*PlaylistController).GetAllPlaylists-fm (3 handlers)
+[GIN-debug] POST   /sessions/playlist/new    --> vinylfo/controllers.(*PlaylistController).CreateNewPlaylist-fm (3 handlers)
+[GIN-debug] GET    /sessions/playlist/:id    --> vinylfo/controllers.(*PlaylistController).GetPlaylist-fm (3 handlers)
+[GIN-debug] PUT    /sessions/playlist/:id    --> vinylfo/controllers.(*PlaylistController).UpdatePlaylist-fm (3 handlers)
+[GIN-debug] DELETE /sessions/playlist/:id    --> vinylfo/controllers.(*PlaylistController).DeletePlaylist-fm (3 handlers)
+[GIN-debug] POST   /sessions/playlist/:id/tracks --> vinylfo/controllers.(*PlaylistController).AddTrackToPlaylist-fm (3 handlers)
+[GIN-debug] DELETE /sessions/playlist/:id/tracks/:track_id --> vinylfo/controllers.(*PlaylistController).RemoveTrackFromPlaylist-fm (3 handlers)
+[GIN-debug] POST   /sessions/playlist/:id/shuffle --> vinylfo/controllers.(*PlaylistController).ShufflePlaylist-fm (3 handlers)
+[GIN-debug] POST   /sessions/:session_id/share --> vinylfo/controllers.(*SessionSharingController).CreateSessionSharing-fm (3 handlers)
+[GIN-debug] GET    /sessions/:session_id/share --> vinylfo/controllers.(*SessionSharingController).GetSessionSharing-fm (3 handlers)
+[GIN-debug] PUT    /sessions/:session_id/share --> vinylfo/controllers.(*SessionSharingController).UpdateSessionSharing-fm (3 handlers)
+[GIN-debug] DELETE /sessions/:session_id/share --> vinylfo/controllers.(*SessionSharingController).DeleteSessionSharing-fm (3 handlers)
+[GIN-debug] GET    /share/:token             --> vinylfo/controllers.(*SessionSharingController).GetPublicSessionSharing-fm (3 handlers)
+[GIN-debug] POST   /sessions/:session_id/notes --> vinylfo/controllers.(*SessionNoteController).CreateSessionNote-fm (3 handlers)
+[GIN-debug] GET    /sessions/:session_id/notes --> vinylfo/controllers.(*SessionNoteController).GetSessionNotes-fm (3 handlers)
+[GIN-debug] GET    /notes/:id                --> vinylfo/controllers.(*SessionNoteController).GetSessionNote-fm (3 handlers)
+[GIN-debug] PUT    /notes/:id                --> vinylfo/controllers.(*SessionNoteController).UpdateSessionNote-fm (3 handlers)
+[GIN-debug] DELETE /notes/:id                --> vinylfo/controllers.(*SessionNoteController).DeleteSessionNote-fm (3 handlers)
+[GIN-debug] GET    /api/discogs/oauth/url    --> vinylfo/controllers.(*DiscogsController).GetOAuthURL-fm (3 handlers)
+[GIN-debug] GET    /api/discogs/oauth/callback --> vinylfo/controllers.(*DiscogsController).OAuthCallback-fm (3 handlers)
+[GIN-debug] POST   /api/discogs/disconnect   --> vinylfo/controllers.(*DiscogsController).Disconnect-fm (3 handlers)
+[GIN-debug] GET    /api/discogs/status       --> vinylfo/controllers.(*DiscogsController).GetStatus-fm (3 handlers)
+[GIN-debug] GET    /api/discogs/search       --> vinylfo/controllers.(*DiscogsController).Search-fm (3 handlers)
+[GIN-debug] POST   /api/discogs/albums       --> vinylfo/controllers.(*DiscogsController).CreateAlbum-fm (3 handlers)
+[GIN-debug] POST   /api/discogs/sync/start   --> vinylfo/controllers.(*DiscogsController).StartSync-fm (3 handlers)
+[GIN-debug] GET    /api/discogs/sync/progress --> vinylfo/controllers.(*DiscogsController).GetSyncProgress-fm (3 handlers)
+[GIN-debug] GET    /api/discogs/sync/batch/:id --> vinylfo/controllers.(*DiscogsController).GetBatchDetails-fm (3 handlers)
+[GIN-debug] POST   /api/discogs/sync/batch/:id/confirm --> vinylfo/controllers.(*DiscogsController).ConfirmBatch-fm (3 handlers)
+[GIN-debug] POST   /api/discogs/sync/batch/:id/skip --> vinylfo/controllers.(*DiscogsController).SkipBatch-fm (3 handlers)
+[GIN-debug] POST   /api/discogs/sync/cancel  --> vinylfo/controllers.(*DiscogsController).CancelSync-fm (3 handlers)
+[GIN-debug] GET    /api/settings             --> vinylfo/controllers.(*SettingsController).Get-fm (3 handlers)
+[GIN-debug] PUT    /api/settings             --> vinylfo/controllers.(*SettingsController).Update-fm (3 handlers)
+2026/01/14 19:40:21 Server starting on port 8080
+[GIN-debug] [WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
+Please check https://pkg.go.dev/github.com/gin-gonic/gin#readme-don-t-trust-all-proxies for details.
+[GIN-debug] Listening and serving HTTP on :8080
+[GIN] 2026/01/14 - 19:40:23 | 200 |     72.1729ms |             ::1 | GET      "/"
+[GIN] 2026/01/14 - 19:40:23 | 200 |     17.1058ms |             ::1 | GET      "/static/css/style.css"
+[GIN] 2026/01/14 - 19:40:23 | 200 |     31.9419ms |             ::1 | GET      "/static/js/app.js"
+[GIN] 2026/01/14 - 19:40:23 | 200 |       560.3µs |             ::1 | GET      "/albums"

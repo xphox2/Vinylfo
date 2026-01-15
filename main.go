@@ -10,6 +10,7 @@ import (
 
 	"vinylfo/controllers"
 	"vinylfo/database"
+	"vinylfo/discogs"
 	"vinylfo/routes"
 )
 
@@ -31,6 +32,12 @@ func main() {
 	if err != nil {
 		log.Printf("Warning: Failed to seed database: %v", err)
 	}
+
+	validationResult := discogs.ValidateOAuthConfig()
+	if !validationResult.IsValid {
+		log.Println("Warning: OAuth configuration has errors. OAuth functionality may not work correctly.")
+	}
+	discogs.PrintOAuthConfigSummary()
 
 	playbackController = controllers.NewPlaybackController(db)
 

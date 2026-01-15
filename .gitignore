@@ -29,6 +29,11 @@ go.work
 .DS_Store
 Thumbs.db
 
+# Tests
+tests/
 # Build outputs
 bin/
 dist/
+
+# AI
+PROMPT.md

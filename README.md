@@ -1,6 +1,6 @@
-# VinylFO - Vinyl Collection Organizer
+# Vinylfo - Vinyl Collection Organizer
 
-VinylFO is a web application for organizing your vinyl collection. It connects to the Discogs API to fetch album information and allows you to manage your collection in a centralized database.
+Vinylfo is a web application for organizing your vinyl collection. It connects to the Discogs API to fetch album information and allows you to manage your collection in a centralized database.
 
 ## Features
 

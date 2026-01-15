@@ -1,5 +1,5 @@
 @echo off
-echo Starting VinylFO Server...
+echo Starting Vinylfo Server...
 echo.
 
 REM Check if the binary exists

@@ -1,4 +1,4 @@
-// Frontend JavaScript for VinylFO music streaming platform
+// Frontend JavaScript for Vinylfo music streaming platform
 
 document.addEventListener('DOMContentLoaded', function() {
     // Navigation handling - now handled by app.js

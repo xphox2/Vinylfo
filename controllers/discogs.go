@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -20,18 +21,46 @@ func NewDiscogsController(db *gorm.DB) *DiscogsController {
 	return &DiscogsController{db: db}
 }
 
+func maskValue(s string) string {
+	if len(s) <= 8 {
+		return "****"
+	}
+	return s[:4] + "****" + s[len(s)-4:]
+}
+
+func getDiscogsClient() *discogs.Client {
+	apiKey := os.Getenv("DISCOGS_API_TOKEN")
+	if apiKey == "" {
+		apiKey = ""
+	}
+	return discogs.NewClient(apiKey)
+}
+
 func (c *DiscogsController) GetOAuthURL(ctx *gin.Context) {
-	client := discogs.NewClient("")
-	token, _, authURL, err := client.GetRequestToken()
+	correlationID := fmt.Sprintf("oauth-%d", time.Now().UnixNano())
+	fmt.Printf("[%s] OAUTH_FLOW_START: Starting OAuth flow\n", correlationID)
+	fmt.Printf("[%s] OAUTH_FLOW_STEP_1: Fetching consumer key from environment\n", correlationID)
+
+	client := getDiscogsClient()
+	fmt.Printf("[%s] OAUTH_FLOW_STEP_2: Calling GetRequestToken()\n", correlationID)
+
+	token, secret, authURL, err := client.GetRequestToken()
 	if err != nil {
+		fmt.Printf("[%s] OAUTH_FLOW_ERROR: Failed to get request token: %v\n", correlationID, err)
 		ctx.JSON(500, gin.H{"error": "Failed to get request token"})
 		return
 	}
 
+	fmt.Printf("[%s] OAUTH_FLOW_STEP_3: Request token received - token=%s, secret=%s\n", correlationID, token, secret)
+	fmt.Printf("[%s] OAUTH_FLOW_STEP_4: Auth URL generated - %s\n", correlationID, authURL)
+
+	fmt.Printf("[%s] OAUTH_FLOW_STEP_5: Storing request token in database\n", correlationID)
 	c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(map[string]interface{}{
-		"discogs_access_token": token,
+		"discogs_access_token":  token,
+		"discogs_access_secret": secret,
 	})
 
+	fmt.Printf("[%s] OAUTH_FLOW_COMPLETE: Returning auth URL to client\n", correlationID)
 	ctx.JSON(200, gin.H{
 		"auth_url": authURL,
 		"token":    token,
@@ -39,31 +68,50 @@ func (c *DiscogsController) GetOAuthURL(ctx *gin.Context) {
 }
 
 func (c *DiscogsController) OAuthCallback(ctx *gin.Context) {
+	correlationID := fmt.Sprintf("oauth-cb-%d", time.Now().UnixNano())
 	oauthToken := ctx.Query("oauth_token")
 	oauthVerifier := ctx.Query("oauth_verifier")
 
+	fmt.Printf("[%s] CALLBACK_RECEIVED: OAuth callback received\n", correlationID)
+	fmt.Printf("[%s] CALLBACK_PARAMS: oauth_token=%s, oauth_verifier=%s\n", correlationID, oauthToken, oauthVerifier)
+
 	if oauthToken == "" || oauthVerifier == "" {
+		fmt.Printf("[%s] CALLBACK_ERROR: Missing oauth_token or oauth_verifier\n", correlationID)
 		ctx.String(400, "Missing oauth_token or oauth_verifier")
 		return
 	}
 
+	fmt.Printf("[%s] CALLBACK_STEP_1: Fetching stored request token secret from database\n", correlationID)
 	var config models.AppConfig
 	c.db.First(&config)
+	fmt.Printf("[%s] CALLBACK_STEP_2: Retrieved config - IsConnected=%v, HasAccessToken=%v\n", correlationID, config.IsDiscogsConnected, config.DiscogsAccessToken != "")
 
-	client := discogs.NewClient("")
+	client := getDiscogsClient()
 	client.OAuth = &discogs.OAuthConfig{
 		ConsumerKey:    os.Getenv("DISCOGS_CONSUMER_KEY"),
 		ConsumerSecret: os.Getenv("DISCOGS_CONSUMER_SECRET"),
 		AccessToken:    oauthToken,
-		AccessSecret:   "",
+		AccessSecret:   config.DiscogsAccessSecret,
 	}
 
-	accessToken, accessSecret, username, err := client.GetAccessToken(oauthToken, "", oauthVerifier)
+	fmt.Printf("[%s] CALLBACK_STEP_3: OAuth config initialized - ConsumerKey=%s, AccessToken=%s\n", correlationID,
+		maskValue(client.OAuth.ConsumerKey),
+		maskValue(client.OAuth.AccessToken))
+
+	fmt.Printf("[%s] CALLBACK_STEP_4: Calling GetAccessToken() with token=%s, verifier=%s\n", correlationID, oauthToken, oauthVerifier)
+	accessToken, accessSecret, username, err := client.GetAccessToken(oauthToken, config.DiscogsAccessSecret, oauthVerifier)
 	if err != nil {
+		fmt.Printf("[%s] CALLBACK_ERROR: Failed to get access token: %v\n", correlationID, err)
 		ctx.String(500, "Failed to get access token: %v", err)
 		return
 	}
 
+	fmt.Printf("[%s] CALLBACK_STEP_5: Access token received - accessToken=%s, accessSecret=%s, username=%s\n", correlationID,
+		maskValue(accessToken),
+		maskValue(accessSecret),
+		username)
+
+	fmt.Printf("[%s] CALLBACK_STEP_6: Storing access tokens in database\n", correlationID)
 	c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(map[string]interface{}{
 		"discogs_access_token":  accessToken,
 		"discogs_access_secret": accessSecret,
@@ -71,6 +119,7 @@ func (c *DiscogsController) OAuthCallback(ctx *gin.Context) {
 		"is_discogs_connected":  true,
 	})
 
+	fmt.Printf("[%s] CALLBACK_COMPLETE: OAuth flow complete, redirecting to /settings\n", correlationID)
 	ctx.Redirect(302, "/settings?discogs_connected=true")
 }
 
@@ -116,16 +165,17 @@ func (c *DiscogsController) Search(ctx *gin.Context) {
 	var config models.AppConfig
 	c.db.First(&config)
 
-	client := discogs.NewClient(config.DiscogsAccessToken)
-	albums, err := client.SearchAlbums(query, page)
+	client := getDiscogsClient()
+	albums, totalPages, err := client.SearchAlbums(query, page)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	ctx.JSON(200, gin.H{
-		"results": albums,
-		"page":    page,
+		"results":    albums,
+		"page":       page,
+		"totalPages": totalPages,
 	})
 }
 
@@ -153,9 +203,7 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 	var album models.Album
 
 	if input.FromDiscogs && input.DiscogsID > 0 {
-		var config models.AppConfig
-		c.db.First(&config)
-		client := discogs.NewClient(config.DiscogsAccessToken)
+		client := getDiscogsClient()
 		discogsData, err := client.GetAlbum(input.DiscogsID)
 		if err == nil {
 			if v, ok := discogsData["title"].(string); ok {
@@ -272,7 +320,7 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 		CurrentPage: 1,
 	}
 
-	client := discogs.NewClient("")
+	client := getDiscogsClient()
 	releases, err := client.GetUserCollection(1, config.SyncBatchSize)
 	if err != nil {
 		syncState.IsRunning = false

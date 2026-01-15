@@ -1,4 +1,4 @@
-# VinylFO Project Task List
+# Vinylfo Project Task List
 
 ## Feature: Playlist Playback with Resume Tracking
 

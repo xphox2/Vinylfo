@@ -3,6 +3,8 @@ const API_BASE = '/api';
 class SearchManager {
     constructor() {
         this.currentPage = 1;
+        this.totalPages = 1;
+        this.currentQuery = '';
         this.init();
     }
 
@@ -13,6 +15,7 @@ class SearchManager {
     bindEvents() {
         document.getElementById('discogs-search-form').addEventListener('submit', (e) => {
             e.preventDefault();
+            this.currentPage = 1;
             this.searchDiscogs();
         });
 
@@ -49,19 +52,89 @@ class SearchManager {
         const query = document.getElementById('search-query').value.trim();
         if (!query) return;
 
+        this.currentQuery = query;
         this.showLoading(true);
 
         try {
             const response = await fetch(`${API_BASE}/discogs/search?q=${encodeURIComponent(query)}&page=${this.currentPage}`);
             const data = await response.json();
 
+            this.totalPages = data.totalPages || 1;
             this.renderResults(data.results);
+            this.renderPagination();
         } catch (error) {
             console.error('Search failed:', error);
             this.showNotification('Search failed', 'error');
         } finally {
             this.showLoading(false);
         }
+    }
+
+    renderPagination() {
+        const container = document.getElementById('pagination');
+        container.innerHTML = '';
+
+        if (this.totalPages <= 1) {
+            container.classList.add('hidden');
+            return;
+        }
+
+        container.classList.remove('hidden');
+
+        let html = '<div class="pagination-controls">';
+
+        // Previous button
+        if (this.currentPage > 1) {
+            html += `<button class="btn btn-sm pagination-btn" data-page="${this.currentPage - 1}">Previous</button>`;
+        }
+
+        // Page numbers
+        const startPage = Math.max(1, this.currentPage - 2);
+        const endPage = Math.min(this.totalPages, this.currentPage + 2);
+
+        if (startPage > 1) {
+            html += `<button class="btn btn-sm pagination-btn" data-page="1">1</button>`;
+            if (startPage > 2) {
+                html += `<span class="pagination-ellipsis">...</span>`;
+            }
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            if (i === this.currentPage) {
+                html += `<span class="pagination-current">${i}</span>`;
+            } else {
+                html += `<button class="btn btn-sm pagination-btn" data-page="${i}">${i}</button>`;
+            }
+        }
+
+        if (endPage < this.totalPages) {
+            if (endPage < this.totalPages - 1) {
+                html += `<span class="pagination-ellipsis">...</span>`;
+            }
+            html += `<button class="btn btn-sm pagination-btn" data-page="${this.totalPages}">${this.totalPages}</button>`;
+        }
+
+        // Next button
+        if (this.currentPage < this.totalPages) {
+            html += `<button class="btn btn-sm pagination-btn" data-page="${this.currentPage + 1}">Next</button>`;
+        }
+
+        html += '</div>';
+        html += `<p class="pagination-info">Page ${this.currentPage} of ${this.totalPages}</p>`;
+
+        container.innerHTML = html;
+
+        // Bind click events
+        container.querySelectorAll('.pagination-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const page = parseInt(e.target.dataset.page);
+                if (page !== this.currentPage) {
+                    this.currentPage = page;
+                    this.searchDiscogs();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            });
+        });
     }
 
     renderResults(results) {

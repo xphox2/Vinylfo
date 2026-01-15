@@ -1,6 +1,6 @@
-// This file contains database schema definitions and migration scripts for the VinylFO project
+// This file contains database schema definitions and migration scripts for the Vinylfo project
 
-// Database Schema for VinylFO Application
+// Database Schema for Vinylfo Application
 
 // Album table:
 // - id (primary key, auto-increment)
