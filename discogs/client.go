@@ -19,7 +19,8 @@ import (
 
 const (
 	APIURL          = "https://api.discogs.com"
-	AuthURL         = "https://www.discogs.com/oauth"
+	AuthURL         = "https://api.discogs.com/oauth"
+	AuthWebURL      = "https://www.discogs.com/oauth"
 	RateLimitWindow = 60 * time.Second
 	AuthRequests    = 60
 	AnonRequests    = 25
@@ -43,14 +44,10 @@ func (rl *RateLimiter) Wait(isAuth bool) {
 	now := time.Now()
 	elapsed := now.Sub(rl.windowStart)
 
-	fmt.Printf("[RateLimiter] Wait called: isAuth=%v, windowElapsed=%v, authCount=%d, anonCount=%d\n",
-		isAuth, elapsed, rl.authCount, rl.anonCount)
-
 	if elapsed >= RateLimitWindow {
 		rl.windowStart = now
 		rl.authCount = 0
 		rl.anonCount = 0
-		fmt.Printf("[RateLimiter] Window reset\n")
 	}
 
 	maxCount := AuthRequests
@@ -65,7 +62,6 @@ func (rl *RateLimiter) Wait(isAuth bool) {
 
 	for *currentCount >= maxCount {
 		sleepTime := rl.windowStart.Add(RateLimitWindow).Sub(now)
-		fmt.Printf("[RateLimiter] Rate limit reached, sleeping for %v\n", sleepTime)
 		if sleepTime > 0 {
 			time.Sleep(sleepTime)
 		}
@@ -76,7 +72,6 @@ func (rl *RateLimiter) Wait(isAuth bool) {
 	}
 
 	*currentCount++
-	fmt.Printf("[RateLimiter] Incremented count to %d\n", *currentCount)
 }
 
 func (rl *RateLimiter) UpdateFromHeaders(resp *http.Response) {
@@ -179,18 +174,8 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 
 	body.Set("oauth_token", c.OAuth.AccessToken)
 
-	fmt.Printf("DEBUG [makeOAuthRequest] === OAuth Request Details ===\n")
-	fmt.Printf("DEBUG [makeOAuthRequest] URL: %s\n", requestURL)
-	fmt.Printf("DEBUG [makeOAuthRequest] Method: %s\n", method)
-	fmt.Printf("DEBUG [makeOAuthRequest] Body: %s\n", body.Encode())
-	fmt.Printf("DEBUG [makeOAuthRequest] AccessToken: %s\n", maskValue(c.OAuth.AccessToken))
-	fmt.Printf("DEBUG [makeOAuthRequest] ConsumerKey: %s\n", maskValue(c.OAuth.ConsumerKey))
-
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
-
-	fmt.Printf("DEBUG [makeOAuthRequest] Timestamp: %s\n", timestamp)
-	fmt.Printf("DEBUG [makeOAuthRequest] Nonce: %s\n", nonce)
 
 	oauthParams := map[string]string{
 		"oauth_consumer_key":     c.OAuth.ConsumerKey,
@@ -199,15 +184,6 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 		"oauth_timestamp":        timestamp,
 		"oauth_token":            c.OAuth.AccessToken,
 		"oauth_version":          "1.0",
-	}
-
-	fmt.Printf("DEBUG [makeOAuthRequest] OAuth Params:\n")
-	for k, v := range oauthParams {
-		if k == "oauth_consumer_key" || k == "oauth_token" {
-			fmt.Printf("DEBUG [makeOAuthRequest]   %s: %s\n", k, maskValue(v))
-		} else {
-			fmt.Printf("DEBUG [makeOAuthRequest]   %s: %s\n", k, v)
-		}
 	}
 
 	params := make(url.Values)
@@ -232,15 +208,7 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 
 	baseString := fmt.Sprintf("%s&%s&%s", method, url.QueryEscape(requestURL), url.QueryEscape(strings.Join(paramPairs, "&")))
 
-	fmt.Printf("DEBUG [makeOAuthRequest] === Signature Base String ===\n")
-	fmt.Printf("DEBUG [makeOAuthRequest] baseString: %s\n", baseString)
-
 	signature := generateHmacSignature(baseString, c.OAuth.ConsumerSecret, c.OAuth.AccessSecret)
-
-	fmt.Printf("DEBUG [makeOAuthRequest] === Generated Signature ===\n")
-	fmt.Printf("DEBUG [makeOAuthRequest] signature: %s\n", signature)
-	fmt.Printf("DEBUG [makeOAuthRequest] ConsumerSecret: %s\n", maskValue(c.OAuth.ConsumerSecret))
-	fmt.Printf("DEBUG [makeOAuthRequest] TokenSecret: %s\n", maskValue(c.OAuth.AccessSecret))
 
 	authHeader := fmt.Sprintf(`OAuth oauth_consumer_key="%s", oauth_token="%s", oauth_signature_method="HMAC-SHA1", oauth_timestamp="%s", oauth_nonce="%s", oauth_version="1.0", oauth_signature="%s"`,
 		url.QueryEscape(c.OAuth.ConsumerKey),
@@ -269,16 +237,12 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 	req.Header.Set("sec-ch-ua-mobile", "?0")
 	req.Header.Set("sec-ch-ua-platform", "\"Windows\"")
 
-	fmt.Printf("DEBUG makeOAuthRequest: Authorization=%s\n", authHeader)
-
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
 	c.RateLimiter.UpdateFromHeaders(resp)
-
-	fmt.Printf("DEBUG makeOAuthRequest: response status=%d, headers=%v\n", resp.StatusCode, resp.Header)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != 201 {
 		body, _ := io.ReadAll(resp.Body)
@@ -299,15 +263,16 @@ func generateHmacSignature(baseString, consumerSecret, tokenSecret string) strin
 	return signature
 }
 
+func generatePlainTextSignature(consumerSecret, tokenSecret string) string {
+	consumerSecret = strings.TrimSpace(consumerSecret)
+	tokenSecret = strings.TrimSpace(tokenSecret)
+	return fmt.Sprintf("%s&%s", consumerSecret, tokenSecret)
+}
+
 func (c *Client) GetRequestToken() (token, secret, authURL string, err error) {
 	consumerKey := os.Getenv("DISCOGS_CONSUMER_KEY")
 	consumerSecret := os.Getenv("DISCOGS_CONSUMER_SECRET")
 	callbackURL := os.Getenv("DISCOGS_CALLBACK_URL")
-
-	fmt.Printf("=== [GetRequestToken] OAuth 1.0a Request Token Flow ===\n")
-	fmt.Printf("[GetRequestToken] ConsumerKey: %s\n", maskValue(consumerKey))
-	fmt.Printf("[GetRequestToken] ConsumerSecret: %s\n", maskValue(consumerSecret))
-	fmt.Printf("[GetRequestToken] CallbackURL: %s\n", callbackURL)
 
 	if consumerKey == "" || consumerSecret == "" {
 		return "", "", "", fmt.Errorf("DISCOGS_CONSUMER_KEY or DISCOGS_CONSUMER_SECRET not set")
@@ -315,9 +280,6 @@ func (c *Client) GetRequestToken() (token, secret, authURL string, err error) {
 
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
-
-	fmt.Printf("[GetRequestToken] Timestamp: %s\n", timestamp)
-	fmt.Printf("[GetRequestToken] Nonce: %s\n", nonce)
 
 	oauthParams := fmt.Sprintf("oauth_callback=%s&oauth_consumer_key=%s&oauth_nonce=%s&oauth_signature_method=HMAC-SHA1&oauth_timestamp=%s&oauth_version=1.0",
 		url.QueryEscape(callbackURL),
@@ -327,13 +289,7 @@ func (c *Client) GetRequestToken() (token, secret, authURL string, err error) {
 
 	baseString := fmt.Sprintf("%s&%s&%s", "POST", url.QueryEscape(AuthURL+"/request_token"), url.QueryEscape(oauthParams))
 
-	fmt.Printf("[GetRequestToken] === Signature Base String ===\n")
-	fmt.Printf("[GetRequestToken] baseString: %s\n", baseString)
-
 	signature := generateHmacSignature(baseString, consumerSecret, "")
-
-	fmt.Printf("[GetRequestToken] === Generated Signature ===\n")
-	fmt.Printf("[GetRequestToken] signature: %s\n", signature)
 
 	authHeader := fmt.Sprintf(`OAuth oauth_consumer_key="%s", oauth_signature="%s", oauth_signature_method="HMAC-SHA1", oauth_timestamp="%s", oauth_nonce="%s", oauth_version="1.0", oauth_callback="%s"`,
 		url.QueryEscape(consumerKey),
@@ -341,10 +297,6 @@ func (c *Client) GetRequestToken() (token, secret, authURL string, err error) {
 		timestamp,
 		nonce,
 		url.QueryEscape(callbackURL))
-
-	fmt.Printf("[GetRequestToken] Authorization Header: %s\n", authHeader)
-
-	fmt.Printf("[GetRequestToken] Making request to Discogs OAuth endpoint...\n")
 
 	req, err := http.NewRequest("POST", AuthURL+"/request_token", nil)
 	if err != nil {
@@ -371,10 +323,7 @@ func (c *Client) GetRequestToken() (token, secret, authURL string, err error) {
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("[GetRequestToken] Response status=%d\n", resp.StatusCode)
-
 	body, _ := io.ReadAll(resp.Body)
-	fmt.Printf("[GetRequestToken] Response body length=%d\n", len(body))
 
 	if resp.StatusCode != 200 {
 		return "", "", "", fmt.Errorf("Discogs OAuth request failed with status %d. This is likely due to Cloudflare protection blocking automated requests. Please complete OAuth manually through a web browser.", resp.StatusCode)
@@ -384,7 +333,7 @@ func (c *Client) GetRequestToken() (token, secret, authURL string, err error) {
 
 	token = values.Get("oauth_token")
 	secret = values.Get("oauth_token_secret")
-	authURL = AuthURL + "/authorize?oauth_token=" + token
+	authURL = AuthWebURL + "/authorize?oauth_token=" + token
 
 	if token == "" {
 		return "", "", "", fmt.Errorf("no oauth_token in response")
@@ -399,13 +348,6 @@ func (c *Client) GetAccessToken(token, secret, verifier string) (accessToken, ac
 	c.OAuth.AccessToken = token
 	c.OAuth.AccessSecret = secret
 
-	fmt.Printf("=== [GetAccessToken] OAuth 1.0a Access Token Flow ===\n")
-	fmt.Printf("[GetAccessToken] Request Token: %s\n", maskValue(token))
-	fmt.Printf("[GetAccessToken] Request Token Secret: %s\n", maskValue(secret))
-	fmt.Printf("[GetAccessToken] Verifier: %s\n", verifier)
-	fmt.Printf("[GetAccessToken] ConsumerKey: %s\n", maskValue(c.OAuth.ConsumerKey))
-	fmt.Printf("[GetAccessToken] ConsumerSecret: %s\n", maskValue(c.OAuth.ConsumerSecret))
-
 	if c.OAuth.ConsumerKey == "" || c.OAuth.ConsumerSecret == "" {
 		return "", "", "", fmt.Errorf("DISCOGS_CONSUMER_KEY or DISCOGS_CONSUMER_SECRET not set")
 	}
@@ -414,29 +356,18 @@ func (c *Client) GetAccessToken(token, secret, verifier string) (accessToken, ac
 	data.Set("oauth_token", token)
 	data.Set("oauth_verifier", verifier)
 
-	fmt.Printf("[GetAccessToken] Request Body: %s\n", data.Encode())
-	fmt.Printf("[GetAccessToken] Calling: %s/oauth/access_token\n", AuthURL)
-
 	resp, err := c.makeOAuthRequest("POST", AuthURL+"/access_token", data)
 	if err != nil {
-		fmt.Printf("[GetAccessToken] ERROR: %v\n", err)
 		return "", "", "", err
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("[GetAccessToken] Response Status: %d\n", resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
-	fmt.Printf("[GetAccessToken] Response Body: %s\n", string(body))
 	values, _ := url.ParseQuery(string(body))
 
 	accessToken = values.Get("oauth_token")
 	accessSecret = values.Get("oauth_token_secret")
 	username = values.Get("username")
-
-	fmt.Printf("[GetAccessToken] === Access Token Received ===\n")
-	fmt.Printf("[GetAccessToken] AccessToken: %s\n", maskValue(accessToken))
-	fmt.Printf("[GetAccessToken] AccessSecret: %s\n", maskValue(accessSecret))
-	fmt.Printf("[GetAccessToken] Username: %s\n", username)
 
 	return accessToken, accessSecret, username, nil
 }
@@ -617,13 +548,15 @@ func parseAlbumResponse(resp *http.Response) (map[string]interface{}, error) {
 	defer resp.Body.Close()
 
 	var discogsAlbum struct {
-		ID      int      `json:"id"`
-		Title   string   `json:"title"`
-		Year    int      `json:"year"`
-		Country string   `json:"country"`
-		Genres  []string `json:"genres"`
-		Styles  []string `json:"styles"`
-		Images  []struct {
+		ID       int      `json:"id"`
+		Title    string   `json:"title"`
+		Year     int      `json:"year"`
+		Country  string   `json:"country"`
+		Label    string   `json:"label"`
+		Released string   `json:"released"`
+		Genres   []string `json:"genres"`
+		Styles   []string `json:"styles"`
+		Images   []struct {
 			URI  string `json:"uri"`
 			Type string `json:"type"`
 		} `json:"images"`
@@ -662,16 +595,23 @@ func parseAlbumResponse(resp *http.Response) (map[string]interface{}, error) {
 		genre = discogsAlbum.Genres[0]
 	}
 
+	styles := ""
+	if len(discogsAlbum.Styles) > 0 {
+		styles = strings.Join(discogsAlbum.Styles, ", ")
+	}
+
 	album := map[string]interface{}{
-		"discogs_id":  discogsAlbum.ID,
-		"title":       discogsAlbum.Title,
-		"artist":      artistName,
-		"year":        discogsAlbum.Year,
-		"country":     discogsAlbum.Country,
-		"genre":       genre,
-		"styles":      discogsAlbum.Styles,
-		"cover_image": coverImage,
-		"tracklist":   parseTracklist(discogsAlbum.Tracklist),
+		"discogs_id":   discogsAlbum.ID,
+		"title":        discogsAlbum.Title,
+		"artist":       artistName,
+		"year":         discogsAlbum.Year,
+		"country":      discogsAlbum.Country,
+		"label":        discogsAlbum.Label,
+		"release_date": discogsAlbum.Released,
+		"genre":        genre,
+		"style":        styles,
+		"cover_image":  coverImage,
+		"tracklist":    parseTracklist(discogsAlbum.Tracklist),
 	}
 
 	return album, nil
@@ -684,14 +624,82 @@ func parseTracklist(tracklist []struct {
 }) []map[string]interface{} {
 	tracks := make([]map[string]interface{}, 0)
 	for i, track := range tracklist {
+		side := convertPositionToStandard(track.Position)
 		tracks = append(tracks, map[string]interface{}{
 			"track_number": i + 1,
-			"position":     track.Position,
+			"position":     side,
 			"title":        track.Title,
-			"duration":     track.Duration,
+			"duration":     durationToSeconds(track.Duration),
 		})
 	}
 	return tracks
+}
+
+func convertPositionToStandard(position string) string {
+	if position == "" {
+		return ""
+	}
+
+	position = strings.TrimSpace(position)
+
+	if len(position) >= 2 {
+		firstChar := position[0]
+		if firstChar >= 'A' && firstChar <= 'Z' {
+			return position
+		}
+	}
+
+	parts := strings.Split(position, "-")
+	if len(parts) == 2 {
+		discNum, err1 := strconv.Atoi(parts[0])
+		trackNum := parts[1]
+		if err1 == nil && discNum > 0 {
+			discLetter := string(rune('A' + discNum - 1))
+			return fmt.Sprintf("%s%s", discLetter, trackNum)
+		}
+	}
+
+	if len(position) >= 2 {
+		firstChar := position[0]
+		if firstChar >= '0' && firstChar <= '9' {
+			for i := 1; i < len(position); i++ {
+				if position[i] >= '0' && position[i] <= '9' {
+					discPart := position[:i]
+					trackPart := position[i:]
+					discNum, err1 := strconv.Atoi(discPart)
+					if err1 == nil && discNum > 0 {
+						discLetter := string(rune('A' + discNum - 1))
+						return fmt.Sprintf("%s%s", discLetter, trackPart)
+					}
+					break
+				}
+			}
+		}
+	}
+
+	return position
+}
+
+func durationToSeconds(duration string) int {
+	if duration == "" {
+		return 0
+	}
+
+	parts := strings.Split(duration, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return 0
+	}
+
+	var totalSeconds int
+	for _, part := range parts {
+		seconds, err := strconv.Atoi(part)
+		if err != nil {
+			return 0
+		}
+		totalSeconds = totalSeconds*60 + seconds
+	}
+
+	return totalSeconds
 }
 
 func maskValue(s string) string {

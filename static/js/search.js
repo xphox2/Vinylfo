@@ -29,9 +29,15 @@ class SearchManager {
 
         document.getElementById('add-track').addEventListener('click', () => this.addTrackField());
 
-        document.getElementById('modal-close').addEventListener('click', () => this.closeModal());
-        document.getElementById('modal-cancel').addEventListener('click', () => this.closeModal());
-        document.getElementById('modal-confirm').addEventListener('click', () => this.confirmAddAlbum());
+        document.addEventListener('click', (e) => {
+            if (e.target && (e.target.id === 'modal-close' || e.target.classList.contains('modal-close'))) {
+                this.closeModal();
+            } else if (e.target && e.target.id === 'modal-cancel') {
+                this.closeModal();
+            } else if (e.target && e.target.id === 'modal-confirm') {
+                this.confirmAddAlbum();
+            }
+        });
     }
 
     showDiscogsTab() {
@@ -162,12 +168,12 @@ class SearchManager {
                     <span class="result-artist">${this.escapeHtml(album.artist)}</span>
                     <span class="result-year">${album.year || 'Unknown year'}</span>
                 </div>
-                <button class="btn btn-primary btn-sm add-album-btn" data-id="${album.discogs_id}">Add</button>
+                <button class="btn btn-primary btn-sm view-album-btn" data-id="${album.discogs_id}">View</button>
             `;
             container.appendChild(item);
         });
 
-        container.querySelectorAll('.add-album-btn').forEach(btn => {
+        container.querySelectorAll('.view-album-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = e.target.dataset.id;
                 this.showAlbumDetail(id);
@@ -182,29 +188,29 @@ class SearchManager {
 
     async showAlbumDetail(discogsId) {
         try {
-            const response = await fetch(`${API_BASE}/discogs/albums`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    discogs_id: parseInt(discogsId),
-                    from_discogs: true
-                })
-            });
+            const response = await fetch(`${API_BASE}/discogs/albums/${discogsId}`);
 
             if (!response.ok) {
-                throw new Error('Failed to fetch album details');
+                const error = await response.json();
+                this.showNotification(error.error || 'Failed to load album details', 'error');
+                return;
             }
 
             const album = await response.json();
 
             this.currentAlbumData = {
-                discogs_id: discogsId,
+                discogs_id: parseInt(discogsId),
                 title: album.title,
                 artist: album.artist,
-                release_year: album.release_year,
+                release_year: album.year,
                 genre: album.genre,
-                cover_image: album.cover_image_url,
-                tracks: album.Tracks || []
+                label: album.label || '',
+                country: album.country || '',
+                release_date: album.release_date || '',
+                style: album.style || '',
+                cover_image: album.cover_image,
+                from_discogs: true,
+                tracks: album.tracklist || []
             };
 
             this.renderModal(album);
@@ -218,29 +224,43 @@ class SearchManager {
     renderModal(album) {
         document.getElementById('modal-title').textContent = album.title;
 
+        const tracks = album.tracklist || [];
         let tracksHtml = '';
-        if (album.Tracks && album.Tracks.length > 0) {
+        if (tracks.length > 0) {
             tracksHtml = '<ul class="track-list">';
-            album.Tracks.forEach((track, i) => {
-                tracksHtml += `<li>${i + 1}. ${this.escapeHtml(track.title)}</li>`;
+            tracks.forEach((track) => {
+                const side = track.side || track.position || '';
+                const duration = this.formatDuration(track.duration);
+                tracksHtml += `<li><span class="track-position">${side}</span> ${this.escapeHtml(track.title)} ${duration ? `<span class="track-duration">(${duration})</span>` : ''}</li>`;
             });
             tracksHtml += '</ul>';
         }
 
         document.getElementById('modal-body').innerHTML = `
             <div class="modal-album-info">
-                <img src="${album.cover_image_url || '/static/images/no-cover.png'}" alt="${this.escapeHtml(album.title)}" class="modal-cover">
+                <img src="${album.cover_image || '/static/images/no-cover.png'}" alt="${this.escapeHtml(album.title)}" class="modal-cover">
                 <div class="modal-details">
                     <p><strong>Artist:</strong> ${this.escapeHtml(album.artist)}</p>
-                    <p><strong>Year:</strong> ${album.release_year || 'Unknown'}</p>
+                    <p><strong>Year:</strong> ${album.year || 'Unknown'}</p>
                     <p><strong>Genre:</strong> ${album.genre || 'Unknown'}</p>
+                    ${album.label ? `<p><strong>Label:</strong> ${this.escapeHtml(album.label)}</p>` : ''}
+                    ${album.country ? `<p><strong>Country:</strong> ${this.escapeHtml(album.country)}</p>` : ''}
+                    ${album.release_date ? `<p><strong>Released:</strong> ${this.escapeHtml(album.release_date)}</p>` : ''}
+                    ${album.style ? `<p><strong>Style:</strong> ${this.escapeHtml(album.style)}</p>` : ''}
                 </div>
             </div>
             <div class="modal-tracks">
-                <h4>Tracks</h4>
+                <h4>Tracks (${tracks.length})</h4>
                 ${tracksHtml || '<p>No track information available</p>'}
             </div>
         `;
+    }
+
+    formatDuration(seconds) {
+        if (!seconds || seconds === 0) return '';
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 
     closeModal() {

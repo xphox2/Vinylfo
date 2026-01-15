@@ -131,7 +131,10 @@ func (c *DiscogsController) Disconnect(ctx *gin.Context) {
 		"is_discogs_connected":  false,
 	})
 
-	ctx.JSON(200, gin.H{"message": "Disconnected from Discogs"})
+	ctx.JSON(200, gin.H{
+		"message": "Disconnected from Discogs",
+		"note":    "The authorization has been removed from this application. To fully disconnect, please also revoke access at: https://www.discogs.com/settings/applications",
+	})
 }
 
 func (c *DiscogsController) GetStatus(ctx *gin.Context) {
@@ -179,6 +182,31 @@ func (c *DiscogsController) Search(ctx *gin.Context) {
 	})
 }
 
+func (c *DiscogsController) PreviewAlbum(ctx *gin.Context) {
+	discogsID := ctx.Param("id")
+	id, err := strconv.Atoi(discogsID)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "Invalid Discogs ID"})
+		return
+	}
+
+	client := getDiscogsClient()
+	discogsData, err := client.GetAlbum(id)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": "Failed to fetch album from Discogs"})
+		return
+	}
+
+	if tracks, ok := discogsData["tracklist"].([]map[string]interface{}); ok {
+		if len(tracks) == 0 {
+			ctx.JSON(400, gin.H{"error": "No track information available for this release"})
+			return
+		}
+	}
+
+	ctx.JSON(200, discogsData)
+}
+
 func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 	var input struct {
 		DiscogsID   int    `json:"discogs_id"`
@@ -186,12 +214,19 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 		Artist      string `json:"artist"`
 		ReleaseYear int    `json:"release_year"`
 		Genre       string `json:"genre"`
+		Label       string `json:"label"`
+		Country     string `json:"country"`
+		ReleaseDate string `json:"release_date"`
+		Style       string `json:"style"`
 		CoverImage  string `json:"cover_image"`
 		FromDiscogs bool   `json:"from_discogs"`
 		Tracks      []struct {
 			Title       string `json:"title"`
 			Duration    int    `json:"duration"`
 			TrackNumber int    `json:"track_number"`
+			DiscNumber  int    `json:"disc_number"`
+			Side        string `json:"side"`
+			Position    string `json:"position"`
 		} `json:"tracks"`
 	}
 
@@ -218,16 +253,36 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 			if v, ok := discogsData["genre"].(string); ok {
 				album.Genre = v
 			}
+			if v, ok := discogsData["label"].(string); ok {
+				album.Label = v
+			}
+			if v, ok := discogsData["country"].(string); ok {
+				album.Country = v
+			}
+			if v, ok := discogsData["release_date"].(string); ok {
+				album.ReleaseDate = v
+			}
+			if v, ok := discogsData["style"].(string); ok {
+				album.Style = v
+			}
 			if v, ok := discogsData["cover_image"].(string); ok {
 				album.CoverImageURL = v
 			}
+			album.DiscogsID = input.DiscogsID
 
 			if tracks, ok := discogsData["tracklist"].([]map[string]interface{}); ok {
+				if len(tracks) == 0 {
+					ctx.JSON(400, gin.H{"error": "Cannot add album: No track information available"})
+					return
+				}
 				for _, t := range tracks {
 					track := struct {
 						Title       string `json:"title"`
 						Duration    int    `json:"duration"`
 						TrackNumber int    `json:"track_number"`
+						DiscNumber  int    `json:"disc_number"`
+						Side        string `json:"side"`
+						Position    string `json:"position"`
 					}{}
 
 					if v, ok := t["title"].(string); ok {
@@ -239,9 +294,16 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 					if v, ok := t["duration"].(int); ok {
 						track.Duration = v
 					}
+					if v, ok := t["position"].(string); ok {
+						track.Position = v
+						track.Side = v
+					}
 
 					input.Tracks = append(input.Tracks, track)
 				}
+			} else {
+				ctx.JSON(400, gin.H{"error": "Cannot add album: No track information available"})
+				return
 			}
 		}
 	}
@@ -257,6 +319,18 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 	}
 	if input.Genre != "" {
 		album.Genre = input.Genre
+	}
+	if input.Label != "" {
+		album.Label = input.Label
+	}
+	if input.Country != "" {
+		album.Country = input.Country
+	}
+	if input.ReleaseDate != "" {
+		album.ReleaseDate = input.ReleaseDate
+	}
+	if input.Style != "" {
+		album.Style = input.Style
 	}
 	if input.CoverImage != "" {
 		album.CoverImageURL = input.CoverImage
@@ -275,6 +349,9 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 			Title:       track.Title,
 			TrackNumber: track.TrackNumber,
 			Duration:    track.Duration,
+			DiscNumber:  track.DiscNumber,
+			Side:        track.Side,
+			Position:    track.Position,
 		}
 		c.db.Create(&trackModel)
 	}

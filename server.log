@@ -1,6 +1,6 @@
-2026/01/14 19:40:21 Database connected successfully
-2026/01/14 19:40:21 Seeding database with sample data...
-2026/01/14 19:40:21 Database already seeded, skipping...
+2026/01/15 12:35:54 Database connected successfully
+2026/01/15 12:35:54 Seeding database with sample data...
+2026/01/15 12:35:54 Database already seeded, skipping...
 === Validating OAuth Configuration ===
 ✓ DISCOGS_CONSUMER_KEY is set: zmtb****YigT
 ✓ DISCOGS_CONSUMER_SECRET is set: hGRi****yHaT
@@ -94,11 +94,82 @@ Current OAuth Settings:
 [GIN-debug] POST   /api/discogs/sync/cancel  --> vinylfo/controllers.(*DiscogsController).CancelSync-fm (3 handlers)
 [GIN-debug] GET    /api/settings             --> vinylfo/controllers.(*SettingsController).Get-fm (3 handlers)
 [GIN-debug] PUT    /api/settings             --> vinylfo/controllers.(*SettingsController).Update-fm (3 handlers)
-2026/01/14 19:40:21 Server starting on port 8080
+2026/01/15 12:35:54 Server starting on port 8080
 [GIN-debug] [WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
 Please check https://pkg.go.dev/github.com/gin-gonic/gin#readme-don-t-trust-all-proxies for details.
 [GIN-debug] Listening and serving HTTP on :8080
-[GIN] 2026/01/14 - 19:40:23 | 200 |     72.1729ms |             ::1 | GET      "/"
-[GIN] 2026/01/14 - 19:40:23 | 200 |     17.1058ms |             ::1 | GET      "/static/css/style.css"
-[GIN] 2026/01/14 - 19:40:23 | 200 |     31.9419ms |             ::1 | GET      "/static/js/app.js"
-[GIN] 2026/01/14 - 19:40:23 | 200 |       560.3µs |             ::1 | GET      "/albums"
+[GIN] 2026/01/15 - 12:36:04 | 200 |            0s |             ::1 | GET      "/health"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=0s, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+[GIN] 2026/01/15 - 12:36:18 | 200 |    701.6674ms |             ::1 | GET      "/api/discogs/search?q=Abbey%20Road"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=0s, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+[GIN] 2026/01/15 - 12:36:26 | 200 |    208.3314ms |             ::1 | GET      "/api/discogs/search?q=The%20Beatles%20Abbey%20Road"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=0s, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+
+2026/01/15 12:36:35 [31;1mE:/Golang/OpenCode/Vinylfo/controllers/discogs.go:304 [35;1mError 1062 (23000): Duplicate entry 'Abbey Road' for key 'idx_albums_title'
+[0m[33m[1.246ms] [34;1m[rows:0][0m INSERT INTO `albums` (`title`,`artist`,`release_year`,`genre`,`label`,`country`,`release_date`,`style`,`discogs_id`,`cover_image_url`,`created_at`,`updated_at`) VALUES ('Abbey Road','The Beatles',2025,'Rock','','Worldwide','2025-10-10','Pop Rock',35336761,'https://i.discogs.com/BoQ7f0mI9eh51JUQhfpTpWkOHCGqMAwdxEWnL4P5zPw/rs:fit/g:sm/q:90/h:593/w:600/czM6Ly9kaXNjb2dz/LWRhdGFiYXNlLWlt/YWdlcy9SLTM1MzM2/NzYxLTE3NjY2NTQ5/NzItNjk2MC5qcGVn.jpeg','2026-01-15 17:36:35.812','2026-01-15 17:36:35.812') RETURNING `id`
+[GIN] 2026/01/15 - 12:36:35 | 500 |     724.773ms |             ::1 | POST     "/api/discogs/albums"
+[GIN] 2026/01/15 - 12:36:53 | 404 |            0s |             ::1 | POST     "/api/albums"
+[GIN] 2026/01/15 - 12:37:27 | 201 |      1.9102ms |             ::1 | POST     "/albums"
+[GIN] 2026/01/15 - 12:37:34 | 201 |      1.8586ms |             ::1 | POST     "/tracks"
+[GIN] 2026/01/15 - 12:37:39 | 200 |       565.9µs |             ::1 | GET      "/albums/7"
+[GIN] 2026/01/15 - 12:37:44 | 200 |       658.1µs |             ::1 | GET      "/albums/7/tracks"
+[GIN] 2026/01/15 - 12:37:50 | 200 |      1.9921ms |             ::1 | DELETE   "/albums/7"
+[GIN] 2026/01/15 - 12:38:32 | 304 |            0s |             ::1 | GET      "/search"
+[GIN] 2026/01/15 - 12:38:34 | 200 |     49.7114ms |             ::1 | GET      "/search"
+[GIN] 2026/01/15 - 12:38:35 | 200 |            0s |             ::1 | GET      "/static/css/style.css"
+[GIN] 2026/01/15 - 12:38:35 | 200 |       567.7µs |             ::1 | GET      "/static/css/search.css"
+[GIN] 2026/01/15 - 12:38:35 | 200 |            0s |             ::1 | GET      "/static/js/search.js"
+[GIN] 2026/01/15 - 12:38:35 | 404 |            0s |             ::1 | GET      "/favicon.ico"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=511.4µs, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+[GIN] 2026/01/15 - 12:38:37 | 200 |    207.8076ms |             ::1 | GET      "/api/discogs/search?q=Death%20Cab%20For%20Cutie&page=1"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=0s, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+
+2026/01/15 12:38:40 [31;1mE:/Golang/OpenCode/Vinylfo/controllers/discogs.go:304 [35;1mError 1062 (23000): Duplicate entry 'The Photo Album' for key 'idx_albums_title'
+[0m[33m[0.560ms] [34;1m[rows:0][0m INSERT INTO `albums` (`title`,`artist`,`release_year`,`genre`,`label`,`country`,`release_date`,`style`,`discogs_id`,`cover_image_url`,`created_at`,`updated_at`) VALUES ('The Photo Album','Death Cab For Cutie',2025,'Rock','','US','2025-08-08','Indie Rock',34779833,'https://i.discogs.com/gqMJle15_t2ip6n9x_5gEPhRKh_-sJ6652UiQ5bKlRw/rs:fit/g:sm/q:90/h:600/w:597/czM6Ly9kaXNjb2dz/LWRhdGFiYXNlLWlt/YWdlcy9SLTM0Nzc5/ODMzLTE3NTQ3ODQ5/MjUtMTI2MS5qcGVn.jpeg','2026-01-15 17:38:40.187','2026-01-15 17:38:40.187') RETURNING `id`
+[GIN] 2026/01/15 - 12:38:40 | 500 |    331.2612ms |             ::1 | POST     "/api/discogs/albums"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=0s, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+
+2026/01/15 12:38:43 [31;1mE:/Golang/OpenCode/Vinylfo/controllers/discogs.go:324 [35;1mTracks: unsupported relations for schema Album
+[0m[33m[0.319ms] [34;1m[rows:1][0m SELECT * FROM `albums` WHERE `albums`.`id` = 9 AND `albums`.`id` = 9 ORDER BY `albums`.`id` LIMIT 1
+[GIN] 2026/01/15 - 12:38:43 | 201 |    480.1761ms |             ::1 | POST     "/api/discogs/albums"
+[GIN] 2026/01/15 - 12:38:55 | 200 |            0s |             ::1 | GET      "/search"
+[GIN] 2026/01/15 - 12:38:55 | 200 |            0s |             ::1 | GET      "/static/css/style.css"
+[GIN] 2026/01/15 - 12:38:55 | 200 |            0s |             ::1 | GET      "/static/css/search.css"
+[GIN] 2026/01/15 - 12:38:55 | 200 |       560.6µs |             ::1 | GET      "/static/js/search.js"
+[GIN] 2026/01/15 - 12:38:55 | 404 |            0s |             ::1 | GET      "/favicon.ico"
+[GIN] 2026/01/15 - 12:38:56 | 200 |            0s |             ::1 | GET      "/search"
+[GIN] 2026/01/15 - 12:38:56 | 200 |       525.7µs |             ::1 | GET      "/static/css/search.css"
+[GIN] 2026/01/15 - 12:38:56 | 200 |       636.5µs |             ::1 | GET      "/static/css/style.css"
+[GIN] 2026/01/15 - 12:38:56 | 200 |       636.5µs |             ::1 | GET      "/static/js/search.js"
+[GIN] 2026/01/15 - 12:38:57 | 404 |            0s |             ::1 | GET      "/favicon.ico"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=0s, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+[GIN] 2026/01/15 - 12:39:01 | 200 |    178.2773ms |             ::1 | GET      "/api/discogs/search?q=Death%20Cab%20For%20Cutie%20Trans&page=1"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=0s, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+
+2026/01/15 12:39:08 [31;1mE:/Golang/OpenCode/Vinylfo/controllers/discogs.go:324 [35;1mTracks: unsupported relations for schema Album
+[0m[33m[0.000ms] [34;1m[rows:1][0m SELECT * FROM `albums` WHERE `albums`.`id` = 10 AND `albums`.`id` = 10 ORDER BY `albums`.`id` LIMIT 1
+[GIN] 2026/01/15 - 12:39:08 | 201 |    887.1685ms |             ::1 | POST     "/api/discogs/albums"
+[GIN] 2026/01/15 - 12:39:50 | 304 |            0s |             ::1 | GET      "/static/js/search.js"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=0s, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+[GIN] 2026/01/15 - 12:39:54 | 200 |     208.109ms |             ::1 | GET      "/api/discogs/search?q=Bryan%20Adam&page=1"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=0s, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+[GIN] 2026/01/15 - 12:39:59 | 200 |    158.9065ms |             ::1 | GET      "/api/discogs/search?q=Bryan%20Adam&page=630"
+[RateLimiter] Wait called: isAuth=false, windowElapsed=0s, authCount=0, anonCount=0
+[RateLimiter] Incremented count to 1
+
+2026/01/15 12:40:07 [31;1mE:/Golang/OpenCode/Vinylfo/controllers/discogs.go:324 [35;1mTracks: unsupported relations for schema Album
+[0m[33m[0.375ms] [34;1m[rows:1][0m SELECT * FROM `albums` WHERE `albums`.`id` = 11 AND `albums`.`id` = 11 ORDER BY `albums`.`id` LIMIT 1
+[GIN] 2026/01/15 - 12:40:07 | 201 |     279.345ms |             ::1 | POST     "/api/discogs/albums"
+[GIN] 2026/01/15 - 12:40:42 | 200 |       560.8µs |             ::1 | GET      "/albums"
+[GIN] 2026/01/15 - 12:42:47 | 404 |            0s |             ::1 | GET      "/api/discogs/albums/35336761"
+[GIN] 2026/01/15 - 12:42:52 | 200 |            0s |             ::1 | GET      "/health"

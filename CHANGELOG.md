@@ -5,7 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] - 2026-01-15
+
+### Added
+- **Enhanced Discogs Album Import**: Full album metadata and track information now captured when importing from Discogs
+  - Label, Country, Release Date, and Style fields now imported
+  - Track position (A1, A2, B1, B2, etc.) preserved with format conversion (1-1 → A1, 2-1 → B1)
+  - Duration converted from string format (e.g., "3:45") to seconds for consistent storage
+  - Disc and Side tracking for multi-disc albums
+
+### New API Endpoints
+- `GET /api/discogs/albums/:id` - Preview album details from Discogs without saving
+
+### Database Changes
+- Added new fields to `Album` model: `Label`, `Country`, `ReleaseDate`, `Style`, `DiscogsID`
+- Added new fields to `Track` model: `DiscNumber`, `Side`, `Position`
+
+### Changed
+- **Discogs Import Flow**: Albums are now previewed first, then confirmed before saving to database
+- Search results button changed from "Add" to "View" for clarity
+- Album detail modal shows all metadata (label, country, release date, style) before adding
+- Validation prevents adding albums with no track information
+
+### Fixed
+- **OAuth Endpoint URL**: Fixed OAuth request token endpoint from `www.discogs.com/oauth/request_token` to `api.discogs.com/oauth/request_token`
+- **OAuth Signature Whitespace**: Added trimming of whitespace from consumer key, secret, and callback URL to prevent signature errors
+- **Disconnect Flow**: Updated disconnect response to inform users they must also revoke access at https://www.discogs.com/settings/applications
+- Modal close buttons (X, Cancel, Add to Collection) now work correctly
+- Search result items properly centered with image
+- Modal album info section centered with larger 180px cover image
+- Long style text wraps properly to prevent modal overflow
+- Fixed discogs_id type issue (string vs int) when adding albums
+
+### UI Improvements
+- Search results: Album art, text, and View button properly centered and aligned
+- Modal: Larger centered album art (180px) with side-by-side metadata display
+- Track list shows position codes and formatted duration (MM:SS)
+- View button constrained to prevent stretching
+
+---
+
+## [1.2.0] - 2026-01-15
 
 ### Added
 - **Discogs Data Sync Feature**: Full Discogs API integration for syncing vinyl collection

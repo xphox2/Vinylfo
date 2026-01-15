@@ -91,6 +91,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/api/discogs/disconnect", discogsController.Disconnect)
 	r.GET("/api/discogs/status", discogsController.GetStatus)
 	r.GET("/api/discogs/search", discogsController.Search)
+	r.GET("/api/discogs/albums/:id", discogsController.PreviewAlbum)
 	r.POST("/api/discogs/albums", discogsController.CreateAlbum)
 	r.POST("/api/discogs/sync/start", discogsController.StartSync)
 	r.GET("/api/discogs/sync/progress", discogsController.GetSyncProgress)

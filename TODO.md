@@ -215,3 +215,145 @@ Enable playing playlists from the dashboard with continuous progress tracking an
 - [x] Sync playback state across tabs
 - [x] Handle concurrent playback requests
 - [x] Sync playback time across computers using server timestamps
+
+---
+
+## Feature: Fix Discogs Album Import - COMPLETED
+
+### Overview
+Fix Discogs album import to capture all available metadata (label, country, release date, genre, style) and track information including disc/side tracking.
+
+### User Stories
+- [x] As a user, when I search and add an album from Discogs, I want all metadata captured (label, country, release date, style)
+- [x] As a user, I want track information properly imported with disc and side indicators
+- [x] As a user, I want duration stored as seconds (not strings)
+- [x] As a user, I want to see all available metadata in the album detail modal before adding
+- [x] As a user, I want to preview albums without adding them automatically
+- [x] As a user, I want validation to prevent adding albums without tracks
+
+---
+
+### Phase 1: Database Schema Updates
+
+#### models/models.go
+- [x] Add fields to Album struct:
+  - [x] `Label` (string) - Primary label name
+  - [x] `Country` (string) - Release country
+  - [x] `ReleaseDate` (string) - Full release date
+  - [x] `Style` (string) - Comma-separated styles from Discogs
+  - [x] `DiscogsID` (int) - Original Discogs release ID
+
+- [x] Add fields to Track struct:
+  - [x] `DiscNumber` (int) - Which disc (1, 2, 3...)
+  - [x] `Side` (string) - Side position code (A1, B2, C1, etc.)
+  - [x] `Position` (string) - Full position code for reference
+
+---
+
+### Phase 2: Discogs API Response Parsing
+
+#### discogs/client.go
+
+- [x] Update `parseAlbumResponse()` function:
+  - [x] Extract `label` field from Discogs response
+  - [x] Include `country` in returned album map
+  - [x] Extract `released` or `date Released` field for release date
+  - [x] Parse all `styles` as comma-separated string
+
+- [x] Update `parseTracklist()` function:
+  - [x] Keep position as-is (A1, B2, C1, etc.)
+  - [x] Add duration string to seconds conversion helper:
+    - [x] Parse "3:45" format (MM:SS)
+    - [x] Parse "1:30:00" format (HH:MM:SS)
+  - [x] Return duration as int (seconds)
+
+---
+
+### Phase 3: Controller Integration
+
+#### controllers/discogs.go
+
+- [x] Update `CreateAlbum()` function:
+  - [x] Extract `label`, `country`, `release_date`, `style` from Discogs data
+  - [x] Update album creation with new fields
+  - [x] Fix track extraction to handle duration conversion (string to int)
+  - [x] Update track creation to include `disc_number` and `side` fields
+
+- [x] Add `PreviewAlbum()` endpoint:
+  - [x] GET /api/discogs/albums/:id - Fetches album without saving
+  - [x] Validates that album has tracks before returning
+
+---
+
+### Phase 4: Frontend Updates
+
+#### static/js/search.js
+
+- [x] Update album search results:
+  - [x] Change "Add" button to "View"
+  - [x] Call preview endpoint on click
+
+- [x] Update album detail modal:
+  - [x] Display Label (below title)
+  - [x] Display Country and Release Date
+  - [x] Display Style(s)
+  - [x] Update track list display to show disc/side indicators
+  - [x] Show "No track information available" only if tracklist is empty
+  - [x] Show track count in header
+
+#### static/search.html
+- [x] Modal already has "Add to Collection" button text
+
+---
+
+### Phase 5: Testing
+
+- [x] Test search and add album flow
+- [x] Verify all metadata captured (label, country, date, style)
+- [x] Verify tracks have correct disc/side assignments
+- [x] Verify position conversion (1-1 → A1, 2-1 → B1, etc.)
+- [x] Verify duration conversion works (3:45 -> 225 seconds)
+- [x] Test preview endpoint without saving
+- [x] Test validation for albums with no tracks
+
+---
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `models/models.go` | Add 5 fields to Album (Label, Country, ReleaseDate, Style, DiscogsID), 3 fields to Track (DiscNumber, Side, Position) |
+| `discogs/client.go` | Enhance parsing to extract all Discogs fields, add duration string to seconds conversion, add position format conversion (1-1 → A1) |
+| `controllers/discogs.go` | Add PreviewAlbum endpoint, update CreateAlbum, add no-tracks validation |
+| `routes/routes.go` | Add GET /api/discogs/albums/:id route |
+| `static/js/search.js` | Change button to "View", use preview endpoint, add parseInt for discogs_id, event delegation for modal buttons |
+| `static/search.html` | Modal buttons: X, Cancel, Add to Collection |
+| `static/css/search.css` | Modal styling with centered layout, larger cover image (180px), wrapped text for long styles, aligned search results |
+
+---
+
+### Completed Features
+
+#### Feature: Fix Discogs Album Import ✓
+- All metadata captured (label, country, release date, style)
+- Track positions standardized (A1, A2, B1, B2, etc.)
+- Duration stored as seconds
+- Preview before add workflow
+- No-tracks validation
+
+#### Feature: UI/UX Improvements ✓
+- Search results properly centered and aligned
+- Modal centered with larger cover image
+- Long text wraps properly
+- Modal buttons work correctly
+
+---
+
+### Estimated Effort
+- Phase 1 (Database): ~15 minutes - DONE
+- Phase 2 (API Parsing): ~45 minutes - DONE
+- Phase 3 (Controller): ~30 minutes - DONE
+- Phase 4 (Frontend): ~30 minutes - DONE
+- Phase 5 (Testing): ~30 minutes - DONE
+
+**Total: ~2.5 hours - COMPLETED**

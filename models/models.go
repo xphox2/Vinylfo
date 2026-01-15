@@ -11,6 +11,11 @@ type Album struct {
 	Artist        string    `gorm:"not null" json:"artist"`
 	ReleaseYear   int       `json:"release_year"`
 	Genre         string    `json:"genre"`
+	Label         string    `json:"label"`
+	Country       string    `json:"country"`
+	ReleaseDate   string    `json:"release_date"`
+	Style         string    `json:"style"`
+	DiscogsID     int       `json:"discogs_id"`
 	CoverImageURL string    `json:"cover_image_url"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
@@ -24,6 +29,9 @@ type Track struct {
 	Title        string    `gorm:"not null" json:"title"`
 	Duration     int       `json:"duration"`     // Duration in seconds
 	TrackNumber  int       `json:"track_number"` // Track number on album
+	DiscNumber   int       `json:"disc_number"`  // Which disc (1, 2, 3...)
+	Side         string    `json:"side"`         // Side position (A1, B2, C1, etc.)
+	Position     string    `json:"position"`     // Full position code
 	AudioFileURL string    `json:"audio_file_url"`
 	ReleaseYear  int       `json:"release_year"` // From album
 	AlbumGenre   string    `json:"album_genre"`  // From album
