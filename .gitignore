@@ -31,6 +31,10 @@ Thumbs.db
 
 # Tests
 tests/
+
+# Logs
+server.log
+
 # Build outputs
 bin/
 dist/
