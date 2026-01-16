@@ -11,11 +11,23 @@
 {{ template "header" }}
 <main>
     <div id="albums-view" class="view">
-        <h2>Albums</h2>
+        <div class="view-header">
+            <h2>Albums</h2>
+            <div class="search-wrapper">
+                <input type="text" id="album-search" class="local-search" placeholder="Search albums...">
+                <button type="button" class="search-clear" title="Clear search">&times;</button>
+            </div>
+        </div>
         <div id="albums-list"></div>
     </div>
     <div id="tracks-view" class="view" style="display: none;">
-        <h2>Tracks</h2>
+        <div class="view-header">
+            <h2>Tracks</h2>
+            <div class="search-wrapper">
+                <input type="text" id="track-search" class="local-search" placeholder="Search tracks...">
+                <button type="button" class="search-clear" title="Clear search">&times;</button>
+            </div>
+        </div>
         <div id="tracks-list"></div>
     </div>
     <div id="track-detail-view" class="view" style="display: none;">

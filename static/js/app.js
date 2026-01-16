@@ -106,37 +106,122 @@ function formatDuration(seconds) {
     return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
+function renderAlbums(albums) {
+    const list = document.getElementById('albums-list');
+    list.innerHTML = '';
+
+    if (!albums || albums.length === 0) {
+        list.innerHTML = '<p>No albums found.</p>';
+        return;
+    }
+
+    albums.forEach(album => {
+        const item = document.createElement('div');
+        item.className = 'album-item';
+        item.innerHTML = `
+            <h3>${album.title || 'Unknown Title'}</h3>
+            <p>Artist: ${album.artist || 'Unknown Artist'}</p>
+            <p>Year: ${album.release_year || 'Unknown Year'}</p>
+        `;
+        item.addEventListener('click', function() {
+            showTracksForAlbum(album.id);
+        });
+        list.appendChild(item);
+    });
+}
+
+function renderTracks(tracks) {
+    const list = document.getElementById('tracks-list');
+    list.innerHTML = '';
+
+    if (!tracks || tracks.length === 0) {
+        list.innerHTML = '<p>No tracks found.</p>';
+        return;
+    }
+
+    tracks.forEach(track => {
+        const item = document.createElement('div');
+        item.className = 'track-item';
+        item.innerHTML = `
+            <h3>${track.title || 'Unknown Title'}</h3>
+            <p>Artist: ${track.album_artist || 'Unknown Artist'}</p>
+            <p>Album: ${track.album_title || 'Unknown Album'}</p>
+            <p>Duration: ${formatDuration(track.duration) || 'Unknown Duration'}</p>
+        `;
+        item.addEventListener('click', function() {
+            window.location.href = '/track/' + track.id;
+        });
+        list.appendChild(item);
+    });
+}
+
+let albumSearchTimeout;
+document.getElementById('album-search').addEventListener('input', function(e) {
+    clearTimeout(albumSearchTimeout);
+    const query = e.target.value.trim();
+    albumSearchTimeout = setTimeout(() => {
+        if (query) {
+            searchAlbums(query);
+        } else {
+            loadAlbums();
+        }
+    }, 300);
+});
+
+document.querySelector('#albums-view .search-clear').addEventListener('click', function() {
+    const searchInput = document.getElementById('album-search');
+    searchInput.value = '';
+    loadAlbums();
+    searchInput.focus();
+});
+
+let trackSearchTimeout;
+document.getElementById('track-search').addEventListener('input', function(e) {
+    clearTimeout(trackSearchTimeout);
+    const query = e.target.value.trim();
+    trackSearchTimeout = setTimeout(() => {
+        if (query) {
+            searchTracks(query);
+        } else {
+            loadTracks();
+        }
+    }, 300);
+});
+
+document.querySelector('#tracks-view .search-clear').addEventListener('click', function() {
+    const searchInput = document.getElementById('track-search');
+    searchInput.value = '';
+    loadTracks();
+    searchInput.focus();
+});
+
+function searchAlbums(query) {
+    fetch(`/albums/search?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => renderAlbums(data))
+        .catch(error => {
+            console.error('Error searching albums:', error);
+            document.getElementById('albums-list').innerHTML = '<p>Error searching albums</p>';
+        });
+}
+
+function searchTracks(query) {
+    fetch(`/tracks/search?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => renderTracks(data))
+        .catch(error => {
+            console.error('Error searching tracks:', error);
+            document.getElementById('tracks-list').innerHTML = '<p>Error searching tracks</p>';
+        });
+}
+
 function loadAlbums() {
     fetch('/albums')
         .then(response => response.json())
-        .then(data => {
-            const list = document.getElementById('albums-list');
-            list.innerHTML = '';
-            
-            if (!data || data.length === 0) {
-                list.innerHTML = '<p>No albums found.</p>';
-                return;
-            }
-            
-            data.forEach(album => {
-                const item = document.createElement('div');
-                item.className = 'album-item';
-                item.innerHTML = `
-                    <h3>${album.title || 'Unknown Title'}</h3>
-                    <p>Artist: ${album.artist || 'Unknown Artist'}</p>
-                    <p>Year: ${album.release_year || 'Unknown Year'}</p>
-                `;
-                // Add click handler to navigate to tracks for this album
-                item.addEventListener('click', function() {
-                    showTracksForAlbum(album.id);
-                });
-                list.appendChild(item);
-            });
-        })
+        .then(data => renderAlbums(data))
         .catch(error => {
             console.error('Error loading albums:', error);
-            const list = document.getElementById('albums-list');
-            list.innerHTML = '<p>Error loading albums</p>';
+            document.getElementById('albums-list').innerHTML = '<p>Error loading albums</p>';
         });
 }
 
@@ -158,7 +243,8 @@ function showTracksForAlbum(albumID) {
                 item.className = 'track-item';
                 item.innerHTML = `
                     <h3>${track.title || 'Unknown Title'}</h3>
-                    <p>Album ID: ${track.album_title || 'Unknown Album'}</p>
+                    <p>Artist: ${track.album_artist || 'Unknown Artist'}</p>
+                    <p>Album: ${track.album_title || 'Unknown Album'}</p>
                     <p>Duration: ${formatDuration(track.duration) || 'Unknown Duration'}</p>
                 `;
                 item.addEventListener('click', function() {
@@ -180,37 +266,13 @@ function showTracksForAlbum(albumID) {
         });
 }
 
-// Load all tracks
 function loadTracks() {
     fetch('/tracks')
         .then(response => response.json())
-        .then(data => {
-            const list = document.getElementById('tracks-list');
-            list.innerHTML = '';
-
-            if (!data || data.length === 0) {
-                list.innerHTML = '<p>No tracks found.</p>';
-                return;
-            }
-
-            data.forEach(track => {
-                const item = document.createElement('div');
-                item.className = 'track-item';
-                item.innerHTML = `
-                    <h3>${track.title || 'Unknown Title'}</h3>
-                    <p>Album: ${track.album_title || 'Unknown Album'}</p>
-                    <p>Duration: ${formatDuration(track.duration) || 'Unknown Duration'}</p>
-                `;
-                item.addEventListener('click', function() {
-                    window.location.href = '/track/' + track.id;
-                });
-                list.appendChild(item);
-            });
-        })
+        .then(data => renderTracks(data))
         .catch(error => {
             console.error('Error loading tracks:', error);
-            const list = document.getElementById('tracks-list');
-            list.innerHTML = '<p>Error loading tracks</p>';
+            document.getElementById('tracks-list').innerHTML = '<p>Error loading tracks</p>';
         });
 }
 
@@ -223,6 +285,7 @@ function loadTrackDetail(trackId) {
             detail.innerHTML = `
                 <div class="track-detail-item">
                     <h3>${track.title || 'Unknown Title'}</h3>
+                    <p><strong>Artist:</strong> ${track.album_artist || 'Unknown Artist'}</p>
                     <p><strong>Album:</strong> ${track.album_title || 'Unknown Album'}</p>
                     <p><strong>Duration:</strong> ${formatDuration(track.duration) || 'Unknown Duration'}</p>
                     <p><strong>Track Number:</strong> ${track.track_number || 'Unknown'}</p>

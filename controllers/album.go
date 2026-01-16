@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"strings"
+
 	"vinylfo/models"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +27,23 @@ func (c *AlbumController) GetAlbums(ctx *gin.Context) {
 	ctx.JSON(200, albums)
 }
 
+func (c *AlbumController) SearchAlbums(ctx *gin.Context) {
+	query := ctx.Query("q")
+	if query == "" {
+		ctx.JSON(400, gin.H{"error": "Search query is required"})
+		return
+	}
+
+	var albums []models.Album
+	searchTerm := "%" + strings.ToLower(query) + "%"
+	result := c.db.Where("LOWER(title) LIKE ? OR LOWER(artist) LIKE ?", searchTerm, searchTerm).Find(&albums)
+	if result.Error != nil {
+		ctx.JSON(500, gin.H{"error": "Failed to search albums"})
+		return
+	}
+	ctx.JSON(200, albums)
+}
+
 func (c *AlbumController) GetAlbumByID(ctx *gin.Context) {
 	id := ctx.Param("id")
 	var album models.Album
@@ -38,8 +57,25 @@ func (c *AlbumController) GetAlbumByID(ctx *gin.Context) {
 
 func (c *AlbumController) GetTracksByAlbumID(ctx *gin.Context) {
 	id := ctx.Param("id")
-	var tracks []models.Track
-	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title").
+
+	type TrackResult struct {
+		ID           uint   `json:"id"`
+		AlbumID      uint   `json:"album_id"`
+		Title        string `json:"title"`
+		Duration     int    `json:"duration"`
+		TrackNumber  int    `json:"track_number"`
+		DiscNumber   int    `json:"disc_number"`
+		Side         string `json:"side"`
+		Position     string `json:"position"`
+		AudioFileURL string `json:"audio_file_url"`
+		AlbumTitle   string `json:"album_title"`
+		AlbumArtist  string `json:"album_artist"`
+		CreatedAt    string `json:"created_at"`
+		UpdatedAt    string `json:"updated_at"`
+	}
+
+	var tracks []TrackResult
+	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
 		Joins("left join albums on tracks.album_id = albums.id").
 		Where("tracks.album_id = ?", id).
 		Find(&tracks)

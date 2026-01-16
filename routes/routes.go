@@ -29,6 +29,7 @@ func SetupRoutes(r *gin.Engine) {
 	})
 
 	r.GET("/albums", albumController.GetAlbums)
+	r.GET("/albums/search", albumController.SearchAlbums)
 	r.GET("/albums/:id", albumController.GetAlbumByID)
 	r.GET("/albums/:id/tracks", albumController.GetTracksByAlbumID)
 	r.POST("/albums", albumController.CreateAlbum)
@@ -36,6 +37,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.DELETE("/albums/:id", albumController.DeleteAlbum)
 
 	r.GET("/tracks", trackController.GetTracks)
+	r.GET("/tracks/search", trackController.SearchTracks)
 	r.GET("/tracks/:id", trackController.GetTrackByID)
 	r.POST("/tracks", trackController.CreateTrack)
 	r.PUT("/tracks/:id", trackController.UpdateTrack)

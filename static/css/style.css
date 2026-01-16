@@ -144,6 +144,55 @@ h2 {
     padding-bottom: 0.5rem;
 }
 
+.view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.view-header h2 {
+    margin: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.local-search {
+    padding: 0.5rem 2.5rem 0.5rem 1rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    width: 250px;
+}
+
+.local-search:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.search-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.search-clear {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    color: #999;
+    cursor: pointer;
+    padding: 0.25rem;
+    line-height: 1;
+}
+
+.search-clear:hover {
+    color: #333;
+}
+
 .album-item, .track-item, .session-item {
     padding: 0.5rem;
     border-bottom: 1px solid #eee;

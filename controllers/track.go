@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"log"
+	"strings"
 
 	"vinylfo/models"
 
@@ -18,12 +18,69 @@ func NewTrackController(db *gorm.DB) *TrackController {
 }
 
 func (c *TrackController) GetTracks(ctx *gin.Context) {
-	var tracks []models.Track
-	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title").
+	type TrackResult struct {
+		ID           uint   `json:"id"`
+		AlbumID      uint   `json:"album_id"`
+		Title        string `json:"title"`
+		Duration     int    `json:"duration"`
+		TrackNumber  int    `json:"track_number"`
+		DiscNumber   int    `json:"disc_number"`
+		Side         string `json:"side"`
+		Position     string `json:"position"`
+		AudioFileURL string `json:"audio_file_url"`
+		ReleaseYear  int    `json:"release_year"`
+		AlbumGenre   string `json:"album_genre"`
+		AlbumTitle   string `json:"album_title"`
+		AlbumArtist  string `json:"album_artist"`
+		CreatedAt    string `json:"created_at"`
+		UpdatedAt    string `json:"updated_at"`
+	}
+
+	var tracks []TrackResult
+	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
 		Joins("left join albums on tracks.album_id = albums.id").
 		Find(&tracks)
+
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch tracks"})
+		return
+	}
+	ctx.JSON(200, tracks)
+}
+
+func (c *TrackController) SearchTracks(ctx *gin.Context) {
+	query := ctx.Query("q")
+	if query == "" {
+		ctx.JSON(400, gin.H{"error": "Search query is required"})
+		return
+	}
+
+	type TrackResult struct {
+		ID           uint   `json:"id"`
+		AlbumID      uint   `json:"album_id"`
+		Title        string `json:"title"`
+		Duration     int    `json:"duration"`
+		TrackNumber  int    `json:"track_number"`
+		DiscNumber   int    `json:"disc_number"`
+		Side         string `json:"side"`
+		Position     string `json:"position"`
+		AudioFileURL string `json:"audio_file_url"`
+		ReleaseYear  int    `json:"release_year"`
+		AlbumGenre   string `json:"album_genre"`
+		AlbumTitle   string `json:"album_title"`
+		AlbumArtist  string `json:"album_artist"`
+		CreatedAt    string `json:"created_at"`
+		UpdatedAt    string `json:"updated_at"`
+	}
+
+	var tracks []TrackResult
+	searchTerm := "%" + strings.ToLower(query) + "%"
+	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
+		Joins("left join albums on tracks.album_id = albums.id").
+		Where("LOWER(tracks.title) LIKE ? OR LOWER(albums.title) LIKE ? OR LOWER(albums.artist) LIKE ?", searchTerm, searchTerm, searchTerm).
+		Find(&tracks)
+	if result.Error != nil {
+		ctx.JSON(500, gin.H{"error": "Failed to search tracks"})
 		return
 	}
 	ctx.JSON(200, tracks)
@@ -32,39 +89,32 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 func (c *TrackController) GetTrackByID(ctx *gin.Context) {
 	id := ctx.Param("id")
 
-	var track models.Track
-	result := c.db.First(&track, id)
+	var trackData struct {
+		ID           uint   `json:"id"`
+		AlbumID      uint   `json:"album_id"`
+		Title        string `json:"title"`
+		Duration     int    `json:"duration"`
+		TrackNumber  int    `json:"track_number"`
+		AudioFileURL string `json:"audio_file_url"`
+		AlbumTitle   string `json:"album_title"`
+		AlbumArtist  string `json:"album_artist"`
+		ReleaseYear  int    `json:"release_year"`
+		AlbumGenre   string `json:"album_genre"`
+		CreatedAt    string `json:"created_at"`
+		UpdatedAt    string `json:"updated_at"`
+	}
+
+	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist, albums.release_year as release_year, albums.genre as album_genre").
+		Joins("left join albums on tracks.album_id = albums.id").
+		Where("tracks.id = ?", id).
+		First(&trackData)
+
 	if result.Error != nil {
 		ctx.JSON(404, gin.H{"error": "Track not found"})
 		return
 	}
 
-	log.Printf("Track found: ID=%d, AlbumID=%d, Title=%s", track.ID, track.AlbumID, track.Title)
-
-	var album models.Album
-	albumResult := c.db.First(&album, track.AlbumID)
-	if albumResult.Error != nil {
-		log.Printf("Album lookup failed for AlbumID=%d: %v", track.AlbumID, albumResult.Error)
-		album = models.Album{}
-	} else {
-		log.Printf("Album found: ID=%d, Title=%s, ReleaseYear=%d, Genre=%s", album.ID, album.Title, album.ReleaseYear, album.Genre)
-	}
-
-	response := map[string]interface{}{
-		"id":             track.ID,
-		"album_id":       track.AlbumID,
-		"album_title":    album.Title,
-		"title":          track.Title,
-		"duration":       track.Duration,
-		"track_number":   track.TrackNumber,
-		"audio_file_url": track.AudioFileURL,
-		"release_year":   album.ReleaseYear,
-		"album_genre":    album.Genre,
-		"created_at":     track.CreatedAt,
-		"updated_at":     track.UpdatedAt,
-	}
-
-	ctx.JSON(200, response)
+	ctx.JSON(200, trackData)
 }
 
 func (c *TrackController) CreateTrack(ctx *gin.Context) {

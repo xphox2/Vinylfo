@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-01-16
+
+### Added
+- **Local Database Search**: Users can now search albums and tracks directly in the local database
+  - Search bar on Albums page filters by title and artist
+  - Search bar on Tracks page filters by track title, album title, and artist
+  - 300ms debounce for live search as you type
+  - Clear (X) button to quickly reset search
+  - Search persists when switching between views
+
+### Changed
+- **Search Results Display**: Improved grid layout for album search results
+  - Increased Discogs search results from 10 to 12 per page
+  - Fixed CSS Grid to always show 3 columns (4 rows of 3)
+  - Album titles now truncated to 4 lines max with ellipsis
+  - Removed braced numbers like (1990) from album title display
+
+### Fixed
+- **Track Artist Display**: Artist now shows on track listings and detail view
+  - Added `album_artist` field to all track queries via JOIN
+  - Artist appears above Album field on tracks list
+  - Artist displays on track detail page
+  - Search now includes artist name for track filtering
+
+### Database
+- Updated `/tracks`, `/tracks/search`, `/tracks/:id`, and `/albums/:id/tracks` endpoints
+  - All use JOIN to fetch album_artist with tracks
+  - Fixed MySQL/MariaDB compatibility (changed ILIKE to LOWER() LIKE)
+
+### New API Endpoints
+- `GET /api/albums/search?q=` - Search local albums by title and artist
+- `GET /api/tracks/search?q=` - Search local tracks by title, album, and artist
+
+---
+
 ## [Unreleased] - 2026-01-15
 
 ### Changed
