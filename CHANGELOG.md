@@ -7,8 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-01-15
 
+### Changed
+- **OAuth-Only Authentication**: Removed DISCOGS_API_TOKEN support and transitioned to OAuth-only authentication
+  - Removed DISCOGS_API_TOKEN environment variable from .env
+  - Updated getDiscogsClient() to create clients without API key
+  - Updated PreviewAlbum and CreateAlbum endpoints to use getDiscogsClientWithOAuth()
+  - OAuth URL generation now loads consumer credentials from database config first
+
 ### Fixed
-- Album count showing incorrect values (Processed and Total both incrementing)
+- **Discogs Search with Spaces**: Fixed OAuth 1.0 signature generation for GET requests with query parameters containing spaces
+  - Added custom percentEncodeValue() function to properly encode spaces as %20 instead of +
+  - OAuth signature now correctly matches Discogs API requirements
+  - Fixed 401 "You must authenticate to access this resource" error on search queries with spaces
+- **Discogs Track Import**: Fixed tracks being imported with AlbumID=0
+  - Tracks now stored temporarily and created after album is saved
+  - Album ID properly assigned to all imported tracks
 - Sync progress not updating during sync (added saveSyncProgress after each album)
 - Pause not actually pausing the sync job (added IsPaused state)
 - UI not showing completion when sync finishes

@@ -287,7 +287,7 @@ func (c *Client) IsAuthenticated() bool {
 }
 
 func (c *Client) makeRequest(method, requestURL string, body url.Values) (*http.Response, error) {
-	isAuth := c.IsAuthenticated() || c.APIKey != ""
+	isAuth := c.APIKey != ""
 	logToFile("API REQUEST [%s]: %s %s", map[bool]string{true: "auth", false: "anon"}[isAuth], method, requestURL)
 
 	c.RateLimiter.Wait(isAuth)
@@ -362,8 +362,6 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 		body = url.Values{}
 	}
 
-	body.Set("oauth_token", c.OAuth.AccessToken)
-
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
@@ -385,6 +383,14 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 		params[k] = v
 	}
 
+	if parsedURL, err := url.Parse(requestURL); err == nil {
+		for k, v := range parsedURL.Query() {
+			for _, vv := range v {
+				params.Set(k, vv)
+			}
+		}
+	}
+
 	var paramKeys []string
 	for k := range params {
 		paramKeys = append(paramKeys, k)
@@ -393,11 +399,19 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 
 	var paramPairs []string
 	for _, k := range paramKeys {
-		paramPairs = append(paramPairs, fmt.Sprintf("%s=%s", url.QueryEscape(k), url.QueryEscape(params.Get(k))))
+		v := params.Get(k)
+		v = strings.ReplaceAll(v, " ", "%20")
+		paramPairs = append(paramPairs, fmt.Sprintf("%s=%s", percentEncode(k), percentEncodeValue(v)))
 	}
 
-	baseString := fmt.Sprintf("%s&%s&%s", method, url.QueryEscape(requestURL), url.QueryEscape(strings.Join(paramPairs, "&")))
+	baseURL := requestURL
+	if parsedURL, err := url.Parse(requestURL); err == nil {
+		baseURL = fmt.Sprintf("%s://%s%s", parsedURL.Scheme, parsedURL.Host, parsedURL.Path)
+	}
 
+	baseString := fmt.Sprintf("%s&%s&%s", method, url.QueryEscape(baseURL), url.QueryEscape(strings.Join(paramPairs, "&")))
+
+	logToFile("makeOAuthRequest: baseURL=%s", baseURL)
 	logToFile("makeOAuthRequest: baseString=%s", baseString)
 	logToFile("makeOAuthRequest: ConsumerSecret=%s, AccessSecret=%s", maskValue(c.OAuth.ConsumerSecret), maskValue(c.OAuth.AccessSecret))
 
@@ -410,7 +424,7 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 		url.QueryEscape(c.OAuth.AccessToken),
 		timestamp,
 		nonce,
-		url.QueryEscape(signature),
+		signature,
 	)
 
 	req, err := http.NewRequest(method, requestURL, strings.NewReader(body.Encode()))
@@ -482,6 +496,13 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 
 	resp.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
 	return resp, nil
+}
+
+func (c *Client) makeAuthenticatedRequest(method, requestURL string, body url.Values) (*http.Response, error) {
+	if c.OAuth != nil {
+		return c.makeOAuthRequest(method, requestURL, body)
+	}
+	return c.makeRequest(method, requestURL, body)
 }
 
 func generateHmacSignature(baseString, consumerSecret, tokenSecret string) string {
@@ -844,9 +865,9 @@ func (c *Client) GetUserFolders(username string) ([]map[string]interface{}, erro
 
 func (c *Client) SearchAlbums(query string, page int) ([]map[string]interface{}, int, error) {
 	searchURL := fmt.Sprintf("%s/database/search?q=%s&type=release&page=%d&per_page=10&sort=year&sort_order=desc",
-		APIURL, url.QueryEscape(query), page)
+		APIURL, strings.ReplaceAll(url.QueryEscape(query), "+", "%20"), page)
 
-	resp, err := c.makeRequest("GET", searchURL, nil)
+	resp, err := c.makeAuthenticatedRequest("GET", searchURL, nil)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -920,7 +941,7 @@ func (c *Client) SearchAlbums(query string, page int) ([]map[string]interface{},
 
 func (c *Client) GetAlbum(id int) (map[string]interface{}, error) {
 	url := fmt.Sprintf("%s/releases/%d", APIURL, id)
-	resp, err := c.makeRequest("GET", url, nil)
+	resp, err := c.makeAuthenticatedRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1100,7 +1121,7 @@ func maskValue(s string) string {
 
 func (c *Client) GetTracksForAlbum(id int) ([]map[string]interface{}, error) {
 	url := fmt.Sprintf("%s/releases/%d", APIURL, id)
-	resp, err := c.makeRequest("GET", url, nil)
+	resp, err := c.makeAuthenticatedRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1111,4 +1132,31 @@ func (c *Client) GetTracksForAlbum(id int) ([]map[string]interface{}, error) {
 	}
 
 	return album["tracklist"].([]map[string]interface{}), nil
+}
+
+func percentEncode(s string) string {
+	return url.QueryEscape(s)
+}
+
+func percentEncodeValue(s string) string {
+	s = strings.ReplaceAll(s, " ", "%20")
+	s = strings.ReplaceAll(s, "!", "%21")
+	s = strings.ReplaceAll(s, "#", "%23")
+	s = strings.ReplaceAll(s, "$", "%24")
+	s = strings.ReplaceAll(s, "&", "%26")
+	s = strings.ReplaceAll(s, "'", "%27")
+	s = strings.ReplaceAll(s, "(", "%28")
+	s = strings.ReplaceAll(s, ")", "%29")
+	s = strings.ReplaceAll(s, "*", "%2A")
+	s = strings.ReplaceAll(s, "+", "%2B")
+	s = strings.ReplaceAll(s, ",", "%2C")
+	s = strings.ReplaceAll(s, "/", "%2F")
+	s = strings.ReplaceAll(s, ":", "%3A")
+	s = strings.ReplaceAll(s, ";", "%3B")
+	s = strings.ReplaceAll(s, "=", "%3D")
+	s = strings.ReplaceAll(s, "?", "%3F")
+	s = strings.ReplaceAll(s, "@", "%40")
+	s = strings.ReplaceAll(s, "[", "%5B")
+	s = strings.ReplaceAll(s, "]", "%5D")
+	return s
 }

@@ -38,11 +38,7 @@ func maskValue(s string) string {
 }
 
 func getDiscogsClient() *discogs.Client {
-	apiKey := os.Getenv("DISCOGS_API_TOKEN")
-	if apiKey == "" {
-		apiKey = ""
-	}
-	client := discogs.NewClient(apiKey)
+	client := discogs.NewClient("")
 	return client
 }
 
@@ -80,7 +76,32 @@ func (c *DiscogsController) getDiscogsClientWithOAuth() *discogs.Client {
 }
 
 func (c *DiscogsController) GetOAuthURL(ctx *gin.Context) {
-	client := getDiscogsClient()
+	var config models.AppConfig
+	err := c.db.First(&config).Error
+	if err != nil {
+		config = models.AppConfig{ID: 1}
+		c.db.FirstOrCreate(&config, models.AppConfig{ID: 1})
+	}
+
+	consumerKey := config.DiscogsConsumerKey
+	if consumerKey == "" {
+		consumerKey = os.Getenv("DISCOGS_CONSUMER_KEY")
+	}
+	consumerSecret := config.DiscogsConsumerSecret
+	if consumerSecret == "" {
+		consumerSecret = os.Getenv("DISCOGS_CONSUMER_SECRET")
+	}
+
+	if consumerKey == "" || consumerSecret == "" {
+		ctx.JSON(500, gin.H{"error": "DISCOGS_CONSUMER_KEY or DISCOGS_CONSUMER_SECRET not set"})
+		return
+	}
+
+	oauth := &discogs.OAuthConfig{
+		ConsumerKey:    consumerKey,
+		ConsumerSecret: consumerSecret,
+	}
+	client := discogs.NewClientWithOAuth("", oauth)
 
 	token, secret, authURL, err := client.GetRequestToken()
 	if err != nil {
@@ -91,8 +112,8 @@ func (c *DiscogsController) GetOAuthURL(ctx *gin.Context) {
 	c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(map[string]interface{}{
 		"discogs_access_token":    token,
 		"discogs_access_secret":   secret,
-		"discogs_consumer_key":    os.Getenv("DISCOGS_CONSUMER_KEY"),
-		"discogs_consumer_secret": os.Getenv("DISCOGS_CONSUMER_SECRET"),
+		"discogs_consumer_key":    consumerKey,
+		"discogs_consumer_secret": consumerSecret,
 	})
 
 	ctx.JSON(200, gin.H{
@@ -114,13 +135,22 @@ func (c *DiscogsController) OAuthCallback(ctx *gin.Context) {
 		return
 	}
 
-	client := getDiscogsClient()
-	client.OAuth = &discogs.OAuthConfig{
-		ConsumerKey:    os.Getenv("DISCOGS_CONSUMER_KEY"),
-		ConsumerSecret: os.Getenv("DISCOGS_CONSUMER_SECRET"),
+	consumerKey := config.DiscogsConsumerKey
+	if consumerKey == "" {
+		consumerKey = os.Getenv("DISCOGS_CONSUMER_KEY")
+	}
+	consumerSecret := config.DiscogsConsumerSecret
+	if consumerSecret == "" {
+		consumerSecret = os.Getenv("DISCOGS_CONSUMER_SECRET")
+	}
+
+	oauth := &discogs.OAuthConfig{
+		ConsumerKey:    consumerKey,
+		ConsumerSecret: consumerSecret,
 		AccessToken:    config.DiscogsAccessToken,
 		AccessSecret:   config.DiscogsAccessSecret,
 	}
+	client := discogs.NewClientWithOAuth("", oauth)
 
 	accessToken, accessSecret, username, err := client.GetAccessToken(config.DiscogsAccessToken, config.DiscogsAccessSecret, ctx.Query("oauth_verifier"))
 	if err != nil {
@@ -140,8 +170,8 @@ func (c *DiscogsController) OAuthCallback(ctx *gin.Context) {
 		"discogs_access_token":    accessToken,
 		"discogs_access_secret":   accessSecret,
 		"discogs_username":        username,
-		"discogs_consumer_key":    os.Getenv("DISCOGS_CONSUMER_KEY"),
-		"discogs_consumer_secret": os.Getenv("DISCOGS_CONSUMER_SECRET"),
+		"discogs_consumer_key":    consumerKey,
+		"discogs_consumer_secret": consumerSecret,
 		"is_discogs_connected":    true,
 	})
 
@@ -230,6 +260,11 @@ func (c *DiscogsController) Search(ctx *gin.Context) {
 		return
 	}
 
+	if !config.IsDiscogsConnected {
+		ctx.JSON(400, gin.H{"error": "Discogs not connected"})
+		return
+	}
+
 	client := c.getDiscogsClientWithOAuth()
 	albums, totalPages, err := client.SearchAlbums(query, page)
 	if err != nil {
@@ -252,7 +287,12 @@ func (c *DiscogsController) PreviewAlbum(ctx *gin.Context) {
 		return
 	}
 
-	client := getDiscogsClient()
+	client := c.getDiscogsClientWithOAuth()
+	if client == nil {
+		ctx.JSON(500, gin.H{"error": "Failed to get Discogs client - not authenticated"})
+		return
+	}
+
 	discogsData, err := client.GetAlbum(id)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch album from Discogs"})
@@ -300,56 +340,89 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 	var album models.Album
 
 	if input.FromDiscogs && input.DiscogsID > 0 {
-		client := getDiscogsClient()
-		discogsData, err := client.GetAlbum(input.DiscogsID)
-		if err == nil {
-			if v, ok := discogsData["title"].(string); ok {
-				album.Title = v
-			}
-			if v, ok := discogsData["artist"].(string); ok {
-				album.Artist = v
-			}
-			if v, ok := discogsData["year"].(int); ok {
-				album.ReleaseYear = v
-			}
-			if v, ok := discogsData["genre"].(string); ok {
-				album.Genre = v
-			}
-			if v, ok := discogsData["label"].(string); ok {
-				album.Label = v
-			}
-			if v, ok := discogsData["country"].(string); ok {
-				album.Country = v
-			}
-			if v, ok := discogsData["release_date"].(string); ok {
-				album.ReleaseDate = v
-			}
-			if v, ok := discogsData["style"].(string); ok {
-				album.Style = v
-			}
-			if v, ok := discogsData["cover_image"].(string); ok {
-				album.CoverImageURL = v
-			}
-			album.DiscogsID = input.DiscogsID
+		client := c.getDiscogsClientWithOAuth()
+		if client == nil {
+			logToFile("CreateAlbum: Failed to get OAuth client, skipping Discogs fetch")
+		} else {
+			discogsData, err := client.GetAlbum(input.DiscogsID)
+			if err == nil {
+				if v, ok := discogsData["title"].(string); ok {
+					album.Title = v
+				}
+				if v, ok := discogsData["artist"].(string); ok {
+					album.Artist = v
+				}
+				switch v := discogsData["year"].(type) {
+				case float64:
+					album.ReleaseYear = int(v)
+				case int:
+					album.ReleaseYear = v
+				}
+				if v, ok := discogsData["genre"].(string); ok {
+					album.Genre = v
+				}
+				if v, ok := discogsData["label"].(string); ok {
+					album.Label = v
+				}
+				if v, ok := discogsData["country"].(string); ok {
+					album.Country = v
+				}
+				if v, ok := discogsData["release_date"].(string); ok {
+					album.ReleaseDate = v
+				}
+				if v, ok := discogsData["style"].(string); ok {
+					album.Style = v
+				}
+				if v, ok := discogsData["cover_image"].(string); ok {
+					album.CoverImageURL = v
+				}
+				album.DiscogsID = input.DiscogsID
 
-			if tracks, ok := discogsData["tracklist"].([]map[string]interface{}); ok {
-				if len(tracks) == 0 {
-					ctx.JSON(400, gin.H{"error": "Cannot add album: No track information available"})
-					return
-				}
-				for _, t := range tracks {
-					track := models.Track{
-						AlbumID:     album.ID,
-						AlbumTitle:  album.Title,
-						Title:       t["title"].(string),
-						Duration:    int(t["duration"].(float64)),
-						TrackNumber: 0,
-						DiscNumber:  0,
-						Side:        t["position"].(string),
-						Position:    t["position"].(string),
+				if tracks, ok := discogsData["tracklist"].([]map[string]interface{}); ok {
+					input.Tracks = []struct {
+						Title       string `json:"title"`
+						Duration    int    `json:"duration"`
+						TrackNumber int    `json:"track_number"`
+						DiscNumber  int    `json:"disc_number"`
+						Side        string `json:"side"`
+						Position    string `json:"position"`
+					}{}
+					for _, t := range tracks {
+						duration := 0
+						switch v := t["duration"].(type) {
+						case float64:
+							duration = int(v)
+						case int:
+							duration = v
+						case string:
+							if v != "" {
+								parts := strings.Split(v, ":")
+								if len(parts) == 2 {
+									if mins, err := strconv.Atoi(parts[0]); err == nil {
+										if secs, err := strconv.Atoi(parts[1]); err == nil {
+											duration = mins*60 + secs
+										}
+									}
+								}
+							}
+						}
+						input.Tracks = append(input.Tracks, struct {
+							Title       string `json:"title"`
+							Duration    int    `json:"duration"`
+							TrackNumber int    `json:"track_number"`
+							DiscNumber  int    `json:"disc_number"`
+							Side        string `json:"side"`
+							Position    string `json:"position"`
+						}{
+							Title:    t["title"].(string),
+							Duration: duration,
+							Side:     t["position"].(string),
+							Position: t["position"].(string),
+						})
 					}
-					c.db.Create(&track)
 				}
+			} else {
+				logToFile("CreateAlbum: Failed to fetch from Discogs: %v", err)
 			}
 		}
 	}
@@ -387,6 +460,20 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to create album"})
 		return
+	}
+
+	for _, trackInput := range input.Tracks {
+		track := models.Track{
+			AlbumID:     album.ID,
+			AlbumTitle:  album.Title,
+			Title:       trackInput.Title,
+			Duration:    trackInput.Duration,
+			TrackNumber: trackInput.TrackNumber,
+			DiscNumber:  trackInput.DiscNumber,
+			Side:        trackInput.Side,
+			Position:    trackInput.Position,
+		}
+		c.db.Create(&track)
 	}
 
 	c.db.Preload("Tracks").First(&album, album.ID)

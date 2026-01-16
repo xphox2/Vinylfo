@@ -3,11 +3,260 @@ package controllers
 import (
 	"bufio"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
 	"testing"
+	"vinylfo/discogs"
 )
+
+// TestFetchTracksForAlbum_UsesOAuth tests that GetTracksForAlbum uses OAuth when configured
+func TestFetchTracksForAlbum_UsesOAuth(t *testing.T) {
+	oauth := &discogs.OAuthConfig{
+		ConsumerKey:    "test_consumer_key",
+		ConsumerSecret: "test_consumer_secret",
+		AccessToken:    "test_access_token",
+		AccessSecret:   "test_access_secret",
+	}
+
+	client := discogs.NewClientWithOAuth("", oauth)
+
+	var capturedAuthHeader string
+	var requestMade bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestMade = true
+		capturedAuthHeader = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Discogs-Ratelimit-Auth", "60")
+		w.Header().Set("X-Discogs-Ratelimit-Auth-Remaining", "59")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{
+			"id": 12345,
+			"title": "Test Album",
+			"year": 2024,
+			"artists": [{"name": "Test Artist"}],
+			"tracklist": [
+				{"title": "Track 1", "duration": "3:30", "position": "A1"},
+				{"title": "Track 2", "duration": "4:15", "position": "A2"}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client.HTTPClient.Transport = &authCapturingTransport{
+		original:    client.HTTPClient.Transport,
+		capturedURL: server.URL,
+		onRequest: func(authHeader string) {
+			capturedAuthHeader = authHeader
+			requestMade = true
+		},
+	}
+
+	_, err := client.GetTracksForAlbum(12345)
+	if err != nil {
+		t.Logf("GetTracksForAlbum error (expected with mock server): %v", err)
+	}
+
+	if !requestMade {
+		t.Errorf("No request was made to the server")
+		return
+	}
+
+	t.Logf("Captured Authorization header: %q", capturedAuthHeader)
+
+	hasOAuthHeader := capturedAuthHeader != "" && contains(capturedAuthHeader, "oauth")
+
+	if !hasOAuthHeader {
+		t.Errorf("FAIL: GetTracksForAlbum with OAuth config did NOT send OAuth Authorization header")
+	} else {
+		t.Logf("SUCCESS: OAuth Authorization header was sent")
+	}
+}
+
+type authCapturingTransport struct {
+	original    http.RoundTripper
+	capturedURL string
+	onRequest   func(authHeader string)
+}
+
+func (t *authCapturingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.onRequest(req.Header.Get("Authorization"))
+	newReq := req.Clone(req.Context())
+	newReq.URL, _ = url.Parse(t.capturedURL)
+	if t.original != nil {
+		return t.original.RoundTrip(newReq)
+	}
+	return http.DefaultClient.Do(newReq)
+}
+
+// TestSyncFlow_AuthConsistency tests that API requests use appropriate authentication
+func TestSyncFlow_AuthConsistency(t *testing.T) {
+	oauth := &discogs.OAuthConfig{
+		ConsumerKey:    "test_consumer_key",
+		ConsumerSecret: "test_consumer_secret",
+		AccessToken:    "test_access_token",
+		AccessSecret:   "test_access_secret",
+	}
+
+	t.Run("GetTracksForAlbum uses OAuth when configured", func(t *testing.T) {
+		client := discogs.NewClientWithOAuth("", oauth)
+
+		var capturedAuthHeader string
+		var requestMade bool
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestMade = true
+			capturedAuthHeader = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Discogs-Ratelimit-Auth", "60")
+			w.Header().Set("X-Discogs-Ratelimit-Auth-Remaining", "59")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{
+				"id": 12345,
+				"title": "Test Album",
+				"year": 2024,
+				"artists": [{"name": "Test Artist"}],
+				"tracklist": [{"title": "Track 1", "duration": "3:30", "position": "A1"}]
+			}`))
+		}))
+		defer server.Close()
+
+		client.HTTPClient.Transport = &authCapturingTransport{
+			original:    client.HTTPClient.Transport,
+			capturedURL: server.URL,
+			onRequest: func(authHeader string) {
+				capturedAuthHeader = authHeader
+				requestMade = true
+			},
+		}
+
+		_, err := client.GetTracksForAlbum(12345)
+		if err != nil {
+			t.Logf("GetTracksForAlbum error (expected with mock server): %v", err)
+		}
+
+		if !requestMade {
+			t.Errorf("No request was made to the server")
+			return
+		}
+
+		if capturedAuthHeader == "" {
+			t.Errorf("FAIL: GetTracksForAlbum sent NO Authorization header")
+		} else if contains(capturedAuthHeader, "oauth") {
+			t.Logf("SUCCESS: GetTracksForAlbum sent OAuth Authorization header")
+		} else {
+			t.Logf("GetTracksForAlbum used token auth")
+		}
+	})
+
+	t.Run("SearchAlbums uses OAuth when configured", func(t *testing.T) {
+		client := discogs.NewClientWithOAuth("", oauth)
+
+		var capturedAuthHeader string
+		var requestMade bool
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestMade = true
+			capturedAuthHeader = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Discogs-Ratelimit-Auth", "60")
+			w.Header().Set("X-Discogs-Ratelimit-Auth-Remaining", "59")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{
+				"results": [{"id": 12345, "title": "Test Album", "year": 2024, "artists": [{"name": "Test Artist"}]}],
+				"pagination": {"pages": 1, "items": 1}
+			}`))
+		}))
+		defer server.Close()
+
+		client.HTTPClient.Transport = &authCapturingTransport{
+			original:    client.HTTPClient.Transport,
+			capturedURL: server.URL,
+			onRequest: func(authHeader string) {
+				capturedAuthHeader = authHeader
+				requestMade = true
+			},
+		}
+
+		_, _, err := client.SearchAlbums("test", 1)
+		if err != nil {
+			t.Logf("SearchAlbums error (expected with mock server): %v", err)
+		}
+
+		if !requestMade {
+			t.Errorf("No request was made to the server")
+			return
+		}
+
+		if capturedAuthHeader == "" {
+			t.Errorf("FAIL: SearchAlbums sent NO Authorization header")
+		} else if contains(capturedAuthHeader, "oauth") {
+			t.Logf("SUCCESS: SearchAlbums sent OAuth Authorization header")
+		} else {
+			t.Logf("SearchAlbums used token auth")
+		}
+	})
+
+	t.Run("Client without OAuth uses token auth", func(t *testing.T) {
+		client := discogs.NewClient("test_api_key")
+
+		var capturedAuthHeader string
+		var requestMade bool
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestMade = true
+			capturedAuthHeader = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Discogs-Ratelimit", "25")
+			w.Header().Set("X-Discogs-Ratelimit-Remaining", "24")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{
+				"id": 12345,
+				"title": "Test Album",
+				"year": 2024,
+				"artists": [{"name": "Test Artist"}],
+				"tracklist": [{"title": "Track 1", "duration": "3:30", "position": "A1"}]
+			}`))
+		}))
+		defer server.Close()
+
+		client.HTTPClient.Transport = &authCapturingTransport{
+			original:    client.HTTPClient.Transport,
+			capturedURL: server.URL,
+			onRequest: func(authHeader string) {
+				capturedAuthHeader = authHeader
+				requestMade = true
+			},
+		}
+
+		_, err := client.GetTracksForAlbum(12345)
+		if err != nil {
+			t.Fatalf("GetTracksForAlbum failed: %v", err)
+		}
+
+		if !requestMade {
+			t.Errorf("No request was made to the server")
+			return
+		}
+
+		if capturedAuthHeader == "" {
+			t.Errorf("FAIL: GetTracksForAlbum sent NO Authorization header")
+		} else if contains(capturedAuthHeader, "Discogs token=") {
+			t.Logf("SUCCESS: GetTracksForAlbum sent token Authorization header")
+		} else {
+			t.Logf("GetTracksForAlbum used OAuth (unexpected for token-only config)")
+		}
+	})
+}
+
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
 
 // TestAPIAuthenticationTracking tests that API calls are properly authenticated
 // and tracked in the rate limiter
@@ -32,23 +281,20 @@ func TestAPIAuthenticationTracking(t *testing.T) {
 	}
 
 	t.Run("OAuth with APIKey should use auth rate limit", func(t *testing.T) {
-		// Simulate the scenario in discogs/client.go:281
 		hasOAuth := config.DiscogsAccessToken != "" && config.DiscogsAccessSecret != ""
-		hasAPIKey := os.Getenv("DISCOGS_API_TOKEN") != ""
+		hasAPIKey := false
 
-		// Current buggy logic:
-		buggyIsAuth := hasOAuth && !hasAPIKey
-
-		// Correct logic:
-		correctIsAuth := hasOAuth || hasAPIKey
+		isAuth := hasOAuth || hasAPIKey
 
 		t.Logf("hasOAuth: %v, hasAPIKey: %v", hasOAuth, hasAPIKey)
-		t.Logf("Buggy isAuth: %v", buggyIsAuth)
-		t.Logf("Correct isAuth: %v", correctIsAuth)
+		t.Logf("isAuth (OAuth only): %v", isAuth)
 
-		if buggyIsAuth != correctIsAuth {
-			t.Errorf("Authentication logic is incorrect! Buggy: %v, Correct: %v",
-				buggyIsAuth, correctIsAuth)
+		if !hasOAuth {
+			t.Errorf("Expected hasOAuth to be true for OAuth-only authentication")
+		}
+		if isAuth != hasOAuth {
+			t.Errorf("Authentication logic is incorrect! isAuth: %v, hasOAuth: %v",
+				isAuth, hasOAuth)
 		}
 	})
 }
@@ -225,21 +471,16 @@ func TestSimulateSyncProcess(t *testing.T) {
 	}
 
 	// Simulate client creation with OAuth (line 78 in discogs.go)
-	// discogs.NewClientWithOAuth("", oauth) passes empty APIKey
-	hasAPIKey := "" // Empty string from NewClientWithOAuth call
+	hasOAuth := config.DiscogsAccessToken != "" && config.DiscogsAccessSecret != ""
 
 	t.Logf("Config: IsConnected=%v", config.IsDiscogsConnected)
-	t.Logf("OAuth configured: %v", config.DiscogsAccessToken != "")
-	t.Logf("APIKey from NewClientWithOAuth: '%s'", hasAPIKey)
+	t.Logf("OAuth configured: %v", hasOAuth)
 
-	// Now simulate what happens in makeRequest (line 281 in client.go)
-	hasOAuth := config.DiscogsAccessToken != "" && config.DiscogsAccessSecret != ""
-	isAuthBuggy := hasOAuth && hasAPIKey == ""   // This is the BUGGY logic
-	isAuthCorrect := hasOAuth || hasAPIKey != "" // This is the CORRECT logic
+	// OAuth-only authentication logic (after removing API token support)
+	isAuth := hasOAuth
 
 	t.Logf("\n=== Authentication Check ===")
-	t.Logf("Buggy isAuth: %v (hasOAuth=%v && APIKey=='')", isAuthBuggy, hasOAuth)
-	t.Logf("Correct isAuth: %v (hasOAuth=%v || APIKey!='')", isAuthCorrect, hasOAuth)
+	t.Logf("isAuth (OAuth only): %v", isAuth)
 
 	// Simulate rate limiting behavior
 	authLimit := 60
@@ -249,8 +490,6 @@ func TestSimulateSyncProcess(t *testing.T) {
 
 	t.Logf("\n=== Simulating 20 API calls ===")
 	for i := 1; i <= 20; i++ {
-		isAuth := isAuthBuggy // Using buggy logic
-
 		if isAuth {
 			authRemaining--
 		} else {
