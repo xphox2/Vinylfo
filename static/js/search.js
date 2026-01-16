@@ -164,7 +164,7 @@ class SearchManager {
                         : '<div class="no-cover">No Cover</div>'}
                 </div>
                 <div class="result-info">
-                    <span class="result-title">${this.escapeHtml(album.title)}</span>
+                    <span class="result-title">${this.escapeHtml(this.cleanTitle(album.title))}</span>
                     <span class="result-artist">${this.escapeHtml(album.artist)}</span>
                     <span class="result-year">${album.year || 'Unknown year'}</span>
                 </div>
@@ -367,6 +367,11 @@ class SearchManager {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    cleanTitle(text) {
+        if (!text) return '';
+        return text.replace(/\s*\(\d+\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
     }
 
     showNotification(message, type = 'info') {

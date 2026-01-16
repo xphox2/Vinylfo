@@ -19,26 +19,92 @@ body {
     font-weight: bold;
 }
 
-.main-nav .nav-links {
-    display: flex;
-    gap: 1.5rem;
+.nav-item {
+    position: relative;
 }
 
-.main-nav .nav-links a {
+.nav-item > a {
     color: white;
     text-decoration: none;
+    padding: 0.5rem 1rem;
+    display: inline-block;
     font-weight: 500;
+    border-radius: 4px;
+}
+
+.nav-item > a:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.nav-item > a::after {
+    content: '';
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin-left: 0.5rem;
+    margin-top: 2px;
+    border-top: 4px solid rgba(255, 255, 255, 0.7);
+    border-right: 4px solid transparent;
+    border-left: 4px solid transparent;
+}
+
+.nav-item:hover > a::after {
+    border-top-color: white;
+}
+
+.nav-item .dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 160px;
+    background-color: white;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.2s ease;
+    z-index: 1000;
     padding: 0.5rem 0;
-    border-bottom: 2px solid transparent;
-    transition: border-color 0.2s;
+    margin-top: 0.5rem;
 }
 
-.main-nav .nav-links a:hover {
-    border-bottom-color: #666;
+.nav-item:hover .dropdown {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
 }
 
-.main-nav .nav-links a.active {
-    border-bottom-color: white;
+.nav-item .dropdown a {
+    color: #333;
+    padding: 0.6rem 1rem;
+    display: block;
+    text-decoration: none;
+    transition: background-color 0.15s;
+    white-space: nowrap;
+}
+
+.nav-item .dropdown a:hover {
+    background-color: #f0f0f0;
+}
+
+.main-nav .nav-links {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.main-nav .nav-links > a {
+    color: white;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    border-radius: 4px;
+}
+
+.main-nav .nav-links > a:hover {
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 header {

@@ -1,0 +1,36 @@
+{{ define "index-page" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - Vinylfo</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+{{ template "header" }}
+<main>
+    <div id="albums-view" class="view">
+        <h2>Albums</h2>
+        <div id="albums-list"></div>
+    </div>
+    <div id="tracks-view" class="view" style="display: none;">
+        <h2>Tracks</h2>
+        <div id="tracks-list"></div>
+    </div>
+    <div id="track-detail-view" class="view" style="display: none;">
+        <h2>Track Details</h2>
+        <div id="track-detail"></div>
+    </div>
+    <div id="sessions-view" class="view" style="display: none;">
+        <h2>Playback Sessions</h2>
+        <div id="sessions-list"></div>
+    </div>
+</main>
+<footer>
+    <p>Vinylfo - Vinyl Music Player</p>
+</footer>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
+{{ end }}

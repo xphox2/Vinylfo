@@ -1,0 +1,64 @@
+{{ define "sync-page" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync Collection - Vinylfo</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/sync.css">
+</head>
+<body>
+{{ template "header" }}
+<main class="container">
+    <h1>Sync Discogs Collection</h1>
+    <div id="sync-status" class="sync-status">
+        <div id="not-connected" class="status-message error">
+            <p>You need to connect your Discogs account first.</p>
+            <a href="/settings" class="btn btn-primary">Go to Settings</a>
+        </div>
+        <div id="sync-ready" class="status-message success hidden">
+            <div class="sync-options">
+                <h2>Sync Options</h2>
+                <div class="sync-mode-selector">
+                    <label class="radio-option">
+                        <input type="radio" name="sync_mode" value="all-folders" checked>
+                        <span class="radio-label">Sync All Folders</span>
+                        <span class="radio-description">Iterate through all folders in your collection</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="sync_mode" value="specific">
+                        <span class="radio-label">Sync Specific Folder</span>
+                        <span class="radio-description">Choose a specific folder to sync</span>
+                    </label>
+                </div>
+                <div id="folder-selector" class="folder-selector hidden">
+                    <label for="selected-folder">Select Folder:</label>
+                    <select id="selected-folder"><option value="">Loading folders...</option></select>
+                </div>
+            </div>
+            <button id="start-sync" class="btn btn-primary">Start Sync</button>
+        </div>
+        <div id="sync-running" class="status-message info hidden">
+            <div id="sync-mode-info" class="sync-mode-info"></div>
+            <p>Syncing...</p>
+            <div class="progress-bar"><div id="sync-progress" class="progress-fill"></div></div>
+            <p id="sync-progress-text">Starting...</p>
+            <p id="sync-folder-info" class="folder-info" style="display: none;"></p>
+            <div class="sync-controls">
+                <button id="refresh-status" class="btn btn-secondary">Refresh</button>
+                <button id="pause-sync" class="btn btn-warning">Pause</button>
+                <button id="cancel-sync" class="btn btn-danger">Cancel</button>
+            </div>
+        </div>
+        <div id="sync-complete" class="status-message success hidden">
+            <p id="sync-complete-text">Sync completed!</p>
+            <p id="sync-summary"></p>
+            <button id="start-new-sync" class="btn btn-primary">Sync Again</button>
+        </div>
+    </div>
+</main>
+<script src="/static/js/sync.js"></script>
+</body>
+</html>
+{{ end }}

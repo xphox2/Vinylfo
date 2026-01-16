@@ -1117,8 +1117,22 @@ func fetchTracksForAlbum(db *gorm.DB, client *discogs.Client, albumID uint, disc
 			position = p
 		}
 		duration := 0
-		if d, ok := track["duration"].(float64); ok {
-			duration = int(d)
+		switch v := track["duration"].(type) {
+		case float64:
+			duration = int(v)
+		case int:
+			duration = v
+		case string:
+			if v != "" {
+				parts := strings.Split(v, ":")
+				if len(parts) == 2 {
+					if mins, err := strconv.Atoi(parts[0]); err == nil {
+						if secs, err := strconv.Atoi(parts[1]); err == nil {
+							duration = mins*60 + secs
+						}
+					}
+				}
+			}
 		}
 
 		maxTrackRetries := 3

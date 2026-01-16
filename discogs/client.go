@@ -864,7 +864,7 @@ func (c *Client) GetUserFolders(username string) ([]map[string]interface{}, erro
 }
 
 func (c *Client) SearchAlbums(query string, page int) ([]map[string]interface{}, int, error) {
-	searchURL := fmt.Sprintf("%s/database/search?q=%s&type=release&page=%d&per_page=10&sort=year&sort_order=desc",
+	searchURL := fmt.Sprintf("%s/database/search?q=%s&type=release&page=%d&per_page=12&sort=year&sort_order=desc",
 		APIURL, strings.ReplaceAll(url.QueryEscape(query), "+", "%20"), page)
 
 	resp, err := c.makeAuthenticatedRequest("GET", searchURL, nil)

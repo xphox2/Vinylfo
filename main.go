@@ -1,6 +1,7 @@
 package main
 
 import (
+	"html/template"
 	"log"
 	"os"
 
@@ -44,32 +45,44 @@ func main() {
 
 	r.Static("/static", "./static")
 
+	tmpl := template.Must(template.ParseFiles(
+		"templates/header.html",
+		"templates/index.html",
+		"templates/search.html",
+		"templates/sync.html",
+		"templates/settings.html",
+		"templates/playback-dashboard.html",
+		"templates/playlist.html",
+		"templates/track-detail.html",
+	))
+	r.SetHTMLTemplate(tmpl)
+
 	r.GET("/", func(c *gin.Context) {
-		c.File("./static/index.html")
+		c.HTML(200, "index-page", nil)
 	})
 
 	r.GET("/dashboard", func(c *gin.Context) {
-		c.File("./static/playback-dashboard.html")
+		c.HTML(200, "playback-dashboard-page", nil)
 	})
 
 	r.GET("/playlist", func(c *gin.Context) {
-		c.File("./static/playlist.html")
+		c.HTML(200, "playlist-page", nil)
 	})
 
 	r.GET("/track/:id", func(c *gin.Context) {
-		c.File("./static/track-detail.html")
+		c.HTML(200, "track-detail-page", nil)
 	})
 
 	r.GET("/settings", func(c *gin.Context) {
-		c.File("./static/settings.html")
+		c.HTML(200, "settings-page", nil)
 	})
 
 	r.GET("/sync", func(c *gin.Context) {
-		c.File("./static/sync.html")
+		c.HTML(200, "sync-page", nil)
 	})
 
 	r.GET("/search", func(c *gin.Context) {
-		c.File("./static/search.html")
+		c.HTML(200, "search-page", nil)
 	})
 
 	routes.SetupRoutes(r)

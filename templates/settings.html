@@ -1,0 +1,92 @@
+{{ define "settings-page" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Vinylfo</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/settings.css">
+</head>
+<body>
+{{ template "header" }}
+<main class="container">
+    <h1>Settings</h1>
+    <div class="settings-section">
+        <h2>Discogs Connection</h2>
+        <div id="discogs-status" class="status-card">
+            <div class="status-indicator disconnected"></div>
+            <div class="status-info">
+                <span class="status-text">Not Connected</span>
+                <span class="status-username"></span>
+            </div>
+            <button id="connect-discogs" class="btn btn-primary">Connect Discogs</button>
+            <button id="disconnect-discogs" class="btn btn-danger hidden">Disconnect</button>
+        </div>
+    </div>
+    <div class="settings-section">
+        <h2>Sync Preferences</h2>
+        <form id="sync-settings-form">
+            <div class="form-group">
+                <label for="sync-confirm-batches">
+                    <input type="checkbox" id="sync-confirm-batches" name="sync_confirm_batches">
+                    Confirm each batch before syncing
+                </label>
+                <p class="help-text">When enabled, you'll review each batch of albums before they're added to your collection.</p>
+            </div>
+            <div class="form-group">
+                <label for="sync-batch-size">Batch Size</label>
+                <input type="number" id="sync-batch-size" name="sync_batch_size" min="10" max="200" value="50">
+                <p class="help-text">Number of albums to process in each batch (10-200).</p>
+            </div>
+            <div class="form-group">
+                <label for="auto-apply-safe">
+                    <input type="checkbox" id="auto-apply-safe" name="auto_apply_safe_updates">
+                    Auto-apply safe updates
+                </label>
+                <p class="help-text">Automatically apply updates that don't have conflicts (new genres, track info, etc.).</p>
+            </div>
+            <div class="form-group">
+                <label for="auto-sync-new">
+                    <input type="checkbox" id="auto-sync-new" name="auto_sync_new_albums">
+                    Auto-sync new albums
+                </label>
+                <p class="help-text">Automatically add new albums from Discogs without confirmation.</p>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Sync Settings</button>
+        </form>
+    </div>
+    <div class="settings-section">
+        <h2>Application Settings</h2>
+        <form id="app-settings-form">
+            <div class="form-group">
+                <label for="items-per-page">Items Per Page</label>
+                <input type="number" id="items-per-page" name="items_per_page" min="10" max="100" value="25">
+                <p class="help-text">Number of items to display per page (10-100).</p>
+            </div>
+            <button type="submit" class="btn btn-primary">Save App Settings</button>
+        </form>
+    </div>
+    <div class="settings-section danger-zone">
+        <h2>Danger Zone</h2>
+        <div class="danger-content">
+            <h3>Seed Sample Data</h3>
+            <p>Add sample albums and tracks to your database for testing purposes.</p>
+            <p class="warning">Only works if your database is empty. Will fail if you already have albums.</p>
+            <button id="seed-database" class="btn btn-secondary">Seed Sample Data</button>
+        </div>
+    </div>
+    <div class="settings-section danger-zone">
+        <h2>Reset Database</h2>
+        <div class="danger-content">
+            <h3>Reset Database</h3>
+            <p>This will permanently delete all your music data including songs, albums, sessions, playlists, and listening history.</p>
+            <p class="warning">Your OAuth settings and application preferences will be preserved.</p>
+            <button id="reset-database" class="btn btn-danger">Reset Database</button>
+        </div>
+    </div>
+</main>
+<script src="/static/js/settings.js"></script>
+</body>
+</html>
+{{ end }}

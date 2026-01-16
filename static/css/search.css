@@ -67,7 +67,7 @@
 
 .results-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 1rem;
 }
 
@@ -117,12 +117,18 @@
     flex-direction: column;
     justify-content: center;
     gap: 0.25rem;
+    overflow: hidden;
 }
 
 .result-title {
     font-weight: 600;
     color: #333;
     line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
 }
 
 .result-artist {
