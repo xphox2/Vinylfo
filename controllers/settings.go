@@ -88,3 +88,136 @@ func (c *SettingsController) Update(ctx *gin.Context) {
 
 	c.Get(ctx)
 }
+
+func (c *SettingsController) ResetDatabase(ctx *gin.Context) {
+	tx := c.db.Begin()
+	if tx.Error != nil {
+		ctx.JSON(500, gin.H{"error": "Failed to start transaction"})
+		return
+	}
+
+	tables := []string{
+		"track_histories",
+		"session_notes",
+		"session_sharings",
+		"session_playlists",
+		"playback_sessions",
+		"tracks",
+		"albums",
+		"sync_logs",
+	}
+
+	for _, table := range tables {
+		if err := tx.Exec("DELETE FROM " + table).Error; err != nil {
+			tx.Rollback()
+			ctx.JSON(500, gin.H{"error": "Failed to delete from " + table})
+			return
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		ctx.JSON(500, gin.H{"error": "Failed to commit transaction"})
+		return
+	}
+
+	ResetSyncState()
+
+	ctx.JSON(200, gin.H{
+		"message": "Database reset successful",
+		"note":    "All music data and sync progress has been cleared. Your OAuth settings and preferences have been preserved.",
+	})
+}
+
+func (c *SettingsController) SeedDatabase(ctx *gin.Context) {
+	var albumCount int64
+	c.db.Model(&models.Album{}).Count(&albumCount)
+	if albumCount > 0 {
+		ctx.JSON(400, gin.H{
+			"error":   "Database already has data",
+			"message": "Please reset the database first before seeding sample data.",
+		})
+		return
+	}
+
+	sampleAlbums := []models.Album{
+		{
+			Title:         "Abbey Road",
+			Artist:        "The Beatles",
+			ReleaseYear:   1969,
+			Genre:         "Rock",
+			CoverImageURL: "https://example.com/abbey_road.jpg",
+		},
+		{
+			Title:         "Rumours",
+			Artist:        "Fleetwood Mac",
+			ReleaseYear:   1977,
+			Genre:         "Rock",
+			CoverImageURL: "https://example.com/rumours.jpg",
+		},
+		{
+			Title:         "Dark Side of the Moon",
+			Artist:        "Pink Floyd",
+			ReleaseYear:   1973,
+			Genre:         "Progressive Rock",
+			CoverImageURL: "https://example.com/dark_side.jpg",
+		},
+		{
+			Title:         "Thriller",
+			Artist:        "Michael Jackson",
+			ReleaseYear:   1982,
+			Genre:         "Pop",
+			CoverImageURL: "https://example.com/thriller.jpg",
+		},
+	}
+
+	for i, album := range sampleAlbums {
+		if err := c.db.Create(&album).Error; err != nil {
+			ctx.JSON(500, gin.H{"error": "Failed to create album: " + album.Title})
+			return
+		}
+
+		var tracks []models.Track
+		switch i {
+		case 0:
+			tracks = []models.Track{
+				{AlbumID: album.ID, Title: "Come Together", Duration: 259, TrackNumber: 1},
+				{AlbumID: album.ID, Title: "Something", Duration: 182, TrackNumber: 2},
+				{AlbumID: album.ID, Title: "Maxwell's Silver Hammer", Duration: 207, TrackNumber: 3},
+				{AlbumID: album.ID, Title: "Oh! Darling", Duration: 193, TrackNumber: 4},
+			}
+		case 1:
+			tracks = []models.Track{
+				{AlbumID: album.ID, Title: "Monday Madonna", Duration: 247, TrackNumber: 1},
+				{AlbumID: album.ID, Title: "Ho Hey", Duration: 225, TrackNumber: 2},
+				{AlbumID: album.ID, Title: "Dreams", Duration: 206, TrackNumber: 3},
+				{AlbumID: album.ID, Title: "Don't Stop", Duration: 206, TrackNumber: 4},
+			}
+		case 2:
+			tracks = []models.Track{
+				{AlbumID: album.ID, Title: "Speak to Me", Duration: 20, TrackNumber: 1},
+				{AlbumID: album.ID, Title: "Breathe", Duration: 161, TrackNumber: 2},
+				{AlbumID: album.ID, Title: "On the Run", Duration: 220, TrackNumber: 3},
+				{AlbumID: album.ID, Title: "Time", Duration: 237, TrackNumber: 4},
+			}
+		case 3:
+			tracks = []models.Track{
+				{AlbumID: album.ID, Title: "Wanna Be Startin' Somethin'", Duration: 258, TrackNumber: 1},
+				{AlbumID: album.ID, Title: "Baby Be Mine", Duration: 225, TrackNumber: 2},
+				{AlbumID: album.ID, Title: "The Girl is Mine", Duration: 192, TrackNumber: 3},
+				{AlbumID: album.ID, Title: "Thriller", Duration: 258, TrackNumber: 4},
+			}
+		}
+
+		for _, track := range tracks {
+			if err := c.db.Create(&track).Error; err != nil {
+				ctx.JSON(500, gin.H{"error": "Failed to create track: " + track.Title})
+				return
+			}
+		}
+	}
+
+	ctx.JSON(200, gin.H{
+		"message": "Sample data seeded successfully",
+		"note":    "Added 4 sample albums with tracks. You can now browse your collection.",
+	})
+}

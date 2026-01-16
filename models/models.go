@@ -6,19 +6,20 @@ import (
 
 // Album represents a music album
 type Album struct {
-	ID            uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Title         string    `gorm:"not null;uniqueIndex" json:"title"`
-	Artist        string    `gorm:"not null" json:"artist"`
-	ReleaseYear   int       `json:"release_year"`
-	Genre         string    `json:"genre"`
-	Label         string    `json:"label"`
-	Country       string    `json:"country"`
-	ReleaseDate   string    `json:"release_date"`
-	Style         string    `json:"style"`
-	DiscogsID     int       `json:"discogs_id"`
-	CoverImageURL string    `json:"cover_image_url"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID              uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Title           string    `gorm:"not null;uniqueIndex" json:"title"`
+	Artist          string    `gorm:"not null" json:"artist"`
+	ReleaseYear     int       `json:"release_year"`
+	Genre           string    `json:"genre"`
+	Label           string    `json:"label"`
+	Country         string    `json:"country"`
+	ReleaseDate     string    `json:"release_date"`
+	Style           string    `json:"style"`
+	DiscogsID       int       `json:"discogs_id"`
+	DiscogsFolderID int       `json:"discogs_folder_id"` // Folder ID from Discogs collection
+	CoverImageURL   string    `json:"cover_image_url"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // Track represents a track on an album
@@ -97,4 +98,32 @@ type TrackHistory struct {
 	Progress    int       `json:"progress"`    // Last saved position
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// SyncLog represents sync error logs
+type SyncLog struct {
+	ID         uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	DiscogsID  int       `gorm:"index" json:"discogs_id"`
+	AlbumTitle string    `gorm:"size:255" json:"album_title"`
+	Artist     string    `gorm:"size:255" json:"artist"`
+	ErrorType  string    `gorm:"size:50" json:"error_type"` // "album" or "tracks"
+	ErrorMsg   string    `gorm:"type:text" json:"error_msg"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// SyncProgress tracks the sync progress for resume capability
+type SyncProgress struct {
+	ID             uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	SyncMode       string    `gorm:"size:20" json:"sync_mode"`    // "all-folders", "specific"
+	FolderID       int       `gorm:"index" json:"folder_id"`      // Current folder being synced
+	FolderName     string    `gorm:"size:255" json:"folder_name"` // Current folder name
+	FolderIndex    int       `json:"folder_index"`                // Index in folders list
+	TotalFolders   int       `json:"total_folders"`               // Total folders to sync
+	CurrentPage    int       `json:"current_page"`                // Current page in folder
+	Processed      int       `json:"processed"`                   // Total albums processed
+	TotalAlbums    int       `json:"total_albums"`                // Total albums to process
+	Status         string    `gorm:"size:20" json:"status"`       // "running", "paused", "completed", "cancelled"
+	LastActivityAt time.Time `json:"last_activity_at"`            // Last time sync made progress
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }

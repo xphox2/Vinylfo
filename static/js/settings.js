@@ -65,6 +65,8 @@ class SettingsManager {
     bindEvents() {
         document.getElementById('connect-discogs').addEventListener('click', () => this.connectDiscogs());
         document.getElementById('disconnect-discogs').addEventListener('click', () => this.disconnectDiscogs());
+        document.getElementById('reset-database').addEventListener('click', () => this.resetDatabase());
+        document.getElementById('seed-database').addEventListener('click', () => this.seedDatabase());
 
         document.getElementById('sync-settings-form').addEventListener('submit', (e) => {
             e.preventDefault();
@@ -160,6 +162,81 @@ class SettingsManager {
         } catch (error) {
             console.error('Failed to save app settings:', error);
             this.showNotification('Failed to save settings', 'error');
+        }
+    }
+
+    async resetDatabase() {
+        const confirmed = confirm(
+            'Are you sure you want to reset the database?\n\n' +
+            'This will delete:\n' +
+            '- All albums and tracks\n' +
+            '- All playback sessions\n' +
+            '- All playlists\n' +
+            '- All listening history\n\n' +
+            'This will NOT affect:\n' +
+            '- Your Discogs OAuth connection\n' +
+            '- Your application settings\n\n' +
+            'This action cannot be undone!'
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        const doubleConfirm = prompt('Type "RESET" to confirm this action:');
+        if (doubleConfirm !== 'RESET') {
+            this.showNotification('Reset cancelled - confirmation did not match', 'info');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/database/reset`, { method: 'POST' });
+            const data = await response.json();
+
+            if (response.ok) {
+                this.showNotification('Database has been reset successfully', 'success');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            } else {
+                this.showNotification(data.error || 'Failed to reset database', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to reset database:', error);
+            this.showNotification('Failed to reset database', 'error');
+        }
+    }
+
+    async seedDatabase() {
+        const confirmed = confirm(
+            'Seed sample data?\n\n' +
+            'This will add 4 sample albums with tracks:\n' +
+            '- Abbey Road - The Beatles\n' +
+            '- Rumours - Fleetwood Mac\n' +
+            '- Dark Side of the Moon - Pink Floyd\n' +
+            '- Thriller - Michael Jackson\n\n' +
+            'Note: This will only work if your database is empty.'
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/database/seed`, { method: 'POST' });
+            const data = await response.json();
+
+            if (response.ok) {
+                this.showNotification(data.message, 'success');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            } else {
+                this.showNotification(data.error || data.message || 'Failed to seed database', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to seed database:', error);
+            this.showNotification('Failed to seed database', 'error');
         }
     }
 

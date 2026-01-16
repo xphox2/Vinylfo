@@ -84,7 +84,27 @@
                 <button type="submit" class="btn btn-primary">Save App Settings</button>
             </form>
         </div>
-    </div>
+
+        <div class="settings-section danger-zone">
+            <h2>Danger Zone</h2>
+            <div class="danger-content">
+                <h3>Seed Sample Data</h3>
+                <p>Add sample albums and tracks to your database for testing purposes.</p>
+                <p class="warning">Only works if your database is empty. Will fail if you already have albums.</p>
+                <button id="seed-database" class="btn btn-secondary">Seed Sample Data</button>
+            </div>
+        </div>
+
+        <div class="settings-section danger-zone">
+            <h2>Reset Database</h2>
+            <div class="danger-content">
+                <h3>Reset Database</h3>
+                <p>This will permanently delete all your music data including songs, albums, sessions, playlists, and listening history.</p>
+                <p class="warning">Your OAuth settings and application preferences will be preserved.</p>
+                <button id="reset-database" class="btn btn-danger">Reset Database</button>
+            </div>
+        </div>
+    </main>
 
     <script src="/static/js/settings.js"></script>
 </body>

@@ -33,7 +33,7 @@ Thumbs.db
 tests/
 
 # Logs
-server.log
+*.log
 
 # Build outputs
 bin/

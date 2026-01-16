@@ -131,3 +131,33 @@
 #app-settings-form {
     max-width: 400px;
 }
+
+.danger-zone {
+    border: 2px solid #dc3545;
+    background-color: #fff5f5;
+}
+
+.danger-zone h2 {
+    color: #dc3545;
+    border-bottom-color: #dc3545;
+}
+
+.danger-content {
+    padding: 1rem;
+}
+
+.danger-content h3 {
+    margin-top: 0;
+    color: #333;
+}
+
+.danger-content p {
+    color: #666;
+    margin-bottom: 0.5rem;
+}
+
+.danger-content .warning {
+    color: #dc3545;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}

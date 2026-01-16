@@ -164,3 +164,194 @@
 .sync-log-entry.info {
     color: #666;
 }
+
+.status-message.warning {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+
+.status-message.warning h3 {
+    margin-top: 0;
+    color: #856404;
+}
+
+.pause-details {
+    background-color: rgba(255, 255, 255, 0.5);
+    padding: 1rem;
+    border-radius: 5px;
+    margin: 1rem 0;
+    text-align: left;
+}
+
+.pause-details p {
+    margin: 0.25rem 0;
+}
+
+.pause-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-top: 1rem;
+}
+
+.sync-options {
+    margin-bottom: 1.5rem;
+    text-align: left;
+}
+
+.sync-options h2 {
+    color: #333;
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.sync-mode-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.radio-option {
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem 1rem;
+    border: 2px solid #e9ecef;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.radio-option:hover {
+    border-color: #28a745;
+}
+
+.radio-option input[type="radio"] {
+    margin-bottom: 0.25rem;
+}
+
+.radio-option input[type="radio"]:checked + .radio-label {
+    color: #28a745;
+}
+
+.radio-option:has(input:checked) {
+    border-color: #28a745;
+    background-color: #f8fff8;
+}
+
+.radio-label {
+    font-weight: 600;
+    color: #333;
+    font-size: 1rem;
+}
+
+.radio-description {
+    color: #666;
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+}
+
+.folder-selector {
+    margin-top: 1rem;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+}
+
+.folder-selector label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+.folder-selector select {
+    width: 100%;
+    max-width: 400px;
+    padding: 0.5rem;
+    border: 2px solid #e9ecef;
+    border-radius: 5px;
+    font-size: 1rem;
+    background-color: white;
+}
+
+.folder-selector select:focus {
+    outline: none;
+    border-color: #28a745;
+}
+
+.sync-mode-info {
+    background-color: #e7f3ff;
+    padding: 0.75rem 1rem;
+    border-radius: 5px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    color: #0056b3;
+}
+
+.sync-mode-info strong {
+    color: #004494;
+}
+
+.sync-controls {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-top: 1rem;
+}
+
+.sync-controls .btn {
+    min-width: 120px;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-warning {
+    background-color: #ffc107;
+    color: #212529;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.btn-warning:hover {
+    background-color: #e0a800;
+}
+
+.btn-success {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+}
+
+.folder-info {
+    font-size: 0.9rem;
+    color: #0056b3;
+    background-color: #e7f3ff;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    margin-bottom: 0.75rem;
+}

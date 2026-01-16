@@ -17,6 +17,8 @@ type AppConfig struct {
 	AutoApplySafeUpdates  bool      `gorm:"default:false" json:"auto_apply_safe_updates"`
 	AutoSyncNewAlbums     bool      `gorm:"default:false" json:"auto_sync_new_albums"`
 	LastSyncAt            time.Time `json:"last_sync_at"`
+	SyncMode              string    `gorm:"size:20;default:'all'" json:"sync_mode"` // "all", "all-folders", "specific"
+	SyncFolderID          int       `gorm:"default:0" json:"sync_folder_id"`        // Specific folder ID when sync_mode is "specific"
 	Theme                 string    `gorm:"size:50;default:'light'" json:"theme"`
 	ItemsPerPage          int       `gorm:"default:25" json:"items_per_page"`
 	CreatedAt             time.Time `json:"created_at"`

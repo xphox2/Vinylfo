@@ -7,41 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-01-15
 
+### Fixed
+- Album count showing incorrect values (Processed and Total both incrementing)
+- Sync progress not updating during sync (added saveSyncProgress after each album)
+- Pause not actually pausing the sync job (added IsPaused state)
+- UI not showing completion when sync finishes
+- Leaving sync page and returning not showing resume option
+
 ### Added
-- **Enhanced Discogs Album Import**: Full album metadata and track information now captured when importing from Discogs
-  - Label, Country, Release Date, and Style fields now imported
-  - Track position (A1, A2, B1, B2, etc.) preserved with format conversion (1-1 → A1, 2-1 → B1)
-  - Duration converted from string format (e.g., "3:45") to seconds for consistent storage
-  - Disc and Side tracking for multi-disc albums
-
-### New API Endpoints
-- `GET /api/discogs/albums/:id` - Preview album details from Discogs without saving
-
-### Database Changes
-- Added new fields to `Album` model: `Label`, `Country`, `ReleaseDate`, `Style`, `DiscogsID`
-- Added new fields to `Track` model: `DiscNumber`, `Side`, `Position`
+- Pause/Resume functionality for sync operations
+- Manual refresh button for status updates
+- Heartbeat to prevent stale sync detection
+- Estimated time remaining display
+- Current folder display during multi-folder syncs
+- Retry logic for connection errors (3 retries)
 
 ### Changed
-- **Discogs Import Flow**: Albums are now previewed first, then confirmed before saving to database
-- Search results button changed from "Add" to "View" for clarity
-- Album detail modal shows all metadata (label, country, release date, style) before adding
-- Validation prevents adding albums with no track information
+- Removed API rate limit display from sync screen
+- Changed poll interval from 1000ms to 500ms
+- Total is now set once at start and remains constant
+
+### Backend
+- Added PauseSync endpoint (POST /api/discogs/sync/pause)
+- Added ResumeSyncFromPause endpoint (POST /api/discogs/sync/resume-pause)
+- GetSyncProgress now includes is_paused in response
+- **Atomic Album+Track Sync**: Albums now only save to database if all tracks import successfully
+  - Uses database transactions with rollback on track failure
+  - Creates sync log entry for failed albums/tracks
+  - Prevents partial album imports
+- **Folder-Based Sync**: Users can now sync by specific Discogs folders or all folders
+  - New sync mode options: "Sync All Folders" and "Sync Specific Folder"
+  - Added `/api/discogs/folders` endpoint to fetch user's Discogs collection folders
+  - Added folder selection UI in sync page
+- **API Usage Visibility**: Users can now see remaining API requests during sync
+  - Visual API usage bar shows 0-60 requests consumed
+  - Color-coded warnings at 70% (yellow) and 90% (red)
+  - Updates in real-time during sync progress polling
+- **Sync Resume Capability**: Long syncs can now be paused, cancelled, and resumed
+  - Sync progress saved to `sync_progress` table in database
+  - 30-minute timeout detection marks stale syncs as "paused"
+  - "Resume Sync" button appears when incomplete sync detected
+  - "Start New Sync" button to discard previous progress
+- **Sync Log Tracking**: All sync errors are now logged for troubleshooting
+  - New `SyncLog` model tracks failed album/track imports
+  - Logs include Discogs ID, album title, artist, error type, and error message
+
+### New API Endpoints
+- `GET /api/discogs/folders` - Get user's Discogs collection folders
+- `GET /api/discogs/sync/resume` - Check if there's sync progress to resume
+- `POST /api/database/seed` - Seed database with sample data (moved from auto-seed)
+- `GET /api/discogs/sync/progress` - Now returns saved progress and API remaining
+
+### Database Changes
+- Added `SyncLog` model for tracking sync errors
+- Added `SyncProgress` model for tracking sync state across requests
+- Added `DiscogsFolderID` field to `Album` model to track which folder album came from
+- Added `SyncMode` and `SyncFolderID` fields to `AppConfig` model
 
 ### Fixed
-- **OAuth Endpoint URL**: Fixed OAuth request token endpoint from `www.discogs.com/oauth/request_token` to `api.discogs.com/oauth/request_token`
-- **OAuth Signature Whitespace**: Added trimming of whitespace from consumer key, secret, and callback URL to prevent signature errors
-- **Disconnect Flow**: Updated disconnect response to inform users they must also revoke access at https://www.discogs.com/settings/applications
-- Modal close buttons (X, Cancel, Add to Collection) now work correctly
-- Search result items properly centered with image
-- Modal album info section centered with larger 180px cover image
-- Long style text wraps properly to prevent modal overflow
-- Fixed discogs_id type issue (string vs int) when adding albums
+- **Rate Limiting**: Fixed rate limiter not preventing 429 Too Many Requests errors
+  - Added `X-Discogs-Ratelimit-*` header parsing to track actual remaining requests
+  - Added 429 response handling with Retry-After header support
+  - Rate limiter now waits for window reset when exhausted
+  - Extensive debug logging in `sync_debug.log` file
+- **Sync Race Conditions**: Fixed potential race conditions in sync state management
+  - Added `sync.RWMutex` for thread-safe access to sync state
+  - Protected all `syncState` reads/writes with mutex
+  - Consistent use of getter/setter/update helper functions
+
+### Changed
+- **Database Seeding**: Removed automatic database seeding on startup
+  - "Seed Sample Data" button now available on Settings page
+  - Prevents accidental data loss on server restart
+- **Sync Flow Improvements**:
+  - Sync now processes albums automatically without requiring batch review confirmation
+  - Removed batch review UI from sync flow (still available but not used by default)
+  - Sync saves progress every batch and updates last_activity timestamp
+  - Backend uses `gin.New()` with explicit `gin.Recovery()` and `gin.Logger()` middleware
+- **API Rate Limits**: Rate limiter starts with 60 authenticated requests, 25 anonymous
 
 ### UI Improvements
-- Search results: Album art, text, and View button properly centered and aligned
-- Modal: Larger centered album art (180px) with side-by-side metadata display
-- Track list shows position codes and formatted duration (MM:SS)
-- View button constrained to prevent stretching
+- Sync page now shows folder selection when "Sync Specific Folder" is chosen
+- API usage bar appears during sync with request count and progress bar
+- Paused sync dialog shows folder name, progress, and last activity time
+- Cancel sync button now prompts for confirmation
+- Sync mode info displays current sync operation (all folders or specific folder)
+
+### Removed
+- Automatic database seeding on application startup (now manual via Settings page)
+
+### New Files
+- `progress_tracking.go` - Sync progress save/load functions with stale sync detection
 
 ---
 

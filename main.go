@@ -28,11 +28,6 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	err = database.SeedDatabase(db)
-	if err != nil {
-		log.Printf("Warning: Failed to seed database: %v", err)
-	}
-
 	validationResult := discogs.ValidateOAuthConfig()
 	if !validationResult.IsValid {
 		log.Println("Warning: OAuth configuration has errors. OAuth functionality may not work correctly.")
@@ -43,7 +38,9 @@ func main() {
 
 	go playbackController.SimulateTimer()
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(gin.Logger())
 
 	r.Static("/static", "./static")
 

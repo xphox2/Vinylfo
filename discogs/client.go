@@ -1,6 +1,7 @@
 package discogs
 
 import (
+	"compress/gzip"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
@@ -17,6 +18,13 @@ import (
 	"time"
 )
 
+func logToFile(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	f, _ := os.OpenFile("sync_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	defer f.Close()
+	f.WriteString(fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), msg))
+}
+
 const (
 	APIURL          = "https://api.discogs.com"
 	AuthURL         = "https://api.discogs.com/oauth"
@@ -28,73 +36,201 @@ const (
 
 type RateLimiter struct {
 	sync.RWMutex
-	windowStart time.Time
-	authCount   int
-	anonCount   int
+	windowStart   time.Time
+	authRemaining int
+	anonRemaining int
+	lastAuthLimit int
+	lastAnonLimit int
 }
 
 func NewRateLimiter() *RateLimiter {
-	return &RateLimiter{windowStart: time.Now()}
+	return &RateLimiter{
+		windowStart:   time.Now(),
+		authRemaining: AuthRequests,
+		anonRemaining: AnonRequests,
+		lastAuthLimit: AuthRequests,
+		lastAnonLimit: AnonRequests,
+	}
 }
 
 func (rl *RateLimiter) Wait(isAuth bool) {
 	rl.Lock()
 	defer rl.Unlock()
 
+	isAuthStr := "auth"
+	if !isAuth {
+		isAuthStr = "anon"
+	}
+
 	now := time.Now()
 	elapsed := now.Sub(rl.windowStart)
 
+	logToFile("RATELIMIT [%s]: Check at %s, elapsed=%v, window_start=%s",
+		isAuthStr, now.Format("15:04:05.000"), elapsed, rl.windowStart.Format("15:04:05"))
+
 	if elapsed >= RateLimitWindow {
-		rl.windowStart = now
-		rl.authCount = 0
-		rl.anonCount = 0
+		rl.windowStart = time.Now()
+		if rl.lastAuthLimit > 0 {
+			rl.authRemaining = rl.lastAuthLimit
+		} else {
+			rl.authRemaining = AuthRequests
+		}
+		if rl.lastAnonLimit > 0 {
+			rl.anonRemaining = rl.lastAnonLimit
+		} else {
+			rl.anonRemaining = AnonRequests
+		}
+		logToFile("RATELIMIT [%s]: Window RESET, auth=%d, anon=%d",
+			isAuthStr, rl.authRemaining, rl.anonRemaining)
 	}
 
-	maxCount := AuthRequests
+	remaining := rl.authRemaining
 	if !isAuth {
-		maxCount = AnonRequests
+		remaining = rl.anonRemaining
 	}
 
-	currentCount := &rl.authCount
-	if !isAuth {
-		currentCount = &rl.anonCount
-	}
-
-	for *currentCount >= maxCount {
+	remainingThreshold := 5
+	waitCount := 0
+	for remaining <= remainingThreshold {
+		waitCount++
+		now := time.Now()
 		sleepTime := rl.windowStart.Add(RateLimitWindow).Sub(now)
 		if sleepTime > 0 {
+			if rl.anonRemaining <= remainingThreshold && remaining > remainingThreshold {
+				logToFile("RATELIMIT [%s]: Anonymous limit approaching (anon_rem=%d), sleeping %v until window reset (wait #%d)",
+					isAuthStr, rl.anonRemaining, sleepTime, waitCount)
+			} else {
+				logToFile("RATELIMIT [%s]: Rate limit approaching (%s_rem=%d), sleeping %v until window reset (wait #%d)",
+					isAuthStr, isAuthStr, remaining, sleepTime, waitCount)
+			}
 			time.Sleep(sleepTime)
 		}
 		rl.windowStart = time.Now()
-		rl.authCount = 0
-		rl.anonCount = 0
-		*currentCount = 0
+		if rl.lastAuthLimit > 0 {
+			rl.authRemaining = rl.lastAuthLimit
+		} else {
+			rl.authRemaining = AuthRequests
+		}
+		if rl.lastAnonLimit > 0 {
+			rl.anonRemaining = rl.lastAnonLimit
+		} else {
+			rl.anonRemaining = AnonRequests
+		}
+
+		remaining = rl.authRemaining
+		if !isAuth {
+			remaining = rl.anonRemaining
+		}
+		logToFile("RATELIMIT [%s]: After wake - auth_rem=%d, anon_rem=%d",
+			isAuthStr, rl.authRemaining, rl.anonRemaining)
 	}
 
-	*currentCount++
+	logToFile("RATELIMIT [%s]: Proceeding with request, auth_rem=%d, anon_rem=%d",
+		isAuthStr, rl.authRemaining, rl.anonRemaining)
+}
+
+func (rl *RateLimiter) GetDebugInfo() string {
+	rl.RLock()
+	defer rl.RUnlock()
+	return fmt.Sprintf("auth_rem=%d, anon_rem=%d, window_elapsed=%.2fs",
+		rl.authRemaining, rl.anonRemaining, time.Since(rl.windowStart).Seconds())
+}
+
+func (rl *RateLimiter) Decrement(isAuth bool) {
+	rl.Lock()
+	defer rl.Unlock()
+
+	if isAuth {
+		rl.authRemaining--
+	} else {
+		rl.anonRemaining--
+	}
+
+	logToFile("RATELIMIT: DECREMENTED - auth_rem=%d, anon_rem=%d",
+		rl.authRemaining, rl.anonRemaining)
 }
 
 func (rl *RateLimiter) UpdateFromHeaders(resp *http.Response) {
 	rl.Lock()
 	defer rl.Unlock()
 
-	if rlAuth := resp.Header.Get("X-Discogs-Ratelimit-Auth"); rlAuth != "" {
+	rlAuth := resp.Header.Get("X-Discogs-Ratelimit-Auth")
+	rlAuthRem := resp.Header.Get("X-Discogs-Ratelimit-Auth-Remaining")
+	rlAnon := resp.Header.Get("X-Discogs-Ratelimit")
+	rlAnonRem := resp.Header.Get("X-Discogs-Ratelimit-Remaining")
+
+	logToFile("RATELIMIT HEADERS: Auth=%s/%s, Anon=%s/%s",
+		rlAuth, rlAuthRem, rlAnon, rlAnonRem)
+
+	authLimitSet := false
+	if rlAuth != "" && rlAuth != "/" {
 		if limit, err := strconv.Atoi(rlAuth); err == nil {
-			remaining := resp.Header.Get("X-Discogs-Ratelimit-Auth-Remaining")
-			if rem, err := strconv.Atoi(remaining); err == nil && rem == 0 {
-				rl.authCount = limit
+			rl.lastAuthLimit = limit
+			authLimitSet = true
+			if rlAuthRem != "" {
+				if rem, err := strconv.Atoi(rlAuthRem); err == nil {
+					rl.authRemaining = rem
+					logToFile("RATELIMIT HEADERS: Updated auth_remaining=%d from header", rl.authRemaining)
+				}
+			} else {
+				rl.authRemaining = limit
+				logToFile("RATELIMIT HEADERS: No remaining header, set to limit=%d", rl.authRemaining)
 			}
 		}
 	}
 
-	if rlAnon := resp.Header.Get("X-Discogs-Ratelimit"); rlAnon != "" {
-		if limit, err := strconv.Atoi(rlAnon); err == nil {
-			remaining := resp.Header.Get("X-Discogs-Ratelimit-Remaining")
-			if rem, err := strconv.Atoi(remaining); err == nil && rem == 0 {
-				rl.anonCount = limit
-			}
+	if !authLimitSet && rl.lastAuthLimit == 0 {
+		rl.lastAuthLimit = AuthRequests
+		if rl.authRemaining == 0 {
+			rl.authRemaining = AuthRequests
 		}
 	}
+
+	if rlAnon != "" {
+		if limit, err := strconv.Atoi(rlAnon); err == nil {
+			rl.lastAnonLimit = limit
+			if rlAnonRem != "" {
+				if rem, err := strconv.Atoi(rlAnonRem); err == nil {
+					rl.anonRemaining = rem
+				} else {
+					rl.anonRemaining = limit
+				}
+			} else {
+				rl.anonRemaining = limit
+			}
+		}
+	} else if rlAnonRem != "" && rl.lastAnonLimit == 0 {
+		if rem, err := strconv.Atoi(rlAnonRem); err == nil {
+			rl.anonRemaining = rem
+		}
+	}
+}
+
+func (rl *RateLimiter) WaitForReset(retryAfter int) {
+	rl.Lock()
+	defer rl.Unlock()
+
+	sleepTime := time.Duration(retryAfter) * time.Second
+	if sleepTime <= 0 {
+		sleepTime = RateLimitWindow
+	}
+	logToFile("RATELIMIT: Waiting %v for rate limit reset (Retry-After: %ds)", sleepTime, retryAfter)
+	time.Sleep(sleepTime)
+	rl.windowStart = time.Now()
+	rl.authRemaining = rl.lastAuthLimit
+	rl.anonRemaining = rl.lastAnonLimit
+}
+
+func (rl *RateLimiter) GetRemaining() int {
+	rl.RLock()
+	defer rl.RUnlock()
+	return rl.authRemaining
+}
+
+func (rl *RateLimiter) GetRemainingAnon() int {
+	rl.RLock()
+	defer rl.RUnlock()
+	return rl.anonRemaining
 }
 
 type OAuthConfig struct {
@@ -116,8 +252,25 @@ func NewClient(apiKey string) *Client {
 		APIKey:      apiKey,
 		HTTPClient:  &http.Client{Timeout: 30 * time.Second},
 		RateLimiter: NewRateLimiter(),
-		OAuth:       loadOAuthConfig(),
 	}
+}
+
+func NewClientWithOAuth(apiKey string, oauth *OAuthConfig) *Client {
+	client := &Client{
+		APIKey:      apiKey,
+		HTTPClient:  &http.Client{Timeout: 30 * time.Second},
+		RateLimiter: NewRateLimiter(),
+		OAuth:       oauth,
+	}
+	return client
+}
+
+func (c *Client) GetAPIRemaining() int {
+	return c.RateLimiter.GetRemaining()
+}
+
+func (c *Client) GetAPIRemainingAnon() int {
+	return c.RateLimiter.GetRemainingAnon()
 }
 
 func loadOAuthConfig() *OAuthConfig {
@@ -134,7 +287,9 @@ func (c *Client) IsAuthenticated() bool {
 }
 
 func (c *Client) makeRequest(method, requestURL string, body url.Values) (*http.Response, error) {
-	isAuth := c.IsAuthenticated() && c.APIKey == ""
+	isAuth := c.IsAuthenticated() || c.APIKey != ""
+	logToFile("API REQUEST [%s]: %s %s", map[bool]string{true: "auth", false: "anon"}[isAuth], method, requestURL)
+
 	c.RateLimiter.Wait(isAuth)
 
 	req, err := http.NewRequest(method, requestURL, strings.NewReader(body.Encode()))
@@ -156,16 +311,51 @@ func (c *Client) makeRequest(method, requestURL string, body url.Values) (*http.
 
 	c.RateLimiter.UpdateFromHeaders(resp)
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != 201 {
-		body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusTooManyRequests {
+		io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("Discogs API error: %d - %s", resp.StatusCode, string(body))
+
+		retryAfter := 60
+		if retryHeader := resp.Header.Get("Retry-After"); retryHeader != "" {
+			if seconds, err := strconv.Atoi(retryHeader); err == nil && seconds > 0 {
+				retryAfter = seconds
+			}
+		}
+
+		logToFile("API ERROR 429: Retry-After=%ds, RateLimit-Auth=%s, RateLimit-Auth-Remaining=%s",
+			retryAfter,
+			resp.Header.Get("X-Discogs-Ratelimit-Auth"),
+			resp.Header.Get("X-Discogs-Ratelimit-Auth-Remaining"))
+
+		c.RateLimiter.WaitForReset(retryAfter)
+		return c.makeRequest(method, requestURL, body)
 	}
 
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != 201 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("Discogs API error: %d - %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	c.RateLimiter.Decrement(isAuth)
+
+	logToFile("API SUCCESS: %s %s -> %d", method, requestURL, resp.StatusCode)
 	return resp, nil
 }
 
 func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*http.Response, error) {
+	logToFile("makeOAuthRequest: starting for %s %s", method, requestURL)
+
+	if c.OAuth == nil {
+		return nil, fmt.Errorf("makeOAuthRequest: OAuth config is nil")
+	}
+	if c.OAuth.ConsumerKey == "" {
+		return nil, fmt.Errorf("makeOAuthRequest: OAuth ConsumerKey is empty")
+	}
+	if c.OAuth.AccessToken == "" {
+		return nil, fmt.Errorf("makeOAuthRequest: OAuth AccessToken is empty")
+	}
+
 	c.RateLimiter.Wait(true)
 
 	if body == nil {
@@ -208,7 +398,12 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 
 	baseString := fmt.Sprintf("%s&%s&%s", method, url.QueryEscape(requestURL), url.QueryEscape(strings.Join(paramPairs, "&")))
 
+	logToFile("makeOAuthRequest: baseString=%s", baseString)
+	logToFile("makeOAuthRequest: ConsumerSecret=%s, AccessSecret=%s", maskValue(c.OAuth.ConsumerSecret), maskValue(c.OAuth.AccessSecret))
+
 	signature := generateHmacSignature(baseString, c.OAuth.ConsumerSecret, c.OAuth.AccessSecret)
+
+	logToFile("makeOAuthRequest: signature=%s", signature)
 
 	authHeader := fmt.Sprintf(`OAuth oauth_consumer_key="%s", oauth_token="%s", oauth_signature_method="HMAC-SHA1", oauth_timestamp="%s", oauth_nonce="%s", oauth_version="1.0", oauth_signature="%s"`,
 		url.QueryEscape(c.OAuth.ConsumerKey),
@@ -228,7 +423,6 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("Sec-Fetch-Dest", "empty")
 	req.Header.Set("Sec-Fetch-Mode", "cors")
@@ -238,18 +432,55 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 	req.Header.Set("sec-ch-ua-platform", "\"Windows\"")
 
 	resp, err := c.HTTPClient.Do(req)
+	logToFile("makeOAuthRequest: HTTP response received, err=%v", err)
 	if err != nil {
 		return nil, err
 	}
 
 	c.RateLimiter.UpdateFromHeaders(resp)
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		retryAfter := 60
+		if retryHeader := resp.Header.Get("Retry-After"); retryHeader != "" {
+			if seconds, err := strconv.Atoi(retryHeader); err == nil && seconds > 0 {
+				retryAfter = seconds
+			}
+		}
+
+		logToFile("API ERROR 429: Retry-After=%ds, RateLimit-Auth=%s, RateLimit-Auth-Remaining=%s",
+			retryAfter,
+			resp.Header.Get("X-Discogs-Ratelimit-Auth"),
+			resp.Header.Get("X-Discogs-Ratelimit-Auth-Remaining"))
+
+		c.RateLimiter.WaitForReset(retryAfter)
+		return c.makeOAuthRequest(method, requestURL, nil)
+	}
+
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != 201 {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		logToFile("makeOAuthRequest: API error %d - %s", resp.StatusCode, string(body))
 		return nil, fmt.Errorf("Discogs API error: %d - %s", resp.StatusCode, string(body))
 	}
 
+	c.RateLimiter.Decrement(true)
+
+	logToFile("makeOAuthRequest: Success! Content-Encoding=%s", resp.Header.Get("Content-Encoding"))
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	encoding := resp.Header.Get("Content-Encoding")
+	if encoding == "gzip" {
+		gzReader, _ := gzip.NewReader(strings.NewReader(string(bodyBytes)))
+		bodyBytes, _ = io.ReadAll(gzReader)
+		gzReader.Close()
+	}
+
+	resp.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
 	return resp, nil
 }
 
@@ -389,12 +620,30 @@ func (c *Client) GetUserIdentity() (username string, err error) {
 	return identity.Username, nil
 }
 
-func (c *Client) GetUserCollection(page, perPage int) ([]map[string]interface{}, error) {
+func (c *Client) GetUserCollection(username string, page, perPage int) ([]map[string]interface{}, error) {
+	if username == "" {
+		return nil, fmt.Errorf("GetUserCollection: username is empty")
+	}
+
+	if c.OAuth == nil {
+		return nil, fmt.Errorf("GetUserCollection: OAuth is nil")
+	}
+	if c.OAuth.ConsumerKey == "" {
+		return nil, fmt.Errorf("GetUserCollection: ConsumerKey is empty")
+	}
+	if c.OAuth.AccessToken == "" {
+		return nil, fmt.Errorf("GetUserCollection: AccessToken is empty")
+	}
+
 	requestURL := fmt.Sprintf("%s/users/%s/collection/folders/0/releases?page=%d&per_page=%d",
-		APIURL, c.OAuth.AccessToken, page, perPage)
+		APIURL, url.QueryEscape(username), page, perPage)
+
+	logToFile("DISCOGS_API: GET %s", requestURL)
+	logToFile("DISCOGS_API: Auth - ConsumerKey=%s, AccessToken=%s", maskValue(c.OAuth.ConsumerKey), maskValue(c.OAuth.AccessToken))
 
 	resp, err := c.makeOAuthRequest("GET", requestURL, nil)
 	if err != nil {
+		logToFile("DISCOGS_API: ERROR - %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -447,10 +696,150 @@ func (c *Client) GetUserCollection(page, perPage int) ([]map[string]interface{},
 			"year":        r.BasicInformation.Year,
 			"cover_image": coverImage,
 			"date_added":  r.DateAdded,
+			"folder_id":   0,
 		})
 	}
 
+	logToFile("DISCOGS_API: Success! Got %d releases", len(releases))
 	return releases, nil
+}
+
+func (c *Client) GetUserCollectionByFolder(username string, folderID int, page, perPage int) ([]map[string]interface{}, int, error) {
+	if username == "" {
+		return nil, 0, fmt.Errorf("GetUserCollectionByFolder: username is empty")
+	}
+
+	if c.OAuth == nil {
+		return nil, 0, fmt.Errorf("GetUserCollectionByFolder: OAuth is nil")
+	}
+	if c.OAuth.ConsumerKey == "" {
+		return nil, 0, fmt.Errorf("GetUserCollectionByFolder: ConsumerKey is empty")
+	}
+	if c.OAuth.AccessToken == "" {
+		return nil, 0, fmt.Errorf("GetUserCollectionByFolder: AccessToken is empty")
+	}
+
+	requestURL := fmt.Sprintf("%s/users/%s/collection/folders/%d/releases?page=%d&per_page=%d",
+		APIURL, url.QueryEscape(username), folderID, page, perPage)
+
+	logToFile("DISCOGS_API: GET %s", requestURL)
+	logToFile("DISCOGS_API: Auth - ConsumerKey=%s, AccessToken=%s", maskValue(c.OAuth.ConsumerKey), maskValue(c.OAuth.AccessToken))
+
+	resp, err := c.makeOAuthRequest("GET", requestURL, nil)
+	if err != nil {
+		logToFile("DISCOGS_API: ERROR - %v", err)
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	var collection struct {
+		Releases []struct {
+			ID               int    `json:"id"`
+			InstanceID       int    `json:"instance_id"`
+			DateAdded        string `json:"date_added"`
+			BasicInformation struct {
+				Title   string `json:"title"`
+				Year    int    `json:"year"`
+				Artists []struct {
+					Name string `json:"name"`
+				} `json:"artists"`
+				Images []struct {
+					URI string `json:"uri"`
+				} `json:"images"`
+			} `json:"basic_information"`
+		} `json:"releases"`
+		Pagination struct {
+			Page    int `json:"page"`
+			Pages   int `json:"pages"`
+			PerPage int `json:"per_page"`
+			Items   int `json:"items"`
+		} `json:"pagination"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&collection); err != nil {
+		return nil, 0, err
+	}
+
+	releases := make([]map[string]interface{}, 0)
+	for _, r := range collection.Releases {
+		artistName := ""
+		if len(r.BasicInformation.Artists) > 0 {
+			artistName = r.BasicInformation.Artists[0].Name
+		}
+
+		coverImage := ""
+		if len(r.BasicInformation.Images) > 0 {
+			coverImage = r.BasicInformation.Images[0].URI
+		}
+
+		releases = append(releases, map[string]interface{}{
+			"discogs_id":  r.ID,
+			"instance_id": r.InstanceID,
+			"title":       r.BasicInformation.Title,
+			"artist":      artistName,
+			"year":        r.BasicInformation.Year,
+			"cover_image": coverImage,
+			"date_added":  r.DateAdded,
+			"folder_id":   folderID,
+		})
+	}
+
+	logToFile("DISCOGS_API: Success! Got %d releases from folder %d (total items: %d)", len(releases), folderID, collection.Pagination.Items)
+	return releases, collection.Pagination.Items, nil
+}
+
+func (c *Client) GetUserFolders(username string) ([]map[string]interface{}, error) {
+	if username == "" {
+		return nil, fmt.Errorf("GetUserFolders: username is empty")
+	}
+
+	if c.OAuth == nil {
+		return nil, fmt.Errorf("GetUserFolders: OAuth is nil")
+	}
+	if c.OAuth.ConsumerKey == "" {
+		return nil, fmt.Errorf("GetUserFolders: ConsumerKey is empty")
+	}
+	if c.OAuth.AccessToken == "" {
+		return nil, fmt.Errorf("GetUserFolders: AccessToken is empty")
+	}
+
+	requestURL := fmt.Sprintf("%s/users/%s/collection/folders", APIURL, url.QueryEscape(username))
+
+	logToFile("DISCOGS_API: GET %s", requestURL)
+	logToFile("DISCOGS_API: Auth - ConsumerKey=%s, AccessToken=%s", maskValue(c.OAuth.ConsumerKey), maskValue(c.OAuth.AccessToken))
+
+	resp, err := c.makeOAuthRequest("GET", requestURL, nil)
+	if err != nil {
+		logToFile("DISCOGS_API: ERROR - %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var foldersResponse struct {
+		Folders []struct {
+			ID          int    `json:"id"`
+			Name        string `json:"name"`
+			Count       int    `json:"count"`
+			ResourceURL string `json:"resource_url"`
+		} `json:"folders"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&foldersResponse); err != nil {
+		return nil, err
+	}
+
+	folders := make([]map[string]interface{}, 0)
+	for _, f := range foldersResponse.Folders {
+		folders = append(folders, map[string]interface{}{
+			"id":           f.ID,
+			"name":         f.Name,
+			"count":        f.Count,
+			"resource_url": f.ResourceURL,
+		})
+	}
+
+	logToFile("DISCOGS_API: Success! Got %d folders", len(folders))
+	return folders, nil
 }
 
 func (c *Client) SearchAlbums(query string, page int) ([]map[string]interface{}, int, error) {
