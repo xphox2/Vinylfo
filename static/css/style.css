@@ -79,14 +79,17 @@ body {
 .nav-item .dropdown a {
     color: #333;
     padding: 0.6rem 1rem;
+    padding-left: calc(1rem - 4px);
     display: block;
     text-decoration: none;
-    transition: background-color 0.15s;
+    transition: all 0.15s;
     white-space: nowrap;
+    border-left: 4px solid transparent;
 }
 
 .nav-item .dropdown a:hover {
     background-color: #f0f0f0;
+    border-left-color: #333;
 }
 
 .main-nav .nav-links {
@@ -193,12 +196,12 @@ h2 {
     color: #333;
 }
 
-.album-item, .track-item, .session-item {
+.track-item, .session-item {
     padding: 0.5rem;
     border-bottom: 1px solid #eee;
 }
 
-.album-item:hover, .track-item:hover, .session-item:hover {
+.track-item:hover, .session-item:hover {
     background-color: #f9f9f9;
 }
 
@@ -351,7 +354,40 @@ h3 {
 }
 
 .track-detail-content {
+    display: flex;
+    gap: 2rem;
     padding: 1rem;
+}
+
+.track-cover-container {
+    flex-shrink: 0;
+}
+
+.track-cover {
+    width: 300px;
+    height: 300px;
+    object-fit: cover;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    background-color: #f0f0f0;
+}
+
+.track-cover-placeholder {
+    width: 300px;
+    height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f0f0;
+    border-radius: 8px;
+    color: #999;
+    font-size: 1rem;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.track-info {
+    flex: 1;
 }
 
 .track-header {
@@ -444,4 +480,288 @@ h3 {
     color: #666;
     text-align: center;
     padding: 2rem;
+}
+
+.pagination-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.limit-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.limit-selector label {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.limit-selector select {
+    padding: 0.4rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    background-color: white;
+    cursor: pointer;
+}
+
+.limit-selector select:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.page-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.page-btn {
+    padding: 0.4rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+    background-color: #f0f0f0;
+    border-color: #ccc;
+}
+
+.page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#album-page-info, #track-page-info {
+    color: #666;
+    font-size: 0.9rem;
+    min-width: 100px;
+    text-align: center;
+}
+
+.album-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    min-height: 80px;
+}
+
+.album-item:hover {
+    background-color: #f9f9f9;
+}
+
+.album-cover {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-right: 1rem;
+    background-color: #f0f0f0;
+    flex-shrink: 0;
+}
+
+.album-cover-placeholder {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f0f0;
+    border-radius: 4px;
+    margin-right: 1rem;
+    color: #999;
+    font-size: 0.8rem;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.album-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.album-info h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+    color: #333;
+}
+
+.album-info p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.album-detail-content {
+    display: flex;
+    gap: 2rem;
+    padding: 1rem;
+}
+
+.album-detail-cover-container {
+    flex-shrink: 0;
+}
+
+.album-detail-cover {
+    width: 300px;
+    height: 300px;
+    object-fit: cover;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    background-color: #f0f0f0;
+}
+
+.album-detail-cover-placeholder {
+    width: 300px;
+    height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f0f0;
+    border-radius: 8px;
+    color: #999;
+    font-size: 1rem;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.album-detail-info {
+    flex: 1;
+}
+
+.album-detail-info h2 {
+    font-size: 1.75rem;
+    margin: 0 0 1rem 0;
+    color: #333;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.album-detail-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.album-detail-info-item {
+    padding: 0.75rem;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+}
+
+.album-detail-info-item strong {
+    display: block;
+    color: #666;
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+}
+
+.album-detail-info-item span {
+    color: #333;
+    font-size: 1rem;
+}
+
+.album-tracks {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+}
+
+.album-tracks h3 {
+    margin: 0 0 1rem 0;
+    color: #333;
+}
+
+.tracks-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.track-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.track-item:hover {
+    background-color: #f9f9f9;
+}
+
+.track-item .track-number {
+    width: 40px;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.track-item .track-title {
+    flex: 1;
+    color: #333;
+}
+
+.track-item .track-duration {
+    color: #666;
+    font-size: 0.9rem;
+    margin-left: 1rem;
+}
+
+.back-link {
+    display: inline-block;
+    margin-bottom: 1rem;
+    color: #007bff;
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+    .track-detail-content {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .track-cover, .track-cover-placeholder {
+        width: 200px;
+        height: 200px;
+    }
+    
+    .album-cover, .album-cover-placeholder {
+        width: 60px;
+        height: 60px;
+    }
+    
+    .album-cover-placeholder {
+        font-size: 0.7rem;
+    }
+
+    .album-detail-content {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .album-detail-cover, .album-detail-cover-placeholder {
+        width: 200px;
+        height: 200px;
+    }
 }

@@ -2,6 +2,8 @@ package controllers
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -14,6 +16,49 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+func downloadImage(imageURL string) ([]byte, string, error) {
+	if imageURL == "" {
+		return nil, "", nil
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequest("GET", imageURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Vinylfo/1.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to download image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("failed to download image: status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read image data: %w", err)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+
+	if !strings.HasPrefix(contentType, "image/") {
+		return nil, "", fmt.Errorf("invalid content type: %s", contentType)
+	}
+
+	return data, contentType, nil
+}
 
 func logToFile(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
@@ -453,6 +498,23 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 	}
 	if input.CoverImage != "" {
 		album.CoverImageURL = input.CoverImage
+		imageData, imageType, imageErr := downloadImage(input.CoverImage)
+		if imageErr != nil {
+			logToFile("CreateAlbum: failed to download image: %v", imageErr)
+			album.CoverImageFailed = true
+		} else {
+			album.DiscogsCoverImage = imageData
+			album.DiscogsCoverImageType = imageType
+		}
+	} else if album.CoverImageURL != "" {
+		imageData, imageType, imageErr := downloadImage(album.CoverImageURL)
+		if imageErr != nil {
+			logToFile("CreateAlbum: failed to download image from Discogs: %v", imageErr)
+			album.CoverImageFailed = true
+		} else {
+			album.DiscogsCoverImage = imageData
+			album.DiscogsCoverImageType = imageType
+		}
 	}
 
 	result := c.db.Create(&album)
@@ -568,11 +630,13 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 
 	existingProgress := loadSyncProgress(c.db)
 	if existingProgress != nil {
-		logToFile("StartSync: Found existing sync progress, can resume")
+		logToFile("StartSync: Found existing sync progress, can resume or start fresh")
+
 		ctx.JSON(200, gin.H{
 			"message":       "Existing sync in progress",
 			"has_progress":  true,
 			"can_resume":    true,
+			"can_start_new": true,
 			"sync_mode":     existingProgress.SyncMode,
 			"folder_id":     existingProgress.FolderID,
 			"folder_name":   existingProgress.FolderName,
@@ -588,15 +652,24 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 	var input struct {
 		SyncMode string `json:"sync_mode"`
 		FolderID int    `json:"folder_id"`
+		ForceNew bool   `json:"force_new"`
 	}
 
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		input.SyncMode = "all-folders"
 		input.FolderID = 0
+		input.ForceNew = false
 	}
 
 	if input.SyncMode == "" {
 		input.SyncMode = "all-folders"
+	}
+
+	if input.ForceNew && existingProgress != nil {
+		c.db.Delete(&models.SyncProgress{})
+		ResetSyncState()
+		existingProgress = nil
+		logToFile("StartSync: Cleared existing progress, starting fresh")
 	}
 
 	var config models.AppConfig
@@ -953,14 +1026,23 @@ func processSyncBatches(db *gorm.DB, client *discogs.Client, username string, ba
 				var tx *gorm.DB
 				var createErr error
 
+				imageData, imageType, imageErr := downloadImage(coverImage)
+				imageFailed := imageErr != nil
+				if imageErr != nil {
+					logToFile("processSyncBatches: failed to download image for %s - %s: %v", artist, title, imageErr)
+				}
+
 				for attempt := 0; attempt <= maxRetries; attempt++ {
 					newAlbum = models.Album{
-						Title:           title,
-						Artist:          artist,
-						ReleaseYear:     year,
-						CoverImageURL:   coverImage,
-						DiscogsID:       discogsID,
-						DiscogsFolderID: albumFolderID,
+						Title:                 title,
+						Artist:                artist,
+						ReleaseYear:           year,
+						CoverImageURL:         coverImage,
+						DiscogsCoverImage:     imageData,
+						DiscogsCoverImageType: imageType,
+						CoverImageFailed:      imageFailed,
+						DiscogsID:             discogsID,
+						DiscogsFolderID:       albumFolderID,
 					}
 					tx = db.Begin()
 					if tx.Error != nil {
@@ -1105,6 +1187,49 @@ func fetchTracksForAlbum(db *gorm.DB, client *discogs.Client, albumID uint, disc
 			ErrorMsg:   errMsg,
 		})
 		return false, errMsg
+	}
+
+	logToFile("fetchTracksForAlbum: Fetching full album metadata for discogs ID %d", discogsID)
+	fullAlbumData, err := client.GetAlbum(discogsID)
+	if err == nil {
+		updates := make(map[string]interface{})
+
+		if v, ok := fullAlbumData["genre"].(string); ok && v != "" {
+			updates["genre"] = v
+		}
+		if v, ok := fullAlbumData["style"].(string); ok && v != "" {
+			updates["style"] = v
+		}
+		if v, ok := fullAlbumData["label"].(string); ok && v != "" {
+			updates["label"] = v
+		}
+		if v, ok := fullAlbumData["country"].(string); ok && v != "" {
+			updates["country"] = v
+		}
+		if v, ok := fullAlbumData["cover_image"].(string); ok && v != "" {
+			updates["cover_image_url"] = v
+
+			imageData, imageType, imageErr := downloadImage(v)
+			if imageErr != nil {
+				logToFile("fetchTracksForAlbum: failed to download image for album %s - %s: %v", albumTitle, artist, imageErr)
+				updates["cover_image_failed"] = true
+			} else if len(imageData) > 0 {
+				updates["discogs_cover_image"] = imageData
+				updates["discogs_cover_image_type"] = imageType
+				updates["cover_image_failed"] = false
+			}
+		}
+
+		if len(updates) > 0 {
+			if err := db.Model(&models.Album{}).Where("id = ?", albumID).Updates(updates).Error; err != nil {
+				logToFile("fetchTracksForAlbum: Failed to update album metadata: %v", err)
+			} else {
+				logToFile("fetchTracksForAlbum: Updated album metadata: genre=%v, style=%v, label=%v, country=%v, cover_image=%v",
+					updates["genre"], updates["style"], updates["label"], updates["country"], updates["cover_image_url"])
+			}
+		}
+	} else {
+		logToFile("fetchTracksForAlbum: Failed to fetch full album metadata: %v", err)
 	}
 
 	for _, track := range tracks {

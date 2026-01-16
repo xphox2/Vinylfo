@@ -11,11 +11,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const sections = document.querySelectorAll('section');
     sections.forEach(section => {
         section.addEventListener('show', function() {
-            if (this.id === 'albums') {
-                loadAlbums();
-            } else if (this.id === 'tracks') {
-                loadTracks();
-            } else if (this.id === 'sessions') {
+            if (this.id === 'sessions') {
                 loadSessions();
             } else if (this.id === 'playback') {
                 loadPlaybackStatus();
@@ -37,80 +33,12 @@ function showSection(sectionId) {
     if (section) {
         section.style.display = 'block';
         // Trigger data load if needed
-        if (sectionId === 'albums') {
-            loadAlbums();
-        } else if (sectionId === 'tracks') {
-            loadTracks();
-        } else if (sectionId === 'sessions') {
+        if (sectionId === 'sessions') {
             loadSessions();
         } else if (sectionId === 'playback') {
             loadPlaybackStatus();
         }
     }
-}
-
-// Load albums data
-function loadAlbums() {
-    const albumList = document.getElementById('album-list');
-    albumList.innerHTML = '<div class="loading">Loading albums...</div>';
-    
-    fetch('/albums')
-        .then(response => response.json())
-        .then(data => {
-            if (data && data.length > 0) {
-                let html = '<div class="album-list">';
-                data.forEach(album => {
-                    html += `
-                        <div class="album-item">
-                            <h4>${album.title} - ${album.artist}</h4>
-                            <p>Year: ${album.year}</p>
-                            <p>Created: ${new Date(album.created_at).toLocaleString()}</p>
-                        </div>
-                    `;
-                });
-                html += '</div>';
-                albumList.innerHTML = html;
-            } else {
-                albumList.innerHTML = '<p>No albums found.</p>';
-            }
-        })
-        .catch(error => {
-            console.error('Error loading albums:', error);
-            albumList.innerHTML = '<p>Error loading albums. Please try again.</p>';
-        });
-}
-
-// Load tracks data
-function loadTracks() {
-    const trackList = document.getElementById('track-list');
-    trackList.innerHTML = '<div class="loading">Loading tracks...</div>';
-    
-    fetch('/tracks')
-        .then(response => response.json())
-        .then(data => {
-            if (data && data.length > 0) {
-                let html = '<div class="track-list">';
-                data.forEach(track => {
-                    html += `
-                        <div class="track-item">
-                            <h4>${track.title}</h4>
-                            <p>Album ID: ${track.album_title}</p>
-                            <p>Position: ${track.position}</p>
-                            <p>Duration: ${formatDuration(track.duration)}</p>
-                            <p>Created: ${new Date(track.created_at).toLocaleString()}</p>
-                        </div>
-                    `;
-                });
-                html += '</div>';
-                trackList.innerHTML = html;
-            } else {
-                trackList.innerHTML = '<p>No tracks found.</p>';
-            }
-        })
-        .catch(error => {
-            console.error('Error loading tracks:', error);
-            trackList.innerHTML = '<p>Error loading tracks. Please try again.</p>';
-        });
 }
 
 // Load sessions data

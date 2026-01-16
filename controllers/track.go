@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"strconv"
 	"strings"
 
 	"vinylfo/models"
@@ -36,16 +37,48 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 		UpdatedAt    string `json:"updated_at"`
 	}
 
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "25"))
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 25
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset := (page - 1) * limit
+
 	var tracks []TrackResult
+	var total int64
+
+	c.db.Model(&models.Track{}).Count(&total)
+
 	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
 		Joins("left join albums on tracks.album_id = albums.id").
+		Offset(offset).Limit(limit).
 		Find(&tracks)
 
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch tracks"})
 		return
 	}
-	ctx.JSON(200, tracks)
+
+	totalPages := int(total) / limit
+	if int(total)%limit > 0 {
+		totalPages++
+	}
+
+	ctx.JSON(200, gin.H{
+		"data":       tracks,
+		"page":       page,
+		"limit":      limit,
+		"total":      total,
+		"totalPages": totalPages,
+	})
 }
 
 func (c *TrackController) SearchTracks(ctx *gin.Context) {
@@ -73,17 +106,53 @@ func (c *TrackController) SearchTracks(ctx *gin.Context) {
 		UpdatedAt    string `json:"updated_at"`
 	}
 
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "25"))
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 25
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset := (page - 1) * limit
+
 	var tracks []TrackResult
+	var total int64
 	searchTerm := "%" + strings.ToLower(query) + "%"
+
+	c.db.Model(&models.Track{}).
+		Joins("left join albums on tracks.album_id = albums.id").
+		Where("LOWER(tracks.title) LIKE ? OR LOWER(albums.title) LIKE ? OR LOWER(albums.artist) LIKE ?", searchTerm, searchTerm, searchTerm).
+		Count(&total)
+
 	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
 		Joins("left join albums on tracks.album_id = albums.id").
 		Where("LOWER(tracks.title) LIKE ? OR LOWER(albums.title) LIKE ? OR LOWER(albums.artist) LIKE ?", searchTerm, searchTerm, searchTerm).
+		Offset(offset).Limit(limit).
 		Find(&tracks)
+
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to search tracks"})
 		return
 	}
-	ctx.JSON(200, tracks)
+
+	totalPages := int(total) / limit
+	if int(total)%limit > 0 {
+		totalPages++
+	}
+
+	ctx.JSON(200, gin.H{
+		"data":       tracks,
+		"page":       page,
+		"limit":      limit,
+		"total":      total,
+		"totalPages": totalPages,
+	})
 }
 
 func (c *TrackController) GetTrackByID(ctx *gin.Context) {

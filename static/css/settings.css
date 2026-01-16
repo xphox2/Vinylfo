@@ -132,6 +132,36 @@
     max-width: 400px;
 }
 
+.demo-seed {
+    border: 2px solid #ffc107;
+    background-color: #fff9e6;
+}
+
+.demo-seed h2 {
+    color: #856404;
+    border-bottom-color: #ffc107;
+}
+
+.demo-seed-content {
+    padding: 1rem;
+}
+
+.demo-seed-content h3 {
+    margin-top: 0;
+    color: #333;
+}
+
+.demo-seed-content p {
+    color: #666;
+    margin-bottom: 0.5rem;
+}
+
+.demo-seed-content .warning {
+    color: #856404;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
 .danger-zone {
     border: 2px solid #dc3545;
     background-color: #fff5f5;

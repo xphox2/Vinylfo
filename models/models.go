@@ -6,20 +6,23 @@ import (
 
 // Album represents a music album
 type Album struct {
-	ID              uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Title           string    `gorm:"not null;uniqueIndex" json:"title"`
-	Artist          string    `gorm:"not null" json:"artist"`
-	ReleaseYear     int       `json:"release_year"`
-	Genre           string    `json:"genre"`
-	Label           string    `json:"label"`
-	Country         string    `json:"country"`
-	ReleaseDate     string    `json:"release_date"`
-	Style           string    `json:"style"`
-	DiscogsID       int       `json:"discogs_id"`
-	DiscogsFolderID int       `json:"discogs_folder_id"` // Folder ID from Discogs collection
-	CoverImageURL   string    `json:"cover_image_url"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                    uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Title                 string    `gorm:"not null;uniqueIndex" json:"title"`
+	Artist                string    `gorm:"not null" json:"artist"`
+	ReleaseYear           int       `json:"release_year"`
+	Genre                 string    `json:"genre"`
+	Label                 string    `json:"label"`
+	Country               string    `json:"country"`
+	ReleaseDate           string    `json:"release_date"`
+	Style                 string    `json:"style"`
+	DiscogsID             int       `json:"discogs_id"`
+	DiscogsFolderID       int       `json:"discogs_folder_id"` // Folder ID from Discogs collection
+	CoverImageURL         string    `json:"cover_image_url"`
+	DiscogsCoverImage     []byte    `gorm:"type:longblob" json:"-"`
+	DiscogsCoverImageType string    `json:"discogs_cover_image_type"`
+	CoverImageFailed      bool      `json:"cover_image_failed"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 // Track represents a track on an album

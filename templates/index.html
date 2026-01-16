@@ -18,6 +18,21 @@
                 <button type="button" class="search-clear" title="Clear search">&times;</button>
             </div>
         </div>
+        <div class="pagination-controls">
+            <div class="limit-selector">
+                <label for="album-limit">Show:</label>
+                <select id="album-limit">
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div class="page-controls">
+                <button type="button" id="album-prev" class="page-btn" disabled>&larr; Prev</button>
+                <span id="album-page-info">Page 1 of 1</span>
+                <button type="button" id="album-next" class="page-btn" disabled>Next &rarr;</button>
+            </div>
+        </div>
         <div id="albums-list"></div>
     </div>
     <div id="tracks-view" class="view" style="display: none;">
@@ -26,6 +41,21 @@
             <div class="search-wrapper">
                 <input type="text" id="track-search" class="local-search" placeholder="Search tracks...">
                 <button type="button" class="search-clear" title="Clear search">&times;</button>
+            </div>
+        </div>
+        <div class="pagination-controls">
+            <div class="limit-selector">
+                <label for="track-limit">Show:</label>
+                <select id="track-limit">
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div class="page-controls">
+                <button type="button" id="track-prev" class="page-btn" disabled>&larr; Prev</button>
+                <span id="track-page-info">Page 1 of 1</span>
+                <button type="button" id="track-next" class="page-btn" disabled>Next &rarr;</button>
             </div>
         </div>
         <div id="tracks-list"></div>

@@ -6,6 +6,17 @@ document.addEventListener('DOMContentLoaded', function() {
     playbackManager.init();
 });
 
+function cleanAlbumTitle(albumTitle, trackTitle) {
+    if (!albumTitle) return 'Unknown Album';
+    
+    if (albumTitle.includes(' / ') && albumTitle.includes(trackTitle)) {
+        const parts = albumTitle.split(' / ');
+        return parts[parts.length - 1].trim();
+    }
+    
+    return albumTitle;
+}
+
 class TabSyncManager {
     constructor() {
         this.channel = new BroadcastChannel('vinylfo_playback_channel');
@@ -164,8 +175,8 @@ class PlaybackManager {
                 this.queueIndex = data.queue_index || 0;
                 
                 document.getElementById('track-title').textContent = data.track.title || 'Unknown Track';
-                document.getElementById('track-artist').textContent = data.track.album_title || 'Unknown Album';
-                document.getElementById('track-album').textContent = 'Album: ' + (data.track.album_title || 'Unknown');
+                document.getElementById('track-artist').textContent = data.track.album_artist || 'Unknown Artist';
+                document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(data.track.album_title, data.track.title);
                 document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(data.track.duration || 0);
                 document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(this.currentPosition);
                 document.getElementById('progress-bar').style.width = '0%';
@@ -223,8 +234,8 @@ class PlaybackManager {
                 this.currentTrack = data.track;
                 
                 document.getElementById('track-title').textContent = data.track.title || 'Unknown Track';
-                document.getElementById('track-artist').textContent = data.track.album_title || 'Unknown Album';
-                document.getElementById('track-album').textContent = 'Album: ' + (data.track.album_title || 'Unknown');
+                document.getElementById('track-artist').textContent = data.track.album_artist || 'Unknown Artist';
+                document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(data.track.album_title, data.track.title);
                 document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(data.track.duration || 0);
             } else {
                 console.log('[Sync] No track change needed');
@@ -382,8 +393,8 @@ class PlaybackManager {
             console.log('[PlaybackManager] applyRemoteSkip - updating UI with track:', trackToPlay.title);
             
             document.getElementById('track-title').textContent = trackToPlay.title || 'Unknown Track';
-            document.getElementById('track-artist').textContent = trackToPlay.album_title || 'Unknown Album';
-            document.getElementById('track-album').textContent = 'Album: ' + (trackToPlay.album_title || 'Unknown');
+            document.getElementById('track-artist').textContent = trackToPlay.album_artist || 'Unknown Artist';
+            document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(trackToPlay.album_title, trackToPlay.title);
             document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(trackToPlay.duration || 0);
             document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
             document.getElementById('progress-bar').style.width = '0%';
@@ -589,8 +600,8 @@ class PlaybackManager {
                     console.log('[PlaybackManager] previous() - FINAL this.currentTrack:', this.currentTrack.title);
                     
                     document.getElementById('track-title').textContent = prevTrack.title || 'Unknown Track';
-                    document.getElementById('track-artist').textContent = prevTrack.album_title || 'Unknown Album';
-                    document.getElementById('track-album').textContent = 'Album: ' + (prevTrack.album_title || 'Unknown');
+                    document.getElementById('track-artist').textContent = prevTrack.album_artist || 'Unknown Artist';
+                    document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(prevTrack.album_title, prevTrack.title);
                     document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(prevTrack.duration || 0);
                     document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
                     document.getElementById('progress-bar').style.width = '0%';
@@ -647,8 +658,8 @@ class PlaybackManager {
                     console.log('[PlaybackManager] next() - FINAL this.currentTrack:', this.currentTrack.title);
                     
                     document.getElementById('track-title').textContent = nextTrack.title || 'Unknown Track';
-                    document.getElementById('track-artist').textContent = nextTrack.album_title || 'Unknown Album';
-                    document.getElementById('track-album').textContent = 'Album: ' + (nextTrack.album_title || 'Unknown');
+                    document.getElementById('track-artist').textContent = nextTrack.album_artist || 'Unknown Artist';
+                    document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(nextTrack.album_title, nextTrack.title);
                     document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(nextTrack.duration || 0);
                     document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
                     document.getElementById('progress-bar').style.width = '0%';
@@ -752,7 +763,7 @@ class PlaybackManager {
             item.innerHTML = `
                 <span class="queue-number">${index + 1}.</span>
                 <span class="queue-title">${this.escapeHtml(track.title || 'Unknown')}</span>
-                <span class="queue-album">${this.escapeHtml(track.album_title || 'Unknown Album')}</span>
+                <span class="queue-album">${this.escapeHtml(cleanAlbumTitle(track.album_title, track.title) || 'Unknown Album')}</span>
             `;
             item.addEventListener('click', () => {
                 this.playQueueItem(index);
@@ -786,8 +797,8 @@ class PlaybackManager {
         });
 
         document.getElementById('track-title').textContent = track.title || 'Unknown Track';
-        document.getElementById('track-artist').textContent = track.album_title || 'Unknown Album';
-        document.getElementById('track-album').textContent = 'Album: ' + (track.album_title || 'Unknown');
+        document.getElementById('track-artist').textContent = track.album_artist || 'Unknown Artist';
+        document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(track.album_title, track.title);
         document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(track.duration || 0);
         document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(this.currentPosition);
         document.getElementById('progress-bar').style.width = '0%';
@@ -829,8 +840,8 @@ class PlaybackManager {
                     this.currentTrack = nextTrack;
                     
                     document.getElementById('track-title').textContent = nextTrack.title || 'Unknown Track';
-                    document.getElementById('track-artist').textContent = nextTrack.album_title || 'Unknown Album';
-                    document.getElementById('track-album').textContent = 'Album: ' + (nextTrack.album_title || 'Unknown');
+                    document.getElementById('track-artist').textContent = nextTrack.album_artist || 'Unknown Artist';
+                    document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(nextTrack.album_title, nextTrack.title);
                     document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(nextTrack.duration || 0);
                     document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
                     document.getElementById('progress-bar').style.width = '0%';
@@ -853,8 +864,8 @@ class PlaybackManager {
                         this.currentPosition = 0;
                         
                         document.getElementById('track-title').textContent = newTrack.title || 'Unknown Track';
-                        document.getElementById('track-artist').textContent = newTrack.album_title || 'Unknown Album';
-                        document.getElementById('track-album').textContent = 'Album: ' + (newTrack.album_title || 'Unknown');
+                        document.getElementById('track-artist').textContent = newTrack.album_artist || 'Unknown Artist';
+                        document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(newTrack.album_title, newTrack.title);
                         document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(newTrack.duration || 0);
                         document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
                         document.getElementById('progress-bar').style.width = '0%';

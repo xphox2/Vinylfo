@@ -19,105 +19,18 @@
         console.log('Saved playlist ID:', id);
     }
     
-    function clearPlaylistId() {
-        localStorage.removeItem('vinylfo_currentPlaylistId');
-        window.currentPlaylistId = null;
-        console.log('Cleared playlist ID');
+    function cleanAlbumTitle(albumTitle, trackTitle) {
+        if (!albumTitle) return 'Unknown Album';
+        
+        if (albumTitle.includes(' / ') && albumTitle.includes(trackTitle)) {
+            const parts = albumTitle.split(' / ');
+            return parts[parts.length - 1].trim();
+        }
+        
+        return albumTitle;
     }
     
-    // Make these functions globally accessible
-    window.savePlaylistId = savePlaylistId;
-    window.clearPlaylistId = clearPlaylistId;
-    window.getCurrentPlaylistId = function() { return window.currentPlaylistId; };
-    
-    // Navigation handling - prevent hash links from appending to current URL
-    document.querySelectorAll('nav a').forEach(link => {
-        link.addEventListener('click', function(e) {
-            const href = this.getAttribute('href');
-            if (href && href.startsWith('#')) {
-                e.preventDefault();
-                window.location.replace('/' + href);
-            }
-        });
-    });
-    
-    loadPlaylists();
-    loadAllTracks();
-    
-    // Auto-restore playlist detail view if we have a saved playlist ID
-    // DISABLED: Let user pick which playlist to load
-    // if (window.currentPlaylistId) {
-    //     console.log('Auto-restoring playlist detail view for:', window.currentPlaylistId);
-    //     setTimeout(() => {
-    //         showPlaylistDetail(window.currentPlaylistId);
-    //     }, 200);
-    // }
-    
-    document.getElementById('create-playlist-btn').addEventListener('click', function() {
-        document.getElementById('create-playlist-modal').style.display = 'flex';
-        document.getElementById('new-playlist-name').focus();
-    });
-    
-    document.querySelector('.close-modal').addEventListener('click', function() {
-        document.getElementById('create-playlist-modal').style.display = 'none';
-        document.getElementById('new-playlist-name').value = '';
-    });
-    
-    document.getElementById('create-playlist-modal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            this.style.display = 'none';
-            document.getElementById('new-playlist-name').value = '';
-        }
-    });
-    
-    document.getElementById('save-playlist-btn').addEventListener('click', function() {
-        const name = document.getElementById('new-playlist-name').value.trim();
-        if (name) {
-            createPlaylist(name);
-        }
-    });
-    
-    document.getElementById('new-playlist-name').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            const name = this.value.trim();
-            if (name) {
-                createPlaylist(name);
-            }
-        }
-    });
-    
-    document.getElementById('back-to-playlists').addEventListener('click', function() {
-        showPlaylistsList();
-    });
-    
-    document.getElementById('back-to-playlist').addEventListener('click', function() {
-        document.getElementById('add-tracks-view').style.display = 'none';
-        document.getElementById('playlist-detail-view').style.display = 'block';
-    });
-    
-    document.getElementById('add-tracks-btn').addEventListener('click', function() {
-        document.getElementById('playlist-detail-view').style.display = 'none';
-        document.getElementById('add-tracks-view').style.display = 'block';
-        renderAvailableTracks();
-    });
-    
-    document.getElementById('play-playlist-btn').onclick = function() {
-        console.log('Play button clicked, currentPlaylistId:', window.currentPlaylistId);
-        if (!window.currentPlaylistId) {
-            alert('Please select a playlist first by clicking on it.');
-            return;
-        }
-        playPlaylist(window.currentPlaylistId);
-    };
-
-    document.getElementById('delete-playlist-btn').addEventListener('click', function() {
-        if (window.currentPlaylistId && confirm('Are you sure you want to delete this playlist?')) {
-            deletePlaylist(window.currentPlaylistId);
-        }
-    });
-})();
-
-function loadPlaylists() {
+    function loadPlaylists() {
     fetch('/sessions/playlist')
         .then(response => {
             if (!response.ok) {
@@ -228,11 +141,13 @@ function createTrackListItem(track, index, sessionId) {
     item.dataset.trackId = track.id;
     item.dataset.index = index;
 
+    let displayAlbumTitle = cleanAlbumTitle(track.album_title, track.title);
+    
     item.innerHTML = `
         <span class="drag-handle">☰</span>
         <div class="track-info">
             <div class="track-title">${escapeHtml(track.title || 'Unknown Track')}</div>
-            <div class="track-artist">${escapeHtml(track.album_title || 'Unknown Album')}</div>
+            <div class="track-artist">${escapeHtml(displayAlbumTitle)}</div>
         </div>
         <span class="track-duration">${formatDuration(track.duration)}</span>
         <button class="remove-btn" data-track-id="${track.id}">Remove</button>
@@ -378,10 +293,13 @@ function renderAvailableTracks() {
             availableTracks.forEach(track => {
                 const item = document.createElement('div');
                 item.className = 'available-track-item';
+                
+                let displayAlbumTitle = cleanAlbumTitle(track.album_title, track.title);
+                
                 item.innerHTML = `
                     <div class="track-info">
                         <div class="track-title">${escapeHtml(track.title)}</div>
-                        <div class="track-artist">${escapeHtml(track.album_title || 'Unknown Album')}</div>
+                        <div class="track-artist">${escapeHtml(displayAlbumTitle)}</div>
                     </div>
                     <button class="add-btn" data-track-id="${track.id}">Add</button>
                 `;

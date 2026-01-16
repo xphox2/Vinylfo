@@ -31,6 +31,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/albums", albumController.GetAlbums)
 	r.GET("/albums/search", albumController.SearchAlbums)
 	r.GET("/albums/:id", albumController.GetAlbumByID)
+	r.GET("/albums/:id/image", albumController.GetAlbumImage)
 	r.GET("/albums/:id/tracks", albumController.GetTracksByAlbumID)
 	r.POST("/albums", albumController.CreateAlbum)
 	r.PUT("/albums/:id", albumController.UpdateAlbum)

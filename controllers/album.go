@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"strconv"
 	"strings"
 
 	"vinylfo/models"
@@ -18,13 +19,44 @@ func NewAlbumController(db *gorm.DB) *AlbumController {
 }
 
 func (c *AlbumController) GetAlbums(ctx *gin.Context) {
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "25"))
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 25
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset := (page - 1) * limit
+
 	var albums []models.Album
-	result := c.db.Find(&albums)
+	var total int64
+
+	c.db.Model(&models.Album{}).Count(&total)
+
+	result := c.db.Offset(offset).Limit(limit).Find(&albums)
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch albums"})
 		return
 	}
-	ctx.JSON(200, albums)
+
+	totalPages := int(total) / limit
+	if int(total)%limit > 0 {
+		totalPages++
+	}
+
+	ctx.JSON(200, gin.H{
+		"data":       albums,
+		"page":       page,
+		"limit":      limit,
+		"total":      total,
+		"totalPages": totalPages,
+	})
 }
 
 func (c *AlbumController) SearchAlbums(ctx *gin.Context) {
@@ -34,14 +66,45 @@ func (c *AlbumController) SearchAlbums(ctx *gin.Context) {
 		return
 	}
 
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "25"))
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 25
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset := (page - 1) * limit
+
 	var albums []models.Album
+	var total int64
 	searchTerm := "%" + strings.ToLower(query) + "%"
-	result := c.db.Where("LOWER(title) LIKE ? OR LOWER(artist) LIKE ?", searchTerm, searchTerm).Find(&albums)
+
+	c.db.Model(&models.Album{}).Where("LOWER(title) LIKE ? OR LOWER(artist) LIKE ?", searchTerm, searchTerm).Count(&total)
+
+	result := c.db.Where("LOWER(title) LIKE ? OR LOWER(artist) LIKE ?", searchTerm, searchTerm).Offset(offset).Limit(limit).Find(&albums)
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to search albums"})
 		return
 	}
-	ctx.JSON(200, albums)
+
+	totalPages := int(total) / limit
+	if int(total)%limit > 0 {
+		totalPages++
+	}
+
+	ctx.JSON(200, gin.H{
+		"data":       albums,
+		"page":       page,
+		"limit":      limit,
+		"total":      total,
+		"totalPages": totalPages,
+	})
 }
 
 func (c *AlbumController) GetAlbumByID(ctx *gin.Context) {
@@ -53,6 +116,28 @@ func (c *AlbumController) GetAlbumByID(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(200, album)
+}
+
+func (c *AlbumController) GetAlbumImage(ctx *gin.Context) {
+	id := ctx.Param("id")
+	var album models.Album
+	result := c.db.First(&album, id)
+	if result.Error != nil {
+		ctx.JSON(404, gin.H{"error": "Album not found"})
+		return
+	}
+
+	if len(album.DiscogsCoverImage) == 0 {
+		ctx.JSON(404, gin.H{"error": "No image found for this album"})
+		return
+	}
+
+	contentType := album.DiscogsCoverImageType
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+
+	ctx.Data(200, contentType, album.DiscogsCoverImage)
 }
 
 func (c *AlbumController) GetTracksByAlbumID(ctx *gin.Context) {

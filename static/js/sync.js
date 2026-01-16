@@ -152,7 +152,7 @@ class SyncManager {
         document.getElementById('sync-complete').classList.add('hidden');
     }
 
-    async startSync() {
+    async startSync(forceNew = false) {
         const syncMode = document.querySelector('input[name="sync_mode"]:checked').value;
         let folderId = 0;
 
@@ -175,17 +175,29 @@ class SyncManager {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     sync_mode: syncMode,
-                    folder_id: folderId
+                    folder_id: folderId,
+                    force_new: forceNew
                 })
             });
 
             if (response.ok) {
                 const data = await response.json();
                 if (data.has_progress) {
-                    this.isRunning = true;
-                    this.isPaused = false;
-                    this.showSyncRunning();
-                    this.pollProgress();
+                    if (data.total_albums === 0 && data.processed === 0) {
+                        if (confirm('There is sync progress saved, but no albums have been synced yet. Would you like to start a fresh sync?')) {
+                            await this.startSync(syncMode, folderId, true);
+                        } else {
+                            this.isRunning = true;
+                            this.isPaused = false;
+                            this.showSyncRunning();
+                            this.pollProgress();
+                        }
+                    } else {
+                        this.isRunning = true;
+                        this.isPaused = false;
+                        this.showSyncRunning();
+                        this.pollProgress();
+                    }
                 } else {
                     this.isRunning = true;
                     this.isPaused = false;

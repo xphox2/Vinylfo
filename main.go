@@ -54,6 +54,7 @@ func main() {
 		"templates/playback-dashboard.html",
 		"templates/playlist.html",
 		"templates/track-detail.html",
+		"templates/album-detail.html",
 	))
 	r.SetHTMLTemplate(tmpl)
 
@@ -71,6 +72,10 @@ func main() {
 
 	r.GET("/track/:id", func(c *gin.Context) {
 		c.HTML(200, "track-detail-page", nil)
+	})
+
+	r.GET("/album/:id", func(c *gin.Context) {
+		c.HTML(200, "album-detail-page", nil)
 	})
 
 	r.GET("/settings", func(c *gin.Context) {
