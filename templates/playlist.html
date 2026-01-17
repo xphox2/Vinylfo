@@ -30,6 +30,27 @@
     <div id="add-tracks-view" class="view" style="display: none;">
         <button id="back-to-playlist">Back to Playlist</button>
         <h3>Add Tracks to Playlist</h3>
+        <div class="view-header">
+            <div class="search-wrapper">
+                <input type="text" id="available-track-search" class="local-search" placeholder="Search tracks...">
+                <button type="button" class="search-clear" title="Clear search">&times;</button>
+            </div>
+        </div>
+        <div class="pagination-controls">
+            <div class="limit-selector">
+                <label for="available-track-limit">Show:</label>
+                <select id="available-track-limit">
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div class="page-controls">
+                <button type="button" id="available-track-prev" class="page-btn" disabled>&larr; Prev</button>
+                <span id="available-track-page-info">Page 1 of 1</span>
+                <button type="button" id="available-track-next" class="page-btn" disabled>Next &rarr;</button>
+            </div>
+        </div>
         <div id="available-tracks"><p>Loading tracks...</p></div>
     </div>
 </main>

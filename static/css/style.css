@@ -201,6 +201,81 @@ h2 {
     border-bottom: 1px solid #eee;
 }
 
+.track-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    min-height: 60px;
+}
+
+.track-item:hover {
+    background-color: #f9f9f9;
+}
+
+.track-cover-small {
+    width: 50px;
+    height: 50px;
+    margin-right: 1rem;
+    flex-shrink: 0;
+}
+
+.track-cover-small img.track-cover-img {
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 4px;
+    background-color: #f0f0f0;
+}
+
+.track-cover-placeholder-small {
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f0f0;
+    border-radius: 4px;
+    color: #999;
+    font-size: 1.25rem;
+}
+
+.track-item .track-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.track-item .track-info h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+    color: #333;
+}
+
+.track-item .track-info p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.track-item .track-meta {
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.track-item .track-album-title {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #999;
+}
+
+.track-item .track-duration {
+    margin: 0.25rem 0 0 0;
+    font-size: 0.85rem;
+    color: #666;
+}
+
 .track-item:hover, .session-item:hover {
     background-color: #f9f9f9;
 }

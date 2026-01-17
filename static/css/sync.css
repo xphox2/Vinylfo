@@ -215,7 +215,9 @@
 
 .radio-option {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
     padding: 0.75rem 1rem;
     border: 2px solid #e9ecef;
     border-radius: 5px;
@@ -228,16 +230,21 @@
 }
 
 .radio-option input[type="radio"] {
-    margin-bottom: 0.25rem;
+    flex-shrink: 0;
 }
 
-.radio-option input[type="radio"]:checked + .radio-label {
+.radio-option input[type="radio"]:checked + .radio-content .radio-label {
     color: #28a745;
 }
 
 .radio-option:has(input:checked) {
     border-color: #28a745;
     background-color: #f8fff8;
+}
+
+.radio-content {
+    display: flex;
+    flex-direction: column;
 }
 
 .radio-label {
@@ -249,7 +256,7 @@
 .radio-description {
     color: #666;
     font-size: 0.85rem;
-    margin-top: 0.25rem;
+    margin-top: 0.15rem;
 }
 
 .folder-selector {
@@ -354,4 +361,158 @@
     padding: 0.5rem 1rem;
     border-radius: 5px;
     margin-bottom: 0.75rem;
+}
+
+.sync-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 0.75rem;
+}
+
+.sync-actions .btn {
+    min-width: 140px;
+}
+
+.sync-hint {
+    font-size: 0.8rem;
+    color: #666;
+    font-style: italic;
+    margin-top: 0.5rem;
+}
+
+/* Modal styles */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background-color: white;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #333;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.modal-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #e9ecef;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.cleanup-loading {
+    text-align: center;
+    padding: 2rem;
+}
+
+.cleanup-loading .hint {
+    color: #666;
+    font-size: 0.85rem;
+}
+
+.cleanup-empty {
+    text-align: center;
+    padding: 2rem;
+    color: #28a745;
+}
+
+.unlinked-albums-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: 5px;
+    margin-top: 1rem;
+}
+
+.unlinked-album-item {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.unlinked-album-item:last-child {
+    border-bottom: none;
+}
+
+.album-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    cursor: pointer;
+}
+
+.album-checkbox input[type="checkbox"] {
+    margin-top: 0.25rem;
+}
+
+.album-checkbox .album-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.album-checkbox .album-title {
+    font-weight: 600;
+    color: #333;
+}
+
+.album-checkbox .album-artist {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.album-checkbox .album-year {
+    color: #999;
+    font-size: 0.8rem;
 }

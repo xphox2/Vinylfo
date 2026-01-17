@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"strconv"
+	"time"
 
 	"vinylfo/models"
 
@@ -169,12 +170,30 @@ func (c *PlaylistController) GetSessionPlaylistTracks(ctx *gin.Context) {
 }
 
 func (c *PlaylistController) GetAllPlaylists(ctx *gin.Context) {
-	var playlists []models.SessionPlaylist
-	result := c.db.Model(&models.SessionPlaylist{}).Group("session_id").Find(&playlists)
+	type PlaylistResult struct {
+		SessionID string    `json:"session_id"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+
+	var results []PlaylistResult
+	result := c.db.Model(&models.SessionPlaylist{}).
+		Select("session_id, MIN(created_at) as created_at").
+		Group("session_id").
+		Order("created_at ASC").
+		Find(&results)
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch playlists"})
 		return
 	}
+
+	var playlists []models.SessionPlaylist
+	for _, r := range results {
+		playlists = append(playlists, models.SessionPlaylist{
+			SessionID: r.SessionID,
+			CreatedAt: r.CreatedAt,
+		})
+	}
+
 	ctx.JSON(200, playlists)
 }
 

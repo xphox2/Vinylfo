@@ -6,6 +6,15 @@
     let playlists = [];
     let tracks = [];
     
+    // Available tracks pagination state
+    let availableTrackPagination = {
+        page: 1,
+        limit: 25,
+        query: '',
+        totalPages: 1,
+        total: 0
+    };
+    
     // Load saved playlist ID from localStorage
     const savedId = localStorage.getItem('vinylfo_currentPlaylistId');
     if (savedId) {
@@ -248,15 +257,27 @@ function showPlaylistsList() {
 }
 
 function loadAllTracks() {
-    fetch('/tracks')
+    console.log('Loading all tracks...');
+    let url;
+    if (availableTrackPagination.query) {
+        url = `/tracks/search?q=${encodeURIComponent(availableTrackPagination.query)}&page=${availableTrackPagination.page}&limit=${availableTrackPagination.limit}`;
+    } else {
+        url = `/tracks?page=${availableTrackPagination.page}&limit=${availableTrackPagination.limit}`;
+    }
+    return fetch(url)
         .then(response => {
             if (!response.ok) {
-                throw new Error('Failed to load tracks');
+                throw new Error('Failed to load tracks, status: ' + response.status);
             }
             return response.json();
         })
         .then(data => {
-            tracks = data || [];
+            console.log('Tracks response:', data);
+            tracks = data.data || [];
+            availableTrackPagination.totalPages = data.totalPages || 1;
+            availableTrackPagination.total = data.total || 0;
+            console.log('Loaded tracks count:', tracks.length);
+            updateAvailableTrackPaginationControls();
         })
         .catch(error => {
             console.error('Error loading tracks:', error);
@@ -264,11 +285,18 @@ function loadAllTracks() {
         });
 }
 
+function updateAvailableTrackPaginationControls() {
+    document.getElementById('available-track-prev').disabled = availableTrackPagination.page <= 1;
+    document.getElementById('available-track-next').disabled = availableTrackPagination.page >= availableTrackPagination.totalPages;
+    document.getElementById('available-track-page-info').textContent = `Page ${availableTrackPagination.page} of ${availableTrackPagination.totalPages}`;
+}
+
 function renderAvailableTracks() {
+    console.log('Rendering available tracks, total loaded:', tracks.length);
     const container = document.getElementById('available-tracks');
     
     if (tracks.length === 0) {
-        container.innerHTML = '<p class="empty-message">No tracks available.</p>';
+        container.innerHTML = '<p class="empty-message">No tracks available. Add some albums first.</p>';
         return;
     }
     
@@ -515,3 +543,110 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Initialize event listeners when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Back to playlists button
+    document.getElementById('back-to-playlists').addEventListener('click', function() {
+        showPlaylistsList();
+    });
+
+    // Back to playlist button (from add-tracks view)
+    document.getElementById('back-to-playlist').addEventListener('click', function() {
+        document.getElementById('add-tracks-view').style.display = 'none';
+        document.getElementById('playlist-detail-view').style.display = 'block';
+    });
+
+    // Add tracks button
+    document.getElementById('add-tracks-btn').addEventListener('click', function() {
+        if (!window.currentPlaylistId) {
+            alert('No playlist selected');
+            return;
+        }
+        document.getElementById('playlist-detail-view').style.display = 'none';
+        document.getElementById('add-tracks-view').style.display = 'block';
+        // Reset pagination and search
+        availableTrackPagination = {
+            page: 1,
+            limit: 25,
+            query: '',
+            totalPages: 1,
+            total: 0
+        };
+        document.getElementById('available-track-search').value = '';
+        loadAllTracks().then(renderAvailableTracks);
+    });
+
+    // Create playlist button
+    document.getElementById('create-playlist-btn').addEventListener('click', function() {
+        document.getElementById('create-playlist-modal').style.display = 'flex';
+        document.getElementById('new-playlist-name').focus();
+    });
+
+    // Close modal
+    document.querySelector('#create-playlist-modal .close-modal').addEventListener('click', function() {
+        document.getElementById('create-playlist-modal').style.display = 'none';
+    });
+
+    // Save playlist button
+    document.getElementById('save-playlist-btn').addEventListener('click', function() {
+        const name = document.getElementById('new-playlist-name').value.trim();
+        if (!name) {
+            alert('Please enter a playlist name');
+            return;
+        }
+        createPlaylist(name);
+    });
+
+    // Close modal on outside click
+    document.getElementById('create-playlist-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.style.display = 'none';
+        }
+    });
+
+    // Available track search
+    let availableTrackSearchTimeout;
+    document.getElementById('available-track-search').addEventListener('input', function(e) {
+        clearTimeout(availableTrackSearchTimeout);
+        const query = e.target.value.trim();
+        availableTrackSearchTimeout = setTimeout(() => {
+            availableTrackPagination.page = 1;
+            availableTrackPagination.query = query;
+            loadAllTracks().then(renderAvailableTracks);
+        }, 300);
+    });
+
+    document.querySelector('#add-tracks-view .search-clear').addEventListener('click', function() {
+        const searchInput = document.getElementById('available-track-search');
+        searchInput.value = '';
+        availableTrackPagination.page = 1;
+        availableTrackPagination.query = '';
+        loadAllTracks().then(renderAvailableTracks);
+    });
+
+    // Available track pagination
+    document.getElementById('available-track-prev').addEventListener('click', function() {
+        if (availableTrackPagination.page > 1) {
+            availableTrackPagination.page--;
+            loadAllTracks().then(renderAvailableTracks);
+        }
+    });
+
+    document.getElementById('available-track-next').addEventListener('click', function() {
+        if (availableTrackPagination.page < availableTrackPagination.totalPages) {
+            availableTrackPagination.page++;
+            loadAllTracks().then(renderAvailableTracks);
+        }
+    });
+
+    document.getElementById('available-track-limit').addEventListener('change', function() {
+        availableTrackPagination.limit = parseInt(this.value);
+        availableTrackPagination.page = 1;
+        loadAllTracks().then(renderAvailableTracks);
+    });
+
+    // Load playlists on page load
+    loadPlaylists();
+})();
+})();

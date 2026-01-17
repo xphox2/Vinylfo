@@ -21,30 +21,107 @@ class SyncManager {
 
     async checkConnection() {
         try {
+            console.log('checkConnection: fetching /api/discogs/status...');
             const statusResponse = await fetch(`${API_BASE}/discogs/status`);
+            console.log('checkConnection: statusResponse.ok:', statusResponse.ok, 'status:', statusResponse.status);
+            
             const status = await statusResponse.json();
-
+            console.log('checkConnection: status.is_connected:', status.is_connected);
+            
             if (status.is_connected) {
-                const progressResponse = await fetch(`${API_BASE}/discogs/sync/progress`);
-                const progress = await progressResponse.json();
+                console.log('checkConnection: connected, fetching progress...');
+                try {
+                    const progressResponse = await fetch(`${API_BASE}/discogs/sync/progress`);
+                    console.log('checkConnection: progressResponse.ok:', progressResponse.ok);
+                    
+                    const progress = await progressResponse.json();
+                    console.log('checkConnection: progress.is_running:', progress.is_running, 'is_paused:', progress.is_paused);
 
-                if (progress.is_running) {
-                    this.isRunning = true;
-                    this.isPaused = progress.is_paused || false;
-                    if (this.isPaused) {
+                    if (progress.is_running) {
+                        this.isRunning = true;
+                        this.isPaused = progress.is_paused || false;
+                        if (this.isPaused) {
+                            this.showSyncPaused();
+                        } else {
+                            this.showSyncRunning();
+                        }
+                        this.pollProgress();
+                    } else if (progress.has_saved_progress) {
+                        console.log('checkConnection: has saved progress, showing paused state');
+                        this.isRunning = true;
+                        this.isPaused = true;
                         this.showSyncPaused();
+                        this.pollProgress();
                     } else {
-                        this.showSyncRunning();
+                        this.showSyncReady();
                     }
-                    this.pollProgress();
-                } else {
+                } catch (progressError) {
+                    console.error('checkConnection: progress fetch failed:', progressError.message);
+                    console.log('checkConnection: progress fetch failed but connected=true, checking saved progress...');
+                    
+                    try {
+                        const progressResponse = await fetch(`${API_BASE}/discogs/sync/progress`);
+                        if (progressResponse.ok) {
+                            const progress = await progressResponse.json();
+                            if (progress.has_saved_progress || progress.is_running) {
+                                console.log('checkConnection: found saved progress, showing paused state');
+                                this.isRunning = true;
+                                this.isPaused = true;
+                                this.showSyncPaused();
+                                this.pollProgress();
+                                return;
+                            }
+                        }
+                    } catch (fallbackError) {
+                        console.error('checkConnection: fallback progress fetch failed:', fallbackError.message);
+                    }
+                    
+                    console.log('checkConnection: showing sync ready (connected but no active sync)');
                     this.showSyncReady();
                 }
             } else {
-                this.showNotConnected();
+                console.log('checkConnection: NOT connected, checking for saved progress...');
+                const progressResponse = await fetch(`${API_BASE}/discogs/sync/progress`);
+                
+                if (progressResponse.ok) {
+                    const progress = await progressResponse.json();
+                    console.log('checkConnection: has_saved_progress:', progress.has_saved_progress);
+                    
+                    if (progress.has_saved_progress || progress.is_running) {
+                        this.showSyncPaused();
+                        this.isRunning = true;
+                        this.isPaused = true;
+                        this.pollProgress();
+                    } else {
+                        this.showNotConnected();
+                    }
+                } else {
+                    this.showNotConnected();
+                }
             }
         } catch (error) {
-            console.error('Failed to check connection:', error);
+            console.error('checkConnection: error:', error.message, error.stack);
+            console.log('checkConnection: trying to fetch progress as fallback...');
+            
+            try {
+                const progressResponse = await fetch(`${API_BASE}/discogs/sync/progress`);
+                if (progressResponse.ok) {
+                    const progress = await progressResponse.json();
+                    console.log('checkConnection: fallback progress:', progress);
+                    
+                    if (progress.has_saved_progress || progress.is_running) {
+                        this.showSyncPaused();
+                        this.isRunning = true;
+                        this.isPaused = true;
+                        this.pollProgress();
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('checkConnection: fallback error:', e.message);
+            }
+            
+            console.log('checkConnection: showing not connected');
             this.showNotConnected();
         }
     }
@@ -58,10 +135,159 @@ class SyncManager {
             this.hideAll();
             this.showSyncReady();
         });
+        document.getElementById('refresh-tracks').addEventListener('click', () => this.refreshTracks());
+        document.getElementById('cleanup-albums').addEventListener('click', () => this.showCleanupModal());
+        document.getElementById('close-cleanup-modal').addEventListener('click', () => this.hideCleanupModal());
+        document.getElementById('cancel-cleanup').addEventListener('click', () => this.hideCleanupModal());
+        document.getElementById('delete-selected').addEventListener('click', () => this.deleteSelectedAlbums());
 
         document.querySelectorAll('input[name="sync_mode"]').forEach(radio => {
             radio.addEventListener('change', (e) => this.handleSyncModeChange(e.target.value));
         });
+    }
+
+    async refreshTracks() {
+        const button = document.getElementById('refresh-tracks');
+        const originalText = button.textContent;
+        
+        if (!confirm('This will re-fetch track listings from Discogs for all synced albums. This may take a while depending on the size of your collection. Continue?')) {
+            return;
+        }
+
+        button.disabled = true;
+        button.textContent = 'Refreshing...';
+
+        try {
+            const response = await fetch(`${API_BASE}/discogs/refresh-tracks`, {
+                method: 'POST'
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert(`Track refresh completed!\n\nUpdated: ${result.updated}\nFailed: ${result.failed}\nTotal albums: ${result.total}`);
+            } else {
+                alert(`Track refresh failed: ${result.error || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Failed to refresh tracks:', error);
+            alert('Failed to refresh tracks. Please check your connection and try again.');
+        } finally {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    }
+
+    showCleanupModal() {
+        const modal = document.getElementById('cleanup-modal');
+        modal.classList.remove('hidden');
+        
+        // Reset state
+        document.getElementById('cleanup-loading').classList.remove('hidden');
+        document.getElementById('cleanup-results').classList.add('hidden');
+        document.getElementById('cleanup-empty').classList.add('hidden');
+        document.getElementById('delete-selected').classList.add('hidden');
+        
+        this.unlinkedAlbums = [];
+        this.findUnlinkedAlbums();
+    }
+
+    hideCleanupModal() {
+        document.getElementById('cleanup-modal').classList.add('hidden');
+    }
+
+    async findUnlinkedAlbums() {
+        try {
+            const response = await fetch(`${API_BASE}/discogs/unlinked-albums`);
+            const result = await response.json();
+
+            document.getElementById('cleanup-loading').classList.add('hidden');
+
+            if (!response.ok) {
+                alert(`Failed to scan: ${result.error || 'Unknown error'}`);
+                this.hideCleanupModal();
+                return;
+            }
+
+            this.unlinkedAlbums = result.unlinked_albums || [];
+
+            if (this.unlinkedAlbums.length === 0) {
+                document.getElementById('cleanup-empty').classList.remove('hidden');
+            } else {
+                document.getElementById('cleanup-results').classList.remove('hidden');
+                document.getElementById('delete-selected').classList.remove('hidden');
+                document.getElementById('cleanup-summary').textContent = 
+                    `Found ${this.unlinkedAlbums.length} album(s) not in your Discogs collection (checked ${result.total_checked} local albums against ${result.discogs_total} Discogs releases):`;
+                
+                this.renderUnlinkedAlbums();
+            }
+        } catch (error) {
+            console.error('Failed to find unlinked albums:', error);
+            alert('Failed to scan for unlinked albums. Please try again.');
+            this.hideCleanupModal();
+        }
+    }
+
+    renderUnlinkedAlbums() {
+        const list = document.getElementById('unlinked-albums-list');
+        list.innerHTML = '';
+
+        this.unlinkedAlbums.forEach(album => {
+            const item = document.createElement('div');
+            item.className = 'unlinked-album-item';
+            item.innerHTML = `
+                <label class="album-checkbox">
+                    <input type="checkbox" value="${album.id}" checked>
+                    <span class="album-info">
+                        <span class="album-title">${album.title}</span>
+                        <span class="album-artist">${album.artist}</span>
+                        ${album.year ? `<span class="album-year">(${album.year})</span>` : ''}
+                    </span>
+                </label>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    async deleteSelectedAlbums() {
+        const checkboxes = document.querySelectorAll('#unlinked-albums-list input[type="checkbox"]:checked');
+        const albumIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+        if (albumIds.length === 0) {
+            alert('No albums selected for deletion.');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete ${albumIds.length} album(s) and all their tracks? This cannot be undone.`)) {
+            return;
+        }
+
+        const button = document.getElementById('delete-selected');
+        button.disabled = true;
+        button.textContent = 'Deleting...';
+
+        try {
+            const response = await fetch(`${API_BASE}/discogs/unlinked-albums/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ album_ids: albumIds })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert(`Deleted ${result.deleted} album(s)${result.failed > 0 ? `, ${result.failed} failed` : ''}.`);
+                this.hideCleanupModal();
+            } else {
+                alert(`Deletion failed: ${result.error || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Failed to delete albums:', error);
+            alert('Failed to delete albums. Please try again.');
+        } finally {
+            button.disabled = false;
+            button.textContent = 'Delete Selected';
+        }
     }
 
     handleSyncModeChange(mode) {
@@ -134,6 +360,8 @@ class SyncManager {
         document.getElementById('pause-sync').classList.remove('btn-warning');
         document.getElementById('pause-sync').classList.add('btn-success');
         this.isPaused = true;
+        this.isRunning = true;
+        this.pollProgress();
     }
 
     showSyncComplete(processed) {
@@ -143,6 +371,7 @@ class SyncManager {
         this.isPaused = false;
         document.getElementById('sync-complete').classList.remove('hidden');
         document.getElementById('sync-summary').textContent = `${processed} albums synced.`;
+        setTimeout(() => location.reload(), 5000);
     }
 
     hideAll() {
@@ -185,7 +414,7 @@ class SyncManager {
                 if (data.has_progress) {
                     if (data.total_albums === 0 && data.processed === 0) {
                         if (confirm('There is sync progress saved, but no albums have been synced yet. Would you like to start a fresh sync?')) {
-                            await this.startSync(syncMode, folderId, true);
+                            await this.startSync(true);  // Fixed: pass only forceNew=true
                         } else {
                             this.isRunning = true;
                             this.isPaused = false;
@@ -216,7 +445,7 @@ class SyncManager {
             }
         } catch (error) {
             console.error('Failed to start sync:', error);
-            alert('Failed to start sync');
+            alert('Failed to start sync: ' + error.message);
         }
     }
 
@@ -240,37 +469,60 @@ class SyncManager {
     }
 
     async togglePause() {
+        console.log('togglePause: START, this.isPaused:', this.isPaused);
+        
         if (this.isPaused) {
+            console.log('togglePause: Calling resume API...');
             try {
+                console.log('togglePause: Fetching /api/discogs/sync/resume-pause...');
                 const response = await fetch(`${API_BASE}/discogs/sync/resume-pause`, { method: 'POST' });
+                console.log('togglePause: Resume API response status:', response.status);
+                
                 if (response.ok) {
+                    const data = await response.json();
+                    console.log('togglePause: Resume succeeded:', data);
                     this.isPaused = false;
                     document.getElementById('pause-sync').textContent = 'Pause';
                     document.getElementById('pause-sync').classList.remove('btn-success');
                     document.getElementById('pause-sync').classList.add('btn-warning');
+                    // Reset the polling to make sure we get the correct state
+                    this.stopPolling();
+                    this.isRunning = true;  // Ensure we're running after resume
+                    this.pollProgress();
                 } else {
                     const error = await response.json();
+                    console.error('togglePause: Resume failed:', error);
                     alert(error.error || 'Failed to resume sync');
                 }
             } catch (error) {
-                console.error('Failed to resume sync:', error);
+                console.error('togglePause: Error calling resume API:', error);
             }
         } else {
+            console.log('togglePause: Calling pause API...');
             try {
+                console.log('togglePause: Fetching /api/discogs/sync/pause...');
                 const response = await fetch(`${API_BASE}/discogs/sync/pause`, { method: 'POST' });
+                console.log('togglePause: Pause API response status:', response.status);
+                
                 if (response.ok) {
+                    const data = await response.json();
+                    console.log('togglePause: Pause succeeded:', data);
                     this.isPaused = true;
                     document.getElementById('pause-sync').textContent = 'Resume';
                     document.getElementById('pause-sync').classList.remove('btn-warning');
                     document.getElementById('pause-sync').classList.add('btn-success');
+                    // Continue polling to update UI and detect when sync is resumed
+                    this.pollProgress();
                 } else {
                     const error = await response.json();
+                    console.error('togglePause: Pause failed:', error);
                     alert(error.error || 'Failed to pause sync');
                 }
             } catch (error) {
-                console.error('Failed to pause sync:', error);
+                console.error('togglePause: Error calling pause API:', error);
             }
         }
+        console.log('togglePause: END, this.isPaused:', this.isPaused);
     }
 
     refreshStatus() {
@@ -290,36 +542,71 @@ class SyncManager {
     }
 
     async pollProgress() {
+        console.log('pollProgress called, isRunning:', this.isRunning, 'isPaused:', this.isPaused);
         try {
             const response = await fetch(`${API_BASE}/discogs/sync/progress`);
             if (!response.ok) {
-                throw new Error('Failed to fetch progress');
+                throw new Error('Failed to fetch progress: HTTP ' + response.status);
             }
-            this.retryCount = 0;
-
             const progress = await response.json();
+            console.log('pollProgress received:', { is_running: progress.is_running, is_paused: progress.is_paused, processed: progress.processed, total: progress.total });
 
-            const processed = progress.processed || 0;
-            const total = progress.total || 0;
+            // Detect if backend sync goroutine has crashed or stopped unexpectedly
+            if (this.isRunning && !progress.is_running && !this.isPaused) {
+                // If we thought sync was running but backend says it's not complete
+                const processed = progress.processed || 0;
+                const total = progress.total || 0;
+
+                if (processed === 0 && total === 0) {
+                    document.getElementById('sync-progress-text').textContent = 'No albums found in collection';
+                    this.isRunning = false;
+                    this.stopPolling();
+                    this.showSyncReady();
+                    return;
+                }
+
+                if (processed < total) {
+                    document.getElementById('sync-progress-text').textContent = `Sync stopped at ${processed}/${total} albums`;
+                    this.isRunning = false;
+                    this.stopPolling();
+                    return;
+                }
+            }
+
+            let processed = progress.processed || progress.saved_processed || 0;
+            let total = progress.total || progress.saved_total_albums || 0;
 
             let progressPercent = 0;
             let progressText = '';
 
             if (total > 0) {
                 progressPercent = Math.min((processed / total) * 100, 100);
-                progressText = `${processed} / ${total} albums (${Math.round(progressPercent)}%)`;
+                // Cap displayed processed count at total to avoid confusing "142/141" display
+                const displayProcessed = Math.min(processed, total);
+                progressText = `${displayProcessed} / ${total} albums (${Math.round(progressPercent)}%)`;
             } else {
                 progressText = `${processed} albums synced`;
             }
 
             document.getElementById('sync-progress').style.width = `${progressPercent}%`;
-            document.getElementById('sync-progress-text').textContent = progressText;
+
+            // Detect stalled sync (backend not responding)
+            // Don't stop polling - sync may be waiting for API rate limit reset (up to 60s)
+            // Just show a warning and keep checking
+            if (progress.is_stalled && this.isRunning) {
+                console.log('pollProgress: sync appears stalled, but continuing to poll');
+                document.getElementById('sync-progress-text').textContent = `Waiting for API rate limit reset... (${processed}/${total})`;
+                // Keep polling - don't stop
+            } else {
+                document.getElementById('sync-progress-text').textContent = progressText;
+            }
 
             if (progress.is_paused && !this.isPaused) {
                 this.isPaused = true;
                 document.getElementById('pause-sync').textContent = 'Resume';
                 document.getElementById('pause-sync').classList.remove('btn-warning');
                 document.getElementById('pause-sync').classList.add('btn-success');
+                document.getElementById('sync-progress-text').textContent = `Paused at ${processed}/${total} albums`;
             } else if (!progress.is_paused && this.isPaused && progress.is_running) {
                 this.isPaused = false;
                 document.getElementById('pause-sync').textContent = 'Pause';
@@ -330,6 +617,7 @@ class SyncManager {
             if (!progress.is_running && !this.isPaused) {
                 this.isRunning = false;
                 this.isPaused = false;
+                this.stopPolling();
                 if (processed > 0 && processed >= total) {
                     this.showSyncComplete(processed);
                 } else if (processed === 0 && total === 0) {
@@ -342,6 +630,10 @@ class SyncManager {
             if (progress.is_running) {
                 this.isRunning = true;
                 document.getElementById('sync-running').classList.remove('hidden');
+
+                if (!this.pollInterval) {
+                    this.startPolling();
+                }
 
                 if (progress.folder_name && progress.total_folders > 1) {
                     const folderInfo = document.getElementById('sync-folder-info');
@@ -363,7 +655,7 @@ class SyncManager {
                 console.log(`Retrying progress fetch (${this.retryCount}/${this.maxRetries})...`);
                 setTimeout(() => this.pollProgress(), 1000);
             } else {
-                document.getElementById('sync-progress-text').textContent = 'Connection error - please refresh';
+                document.getElementById('sync-progress-text').textContent = 'Connection error - sync may have stopped. Please refresh the page.';
                 this.retryCount = 0;
             }
         }

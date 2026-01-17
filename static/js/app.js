@@ -269,10 +269,17 @@ function renderTracks(tracks) {
         const item = document.createElement('div');
         item.className = 'track-item';
         item.innerHTML = `
-            <h3>${track.title || 'Unknown Title'}</h3>
-            <p>Artist: ${track.album_artist || 'Unknown Artist'}</p>
-            <p>Album: ${displayAlbumTitle}</p>
-            <p>Duration: ${formatDuration(track.duration) || 'Unknown Duration'}</p>
+            <div class="track-cover-small">
+                <img src="/albums/${track.album_id}/image" alt="" class="track-cover-img" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'track-cover-placeholder-small\\'>♪</div>';">
+            </div>
+            <div class="track-info">
+                <h3>${track.title || 'Unknown Title'}</h3>
+                <p>${track.album_artist || 'Unknown Artist'}</p>
+            </div>
+            <div class="track-meta">
+                <p class="track-album-title">${displayAlbumTitle}</p>
+                <p class="track-duration">${formatDuration(track.duration) || ''}</p>
+            </div>
         `;
         item.addEventListener('click', function() {
             window.location.href = '/track/' + track.id;
@@ -458,10 +465,16 @@ function showTracksForAlbum(albumID) {
                         const item = document.createElement('div');
                         item.className = 'track-item';
                         item.innerHTML = `
-                            <h3>${track.title || 'Unknown Title'}</h3>
-                            <p>Artist: ${track.album_artist || 'Unknown Artist'}</p>
-                            <p>Album: ${displayAlbumTitle}</p>
-                            <p>Duration: ${formatDuration(track.duration) || 'Unknown Duration'}</p>
+                            <div class="track-cover-small">
+                                <img src="/albums/${track.album_id}/image" alt="" class="track-cover-img" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'track-cover-placeholder-small\\'>♪</div>';">
+                            </div>
+                            <div class="track-info">
+                                <h3>${track.title || 'Unknown Title'}</h3>
+                                <p>${track.album_artist || 'Unknown Artist'}</p>
+                            </div>
+                            <div class="track-meta">
+                                <p class="track-duration">${formatDuration(track.duration) || ''}</p>
+                            </div>
                         `;
                         item.addEventListener('click', function() {
                             window.location.href = '/track/' + track.id;

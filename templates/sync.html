@@ -23,13 +23,17 @@
                 <div class="sync-mode-selector">
                     <label class="radio-option">
                         <input type="radio" name="sync_mode" value="all-folders" checked>
-                        <span class="radio-label">Sync All Folders</span>
-                        <span class="radio-description">Iterate through all folders in your collection</span>
+                        <div class="radio-content">
+                            <span class="radio-label">Sync All Folders</span>
+                            <span class="radio-description">Iterate through all folders in your collection</span>
+                        </div>
                     </label>
                     <label class="radio-option">
                         <input type="radio" name="sync_mode" value="specific">
-                        <span class="radio-label">Sync Specific Folder</span>
-                        <span class="radio-description">Choose a specific folder to sync</span>
+                        <div class="radio-content">
+                            <span class="radio-label">Sync Specific Folder</span>
+                            <span class="radio-description">Choose a specific folder to sync</span>
+                        </div>
                     </label>
                 </div>
                 <div id="folder-selector" class="folder-selector hidden">
@@ -37,7 +41,39 @@
                     <select id="selected-folder"><option value="">Loading folders...</option></select>
                 </div>
             </div>
-            <button id="start-sync" class="btn btn-primary">Start Sync</button>
+            <div class="sync-actions">
+                <button id="start-sync" class="btn btn-secondary">Start Sync</button>
+                <button id="refresh-tracks" class="btn btn-secondary" title="Re-fetch track listings from Discogs for all synced albums">Refresh Tracks</button>
+                <button id="cleanup-albums" class="btn btn-warning" title="Find and remove albums no longer in your Discogs collection">Cleanup</button>
+            </div>
+            <p class="sync-hint">Refresh Tracks: Re-syncs track listings. Cleanup: Finds albums removed from Discogs.</p>
+        </div>
+        
+        <!-- Cleanup Modal -->
+        <div id="cleanup-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Cleanup Unlinked Albums</h2>
+                    <button id="close-cleanup-modal" class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="cleanup-loading" class="cleanup-loading">
+                        <p>Scanning Discogs collection...</p>
+                        <p class="hint">This may take a moment for large collections.</p>
+                    </div>
+                    <div id="cleanup-results" class="cleanup-results hidden">
+                        <p id="cleanup-summary"></p>
+                        <div id="unlinked-albums-list" class="unlinked-albums-list"></div>
+                    </div>
+                    <div id="cleanup-empty" class="cleanup-empty hidden">
+                        <p>All your albums are still in your Discogs collection. Nothing to clean up!</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="delete-selected" class="btn btn-danger hidden">Delete Selected</button>
+                    <button id="cancel-cleanup" class="btn btn-secondary">Close</button>
+                </div>
+            </div>
         </div>
         <div id="sync-running" class="status-message info hidden">
             <div id="sync-mode-info" class="sync-mode-info"></div>
@@ -55,6 +91,7 @@
             <p id="sync-complete-text">Sync completed!</p>
             <p id="sync-summary"></p>
             <button id="start-new-sync" class="btn btn-primary">Sync Again</button>
+            <button id="view-albums" class="btn btn-secondary" onclick="location.href='/'">View Albums</button>
         </div>
     </div>
 </main>

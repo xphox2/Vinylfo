@@ -105,6 +105,7 @@ func (c *SettingsController) ResetDatabase(ctx *gin.Context) {
 		"tracks",
 		"albums",
 		"sync_logs",
+		"sync_progresses",
 	}
 
 	for _, table := range tables {

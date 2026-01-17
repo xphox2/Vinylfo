@@ -99,6 +99,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/api/discogs/albums", discogsController.CreateAlbum)
 	r.POST("/api/discogs/sync/start", discogsController.StartSync)
 	r.GET("/api/discogs/sync/progress", discogsController.GetSyncProgress)
+	r.GET("/api/discogs/sync/history", discogsController.GetSyncHistory)
 	r.GET("/api/discogs/sync/resume", discogsController.ResumeSync)
 	r.POST("/api/discogs/sync/pause", discogsController.PauseSync)
 	r.POST("/api/discogs/sync/resume-pause", discogsController.ResumeSyncFromPause)
@@ -107,6 +108,9 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/api/discogs/sync/batch/:id/skip", discogsController.SkipBatch)
 	r.POST("/api/discogs/sync/cancel", discogsController.CancelSync)
 	r.POST("/api/discogs/fetch-username", discogsController.FetchUsername)
+	r.POST("/api/discogs/refresh-tracks", discogsController.RefreshTracks)
+	r.GET("/api/discogs/unlinked-albums", discogsController.FindUnlinkedAlbums)
+	r.POST("/api/discogs/unlinked-albums/delete", discogsController.DeleteUnlinkedAlbums)
 
 	r.GET("/api/settings", settingsController.Get)
 	r.PUT("/api/settings", settingsController.Update)

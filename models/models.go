@@ -7,15 +7,15 @@ import (
 // Album represents a music album
 type Album struct {
 	ID                    uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Title                 string    `gorm:"not null;uniqueIndex" json:"title"`
-	Artist                string    `gorm:"not null" json:"artist"`
+	Title                 string    `gorm:"not null;uniqueIndex:idx_title_artist" json:"title"`
+	Artist                string    `gorm:"not null;uniqueIndex:idx_title_artist" json:"artist"`
 	ReleaseYear           int       `json:"release_year"`
 	Genre                 string    `json:"genre"`
 	Label                 string    `json:"label"`
 	Country               string    `json:"country"`
 	ReleaseDate           string    `json:"release_date"`
 	Style                 string    `json:"style"`
-	DiscogsID             int       `json:"discogs_id"`
+	DiscogsID             *int      `gorm:"uniqueIndex" json:"discogs_id"`
 	DiscogsFolderID       int       `json:"discogs_folder_id"` // Folder ID from Discogs collection
 	CoverImageURL         string    `json:"cover_image_url"`
 	DiscogsCoverImage     []byte    `gorm:"type:longblob" json:"-"`
@@ -117,16 +117,33 @@ type SyncLog struct {
 // SyncProgress tracks the sync progress for resume capability
 type SyncProgress struct {
 	ID             uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	SyncMode       string    `gorm:"size:20" json:"sync_mode"`    // "all-folders", "specific"
-	FolderID       int       `gorm:"index" json:"folder_id"`      // Current folder being synced
-	FolderName     string    `gorm:"size:255" json:"folder_name"` // Current folder name
-	FolderIndex    int       `json:"folder_index"`                // Index in folders list
-	TotalFolders   int       `json:"total_folders"`               // Total folders to sync
-	CurrentPage    int       `json:"current_page"`                // Current page in folder
-	Processed      int       `json:"processed"`                   // Total albums processed
-	TotalAlbums    int       `json:"total_albums"`                // Total albums to process
-	Status         string    `gorm:"size:20" json:"status"`       // "running", "paused", "completed", "cancelled"
-	LastActivityAt time.Time `json:"last_activity_at"`            // Last time sync made progress
+	SyncMode       string    `gorm:"size:20" json:"sync_mode"`         // "all-folders", "specific"
+	FolderID       int       `gorm:"index" json:"folder_id"`           // Current folder being synced
+	FolderName     string    `gorm:"size:255" json:"folder_name"`      // Current folder name
+	FolderIndex    int       `json:"folder_index"`                     // Index in folders list
+	TotalFolders   int       `json:"total_folders"`                    // Total folders to sync
+	CurrentPage    int       `json:"current_page"`                     // Current page in folder
+	Processed      int       `json:"processed"`                        // Total albums processed
+	TotalAlbums    int       `json:"total_albums"`                     // Total albums to process
+	Status         string    `gorm:"size:20" json:"status"`            // "running", "paused", "completed", "cancelled"
+	LastBatchJSON  string    `gorm:"type:text" json:"last_batch_json"` // JSON serialized LastBatch for resume
+	LastActivityAt time.Time `json:"last_activity_at"`                 // Last time sync made progress
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// SyncHistory stores completed sync runs for historical reporting
+type SyncHistory struct {
+	ID           uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	SyncMode     string    `gorm:"size:20" json:"sync_mode"`       // "all-folders", "specific"
+	FolderID     int       `json:"folder_id"`                      // Folder that was synced (0 for all-folders)
+	FolderName   string    `gorm:"size:255" json:"folder_name"`    // Folder name
+	Processed    int       `json:"processed"`                      // Total albums processed
+	TotalAlbums  int       `json:"total_albums"`                   // Total albums in folder/sync
+	DurationSecs int       `json:"duration_secs"`                  // How long the sync took
+	Status       string    `gorm:"size:20" json:"status"`          // "completed", "cancelled", "failed"
+	ErrorMessage string    `gorm:"type:text" json:"error_message"` // Error if failed
+	StartedAt    time.Time `json:"started_at"`                     // When sync started
+	CompletedAt  time.Time `json:"completed_at"`                   // When sync finished
+	CreatedAt    time.Time `json:"created_at"`
 }
