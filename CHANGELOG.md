@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3-alpha] - 2026-01-18
+
+### Changed
+
+#### Code Cleanup
+- **Removed unused `playlist_original.js`**: Deleted stale backup file that was not being used
+- **Simplified settings controller update logic**: Removed unnecessary map creation for single-field updates
+- **Updated `go.mod` dependencies**: Ran `go mod tidy` to ensure clean dependency tree
+
+#### Settings Page Cleanup
+- **Removed "Sync Preferences" section**: Batch size, auto-apply safe updates, and auto-sync new albums options removed from Settings page
+- **Removed "Application Settings" section**: Items per page setting removed from Settings page
+- **Simplified settings API**: Backend now only returns Discogs-related settings (`discogs_connected`, `discogs_username`, `last_sync_at`)
+- **Streamlined settings JavaScript**: Removed unused `renderSettings()`, `saveSyncSettings()`, and `saveAppSettings()` functions
+
+#### Player Queue UI Improvements
+- **Added spacing between album name and duration**: Queue items now have proper margin between title/album and duration columns
+- **Added margin between title and album**: Improved visual separation of track information in queue display
+
+#### Pagination Styling
+- **Bottom pagination now matches top pagination**: Added consistent spacing and styling to bottom pagination controls on Albums page
+- **New `.bottom-pagination` CSS class**: Provides consistent `margin-top` spacing for bottom pagination controls
+
+---
+
+
+
 ## [0.1.2-alpha] - 2026-01-17
 
 ### Changed
@@ -575,6 +602,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Playback timer functionality
 - Collection management interface
 
+[0.1.3-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.3-alpha
 [0.1.2-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.2-alpha
 [0.1.1-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.1-alpha
 [0.1.0-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.0-alpha

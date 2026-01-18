@@ -24,49 +24,6 @@
             <button id="disconnect-discogs" class="btn btn-danger hidden">Disconnect</button>
         </div>
     </div>
-    <div class="settings-section">
-        <h2>Sync Preferences</h2>
-        <form id="sync-settings-form">
-            <div class="form-group">
-                <label for="sync-confirm-batches">
-                    <input type="checkbox" id="sync-confirm-batches" name="sync_confirm_batches">
-                    Confirm each batch before syncing
-                </label>
-                <p class="help-text">When enabled, you'll review each batch of albums before they're added to your collection.</p>
-            </div>
-            <div class="form-group">
-                <label for="sync-batch-size">Batch Size</label>
-                <input type="number" id="sync-batch-size" name="sync_batch_size" min="10" max="200" value="50">
-                <p class="help-text">Number of albums to process in each batch (10-200).</p>
-            </div>
-            <div class="form-group">
-                <label for="auto-apply-safe">
-                    <input type="checkbox" id="auto-apply-safe" name="auto_apply_safe_updates">
-                    Auto-apply safe updates
-                </label>
-                <p class="help-text">Automatically apply updates that don't have conflicts (new genres, track info, etc.).</p>
-            </div>
-            <div class="form-group">
-                <label for="auto-sync-new">
-                    <input type="checkbox" id="auto-sync-new" name="auto_sync_new_albums">
-                    Auto-sync new albums
-                </label>
-                <p class="help-text">Automatically add new albums from Discogs without confirmation.</p>
-            </div>
-            <button type="submit" class="btn btn-primary">Save Sync Settings</button>
-        </form>
-    </div>
-    <div class="settings-section">
-        <h2>Application Settings</h2>
-        <form id="app-settings-form">
-            <div class="form-group">
-                <label for="items-per-page">Items Per Page</label>
-                <input type="number" id="items-per-page" name="items_per_page" min="10" max="100" value="25">
-                <p class="help-text">Number of items to display per page (10-100).</p>
-            </div>
-            <button type="submit" class="btn btn-primary">Save App Settings</button>
-        </form>
-    </div>
     <div class="settings-section demo-seed">
         <h2>Demo Seed</h2>
         <div class="demo-seed-content">

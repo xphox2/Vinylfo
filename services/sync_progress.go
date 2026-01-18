@@ -21,7 +21,7 @@ func NewSyncProgressService(db *gorm.DB) *SyncProgressService {
 }
 
 // Load loads the current sync progress from the database
-func (s *SyncProgressService) Load(state sync.LegacySyncState) *models.SyncProgress {
+func (s *SyncProgressService) Load(state sync.SyncState) *models.SyncProgress {
 	var progress models.SyncProgress
 
 	// Use raw SQL with a short timeout to avoid hanging on locked tables
@@ -32,7 +32,7 @@ func (s *SyncProgressService) Load(state sync.LegacySyncState) *models.SyncProgr
 	}
 
 	maxAge := 30 * time.Minute
-	if state.IsPaused {
+	if state.IsPaused() {
 		maxAge = 4 * time.Hour
 	}
 
@@ -46,7 +46,7 @@ func (s *SyncProgressService) Load(state sync.LegacySyncState) *models.SyncProgr
 }
 
 // Save saves the current sync state to the database
-func (s *SyncProgressService) Save(state sync.LegacySyncState) {
+func (s *SyncProgressService) Save(state sync.SyncState) {
 	var progress models.SyncProgress
 	s.db.FirstOrCreate(&progress, models.SyncProgress{ID: 1})
 
@@ -58,9 +58,9 @@ func (s *SyncProgressService) Save(state sync.LegacySyncState) {
 	progress.TotalAlbums = state.Total
 	progress.LastActivityAt = time.Now()
 
-	if !state.IsRunning && !state.IsPaused {
+	if !state.IsRunning() && !state.IsPaused() {
 		progress.Status = "completed"
-	} else if state.IsPaused {
+	} else if state.IsPaused() {
 		progress.Status = "paused"
 	} else {
 		progress.Status = "running"
@@ -111,7 +111,7 @@ func (s *SyncProgressService) ArchiveToHistory(progress *models.SyncProgress) {
 }
 
 // RestoreLastBatch restores the last batch from the database into the sync state
-func (s *SyncProgressService) RestoreLastBatch(state *sync.LegacySyncState) {
+func (s *SyncProgressService) RestoreLastBatch(state *sync.SyncState) {
 	progress := s.Load(*state)
 	if progress == nil || progress.LastBatchJSON == "" {
 		return

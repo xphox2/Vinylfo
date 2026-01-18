@@ -207,6 +207,7 @@ footer {
 .queue-title {
     flex: 1;
     color: #333;
+    margin-right: 0.5rem;
 }
 
 .queue-album {
@@ -216,6 +217,7 @@ footer {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin-right: 1rem;
 }
 
 .queue-duration {

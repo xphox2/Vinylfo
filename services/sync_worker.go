@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -19,8 +20,10 @@ type SyncWorker struct {
 	client          *discogs.Client
 	importer        *AlbumImporter
 	progressService *SyncProgressService
-	stateManager    *sync.LegacyStateManager
+	stateManager    *sync.StateManager
 	config          SyncConfig
+	ctx             context.Context
+	cancel          context.CancelFunc
 }
 
 // SyncConfig holds configuration for the sync worker
@@ -33,7 +36,7 @@ type SyncConfig struct {
 }
 
 // NewSyncWorker creates a new SyncWorker instance
-func NewSyncWorker(db *gorm.DB, client *discogs.Client, stateManager *sync.LegacyStateManager, config SyncConfig) *SyncWorker {
+func NewSyncWorker(db *gorm.DB, client *discogs.Client, stateManager *sync.StateManager, config SyncConfig, ctx context.Context, cancel context.CancelFunc) *SyncWorker {
 	return &SyncWorker{
 		db:              db,
 		client:          client,
@@ -41,33 +44,45 @@ func NewSyncWorker(db *gorm.DB, client *discogs.Client, stateManager *sync.Legac
 		progressService: NewSyncProgressService(db),
 		stateManager:    stateManager,
 		config:          config,
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 }
 
-// Run executes the main sync loop
+// Run executes the main sync loop with context support for cancellation
 func (w *SyncWorker) Run() {
 	defer func() {
 		if r := recover(); r != nil {
 			w.logToFile("Sync: PANIC in SyncWorker.Run: %v", r)
-			w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
-				s.IsRunning = false
-				s.IsPaused = false
-				s.LastActivity = time.Time{}
+			w.stateManager.UpdateState(func(s *sync.SyncState) {
+				s.Status = sync.SyncStatusIdle
 			})
 		}
 	}()
 
-	w.logToFile("Sync: SyncWorker.Run STARTING")
+	w.logToFile("Sync: SyncWorker.Run STARTING with context")
+
+	go w.monitorContextCancellation()
 
 	initialState := w.stateManager.GetState()
 	w.logToFile("Sync: initial state - IsRunning=%v, IsPaused=%v, Processed=%d, Total=%d",
-		initialState.IsRunning, initialState.IsPaused, initialState.Processed, initialState.Total)
+		initialState.IsRunning(), initialState.IsPaused(), initialState.Processed, initialState.Total)
 
 	for {
+		select {
+		case <-w.ctx.Done():
+			w.logToFile("Sync: context cancelled, stopping gracefully")
+			w.stateManager.UpdateState(func(s *sync.SyncState) {
+				s.Status = sync.SyncStatusIdle
+			})
+			return
+		default:
+		}
+
 		w.logToFile("Sync: ========== LOOP ITERATION START ==========")
 
 		// Update last activity timestamp
-		w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+		w.stateManager.UpdateState(func(s *sync.SyncState) {
 			s.LastActivity = time.Now()
 		})
 
@@ -77,10 +92,10 @@ func (w *SyncWorker) Run() {
 			lastBatchAlbums = len(state.LastBatch.Albums)
 		}
 		w.logToFile("Sync: loop TOP - IsRunning=%v, IsPaused=%v, Processed=%d, LastBatch=%v, albums_in_batch=%d",
-			state.IsRunning, state.IsPaused, state.Processed,
+			state.IsRunning(), state.IsPaused(), state.Processed,
 			state.LastBatch != nil && lastBatchAlbums > 0, lastBatchAlbums)
 
-		if !state.IsRunning {
+		if !state.IsRunning() {
 			w.logToFile("Sync: complete (not running), Processed=%d/%d", state.Processed, state.Total)
 			return
 		}
@@ -95,7 +110,8 @@ func (w *SyncWorker) Run() {
 		}
 
 		// Check if sync was stopped during processing
-		if !state.IsRunning {
+		state = w.stateManager.GetState()
+		if !state.IsRunning() {
 			return
 		}
 
@@ -117,22 +133,34 @@ func (w *SyncWorker) Run() {
 
 		// Re-check running state after potential API call delays
 		state = w.stateManager.GetState()
-		if !state.IsRunning || state.IsPaused {
+		if !state.IsRunning() || state.IsPaused() {
 			return
 		}
 
 		if len(currentReleases) == 0 {
 			w.logToFile("processSyncBatches: no releases to process, continuing loop")
-			time.Sleep(200 * time.Millisecond)
+			select {
+			case <-w.ctx.Done():
+				w.logToFile("Sync: context cancelled during empty batch wait")
+				return
+			case <-time.After(200 * time.Millisecond):
+			}
 			continue
 		}
 
 		w.logToFile("Sync: processing batch of %d albums, Processed=%d/%d", len(currentReleases), state.Processed, state.Total)
 
-		// Process each album
+		// Process each album with context cancellation support
 		for _, album := range currentReleases {
+			select {
+			case <-w.ctx.Done():
+				w.logToFile("Sync: context cancelled during album processing")
+				return
+			default:
+			}
+
 			currentCheck := w.stateManager.GetState()
-			if !currentCheck.IsRunning || currentCheck.IsPaused {
+			if !currentCheck.IsRunning() || currentCheck.IsPaused() {
 				return
 			}
 
@@ -145,12 +173,26 @@ func (w *SyncWorker) Run() {
 		}
 
 		w.progressService.Save(w.stateManager.GetState())
-		time.Sleep(200 * time.Millisecond)
+		select {
+		case <-w.ctx.Done():
+			w.logToFile("Sync: context cancelled after batch processing")
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
 	}
 }
 
+// monitorContextCancellation watches for context cancellation and stops the sync
+func (w *SyncWorker) monitorContextCancellation() {
+	<-w.ctx.Done()
+	w.logToFile("Sync: context cancellation detected via monitor")
+	w.stateManager.UpdateState(func(s *sync.SyncState) {
+		s.Status = sync.SyncStatusIdle
+	})
+}
+
 // handlePagination determines if we need to fetch new data and handles folder transitions
-func (w *SyncWorker) handlePagination(state sync.LegacySyncState) (needFetch bool, nextPage int, nextFolder int, done bool) {
+func (w *SyncWorker) handlePagination(state sync.SyncState) (needFetch bool, nextPage int, nextFolder int, done bool) {
 	page := state.CurrentPage
 	folderID := state.CurrentFolder
 
@@ -165,7 +207,7 @@ func (w *SyncWorker) handlePagination(state sync.LegacySyncState) (needFetch boo
 					w.markComplete(state)
 					return false, 0, 0, true
 				}
-				w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+				w.stateManager.UpdateState(func(s *sync.SyncState) {
 					s.FolderIndex++
 					s.CurrentFolder = (*w.config.Folders)[s.FolderIndex]["id"].(int)
 					s.CurrentPage = 1
@@ -181,13 +223,20 @@ func (w *SyncWorker) handlePagination(state sync.LegacySyncState) (needFetch boo
 	return needFetch, page, folderID, false
 }
 
-// fetchNextBatch fetches the next batch of albums from the API
-func (w *SyncWorker) fetchNextBatch(page, folderID int, state sync.LegacySyncState) ([]map[string]interface{}, bool) {
+// fetchNextBatch fetches the next batch of albums from the API with context-aware rate limiting
+func (w *SyncWorker) fetchNextBatch(page, folderID int, state sync.SyncState) ([]map[string]interface{}, bool) {
 	w.logToFile("processSyncBatches: fetching page %d from API for folder %d", page, folderID)
-	time.Sleep(500 * time.Millisecond)
+
+	// Context-aware rate limiting delay
+	select {
+	case <-w.ctx.Done():
+		return nil, true
+	case <-time.After(500 * time.Millisecond):
+	}
 
 	// Check if sync was stopped or paused before making API call
-	if !state.IsRunning || state.IsPaused {
+	state = w.stateManager.GetState()
+	if !state.IsRunning() || state.IsPaused() {
 		return nil, true
 	}
 
@@ -210,7 +259,7 @@ func (w *SyncWorker) fetchNextBatch(page, folderID int, state sync.LegacySyncSta
 		currentState := w.stateManager.GetState()
 		if totalItems != currentState.Total {
 			w.logToFile("processSyncBatches: API reports total=%d, updating from %d", totalItems, currentState.Total)
-			w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+			w.stateManager.UpdateState(func(s *sync.SyncState) {
 				s.Total = totalItems
 			})
 		}
@@ -235,7 +284,7 @@ func (w *SyncWorker) fetchNextBatch(page, folderID int, state sync.LegacySyncSta
 	apiRem := w.client.GetAPIRemaining()
 	anonRem := w.client.GetAPIRemainingAnon()
 
-	w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+	w.stateManager.UpdateState(func(s *sync.SyncState) {
 		s.LastBatch = &sync.SyncBatch{
 			ID:     page,
 			Albums: releases,
@@ -247,7 +296,7 @@ func (w *SyncWorker) fetchNextBatch(page, folderID int, state sync.LegacySyncSta
 
 	// Check if sync was stopped or paused after API call
 	checkState := w.stateManager.GetState()
-	if !checkState.IsRunning || checkState.IsPaused {
+	if !checkState.IsRunning() || checkState.IsPaused() {
 		return nil, true
 	}
 
@@ -255,7 +304,7 @@ func (w *SyncWorker) fetchNextBatch(page, folderID int, state sync.LegacySyncSta
 }
 
 // handleFetchError handles errors during fetching
-func (w *SyncWorker) handleFetchError(err error, page int, state sync.LegacySyncState) ([]map[string]interface{}, bool) {
+func (w *SyncWorker) handleFetchError(err error, page int, state sync.SyncState) ([]map[string]interface{}, bool) {
 	errStr := err.Error()
 	if strings.Contains(errStr, "Page") && strings.Contains(errStr, "outside of valid range") {
 		w.logToFile("processSyncBatches: reached end of pagination (page %d doesn't exist)", page)
@@ -263,7 +312,7 @@ func (w *SyncWorker) handleFetchError(err error, page int, state sync.LegacySync
 		// Handle end of current folder
 		if w.config.SyncMode == "all-folders" && len(*w.config.Folders) > 0 && state.FolderIndex < len(*w.config.Folders)-1 {
 			w.logToFile("processSyncBatches: more folders to process, continuing")
-			w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+			w.stateManager.UpdateState(func(s *sync.SyncState) {
 				s.CurrentPage = 1
 				s.LastBatch = nil
 			})
@@ -275,9 +324,8 @@ func (w *SyncWorker) handleFetchError(err error, page int, state sync.LegacySync
 	}
 
 	w.logToFile("processSyncBatches: failed to fetch page %d: %v", page, err)
-	w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
-		s.IsRunning = false
-		s.IsPaused = false
+	w.stateManager.UpdateState(func(s *sync.SyncState) {
+		s.Status = sync.SyncStatusIdle
 		s.LastBatch = nil
 		s.LastActivity = time.Time{}
 	})
@@ -285,13 +333,13 @@ func (w *SyncWorker) handleFetchError(err error, page int, state sync.LegacySync
 }
 
 // handleEmptyReleases handles the case when no releases are returned
-func (w *SyncWorker) handleEmptyReleases(page int, state sync.LegacySyncState) ([]map[string]interface{}, bool) {
+func (w *SyncWorker) handleEmptyReleases(page int, state sync.SyncState) ([]map[string]interface{}, bool) {
 	w.logToFile("processSyncBatches: received empty releases list at page %d", page)
 
 	// Update total to reflect actual processed count
 	checkState := w.stateManager.GetState()
 	if checkState.Processed > checkState.Total {
-		w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+		w.stateManager.UpdateState(func(s *sync.SyncState) {
 			s.Total = checkState.Processed
 		})
 		w.logToFile("processSyncBatches: adjusted total to %d (was %d)", checkState.Processed, checkState.Total)
@@ -301,7 +349,7 @@ func (w *SyncWorker) handleEmptyReleases(page int, state sync.LegacySyncState) (
 	if w.config.SyncMode == "all-folders" && len(*w.config.Folders) > 0 {
 		if state.FolderIndex < len(*w.config.Folders)-1 {
 			w.logToFile("processSyncBatches: moving to next folder after empty page in folder %d", state.CurrentFolder)
-			w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+			w.stateManager.UpdateState(func(s *sync.SyncState) {
 				s.FolderIndex++
 				s.CurrentFolder = (*w.config.Folders)[s.FolderIndex]["id"].(int)
 				s.CurrentPage = 1
@@ -316,15 +364,15 @@ func (w *SyncWorker) handleEmptyReleases(page int, state sync.LegacySyncState) (
 }
 
 // getCurrentReleases gets the current releases from state
-func (w *SyncWorker) getCurrentReleases(state sync.LegacySyncState) []map[string]interface{} {
+func (w *SyncWorker) getCurrentReleases(state sync.SyncState) []map[string]interface{} {
 	if state.LastBatch != nil {
 		return state.LastBatch.Albums
 	}
 	return []map[string]interface{}{}
 }
 
-// processAlbum processes a single album
-func (w *SyncWorker) processAlbum(album map[string]interface{}, state sync.LegacySyncState) {
+// processAlbum processes a single album with context support
+func (w *SyncWorker) processAlbum(album map[string]interface{}, state sync.SyncState) {
 	title, _ := album["title"].(string)
 	artist, _ := album["artist"].(string)
 	year, _ := album["year"].(int)
@@ -361,7 +409,7 @@ func (w *SyncWorker) processAlbum(album map[string]interface{}, state sync.Legac
 	}
 }
 
-// createNewAlbum creates a new album in the database
+// createNewAlbum creates a new album in the database with context-aware retry backoff
 func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage string, discogsID, albumFolderID int) {
 	maxRetries := 3
 	var newAlbum models.Album
@@ -375,6 +423,14 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 	}
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Check context before retry
+		select {
+		case <-w.ctx.Done():
+			w.logToFile("processSyncBatches: context cancelled, stopping album creation for %s - %s", artist, title)
+			return
+		default:
+		}
+
 		newAlbum = models.Album{
 			Title:                 title,
 			Artist:                artist,
@@ -390,7 +446,14 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 		if tx.Error != nil {
 			if attempt < maxRetries && w.isLockTimeout(tx.Error) {
 				tx.Rollback()
-				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+				// Context-aware backoff
+				backoffTime := time.Duration(attempt+1) * 500 * time.Millisecond
+				select {
+				case <-w.ctx.Done():
+					w.logToFile("processSyncBatches: context cancelled during backoff for %s - %s", artist, title)
+					return
+				case <-time.After(backoffTime):
+				}
 				continue
 			}
 			w.logToFile("processSyncBatches: failed to start transaction for album: %s - %s", artist, title)
@@ -408,7 +471,13 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 		if createErr != nil {
 			tx.Rollback()
 			if attempt < maxRetries && w.isLockTimeout(createErr) {
-				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+				backoffTime := time.Duration(attempt+1) * 500 * time.Millisecond
+				select {
+				case <-w.ctx.Done():
+					w.logToFile("processSyncBatches: context cancelled during backoff for %s - %s", artist, title)
+					return
+				case <-time.After(backoffTime):
+				}
 				continue
 			}
 			w.logToFile("processSyncBatches: failed to create album: %s - %s: %v", artist, title, createErr)
@@ -437,7 +506,13 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 
 		if err := tx.Commit().Error; err != nil {
 			if attempt < maxRetries && w.isLockTimeout(err) {
-				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+				backoffTime := time.Duration(attempt+1) * 500 * time.Millisecond
+				select {
+				case <-w.ctx.Done():
+					w.logToFile("processSyncBatches: context cancelled during backoff for %s - %s", artist, title)
+					return
+				case <-time.After(backoffTime):
+				}
 				continue
 			}
 			w.logToFile("processSyncBatches: failed to commit album: %s - %s: %v", artist, title, err)
@@ -445,11 +520,11 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 			break
 		}
 
-		w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+		w.stateManager.UpdateState(func(s *sync.SyncState) {
 			s.Processed++
 		})
 		w.progressService.Save(w.stateManager.GetState())
-		w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+		w.stateManager.UpdateState(func(s *sync.SyncState) {
 			w.removeFirstAlbumFromBatch(s)
 		})
 		w.progressService.Save(w.stateManager.GetState())
@@ -458,7 +533,7 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 	}
 }
 
-// updateExistingAlbum updates an existing album with new data
+// updateExistingAlbum updates an existing album with new data and context support
 func (w *SyncWorker) updateExistingAlbum(existingAlbum *models.Album, title, artist string, year int, coverImage string, discogsID, albumFolderID int) {
 	updated := false
 	updates := make(map[string]interface{})
@@ -502,11 +577,11 @@ func (w *SyncWorker) updateExistingAlbum(existingAlbum *models.Album, title, art
 		w.logToFile("Sync: album exists (no updates needed): %s - %s", artist, title)
 	}
 
-	w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+	w.stateManager.UpdateState(func(s *sync.SyncState) {
 		s.Processed++
 	})
 	w.progressService.Save(w.stateManager.GetState())
-	w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
+	w.stateManager.UpdateState(func(s *sync.SyncState) {
 		w.removeFirstAlbumFromBatch(s)
 		if s.Processed%5 == 0 {
 			s.APIRemaining = w.client.GetAPIRemaining()
@@ -517,34 +592,31 @@ func (w *SyncWorker) updateExistingAlbum(existingAlbum *models.Album, title, art
 	w.logToFile("Sync: processed=%d/%d", w.stateManager.GetState().Processed, w.stateManager.GetState().Total)
 }
 
-// checkPauseState checks if sync is paused and waits for resume
+// checkPauseState checks if sync is paused and waits for resume using context-aware waiting
 func (w *SyncWorker) checkPauseState() bool {
 	state := w.stateManager.GetState()
 	if state.LastBatch == nil || len(state.LastBatch.Albums) == 0 {
-		if state.IsPaused {
-			w.logToFile("Sync: PAUSED - entering wait loop (batch empty)")
+		if state.IsPaused() {
+			w.logToFile("Sync: PAUSED - using context-aware wait for resume")
 
-			waitStart := time.Now()
-			for {
-				checkState := w.stateManager.GetState()
-				elapsed := time.Since(waitStart)
+			// Use WaitForPause with context for cooperative pause/resume
+			err := w.stateManager.WaitForPause(w.ctx)
+			if err != nil {
+				w.logToFile("Sync: wait for pause cancelled: %v", err)
+				return true
+			}
 
-				if elapsed.Seconds() < 1 || elapsed.Seconds() > 5 || checkState.IsPaused != state.IsPaused {
-					w.logToFile("Sync: wait loop check - IsPaused=%v, IsRunning=%v, elapsed=%v",
-						checkState.IsPaused, checkState.IsRunning, elapsed)
-				}
+			// Check if we're still paused after wait
+			checkState := w.stateManager.GetState()
+			if !checkState.IsPaused() {
+				w.logToFile("Sync: RESUME DETECTED via channel")
+				return true
+			}
 
-				if !checkState.IsPaused {
-					w.logToFile("Sync: RESUME DETECTED after %v", elapsed)
-					break
-				}
-
-				if !checkState.IsRunning {
-					w.logToFile("Sync: sync stopped while paused")
-					return true
-				}
-
-				time.Sleep(100 * time.Millisecond)
+			// Check if sync stopped while paused
+			if !checkState.IsRunning() {
+				w.logToFile("Sync: sync stopped while paused")
+				return true
 			}
 
 			w.logToFile("Sync: continuing loop after wait")
@@ -552,19 +624,23 @@ func (w *SyncWorker) checkPauseState() bool {
 		}
 
 		w.logToFile("processSyncBatches: batch empty, will fetch next page")
-		time.Sleep(200 * time.Millisecond)
+		select {
+		case <-w.ctx.Done():
+			w.logToFile("Sync: context cancelled during empty batch wait")
+			return true
+		case <-time.After(200 * time.Millisecond):
+		}
 		return true
 	}
 	return false
 }
 
 // markComplete marks the sync as complete
-func (w *SyncWorker) markComplete(state sync.LegacySyncState) {
+func (w *SyncWorker) markComplete(state sync.SyncState) {
 	w.logToFile("processSyncBatches: sync complete. Processed=%d, Total=%d, Mode=%s", state.Processed, state.Total, w.config.SyncMode)
 
-	w.stateManager.UpdateState(func(s *sync.LegacySyncState) {
-		s.IsRunning = false
-		s.IsPaused = false
+	w.stateManager.UpdateState(func(s *sync.SyncState) {
+		s.Status = sync.SyncStatusIdle
 		s.Total = state.Processed
 		s.LastBatch = nil
 		s.LastActivity = time.Time{}
@@ -582,7 +658,7 @@ func (w *SyncWorker) markComplete(state sync.LegacySyncState) {
 }
 
 // removeFirstAlbumFromBatch removes the first album from the current batch
-func (w *SyncWorker) removeFirstAlbumFromBatch(s *sync.LegacySyncState) {
+func (w *SyncWorker) removeFirstAlbumFromBatch(s *sync.SyncState) {
 	if s.LastBatch != nil && len(s.LastBatch.Albums) > 0 {
 		s.LastBatch.Albums = s.LastBatch.Albums[1:]
 		if len(s.LastBatch.Albums) == 0 {

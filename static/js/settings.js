@@ -2,7 +2,6 @@ const API_BASE = '/api';
 
 class SettingsManager {
     constructor() {
-        this.settings = null;
         this.init();
     }
 
@@ -13,28 +12,14 @@ class SettingsManager {
 
     async loadSettings() {
         try {
-            const [settingsRes, discogsRes] = await Promise.all([
-                fetch(`${API_BASE}/settings`),
-                fetch(`${API_BASE}/discogs/status`)
-            ]);
-
-            this.settings = await settingsRes.json();
+            const discogsRes = await fetch(`${API_BASE}/discogs/status`);
             const discogsStatus = await discogsRes.json();
 
-            this.renderSettings(this.settings);
             this.renderDiscogsStatus(discogsStatus);
         } catch (error) {
             console.error('Failed to load settings:', error);
             this.showNotification('Failed to load settings', 'error');
         }
-    }
-
-    renderSettings(settings) {
-        document.getElementById('sync-confirm-batches').checked = settings.sync_confirm_batches;
-        document.getElementById('sync-batch-size').value = settings.sync_batch_size;
-        document.getElementById('auto-apply-safe').checked = settings.auto_apply_safe;
-        document.getElementById('auto-sync-new').checked = settings.auto_sync_new;
-        document.getElementById('items-per-page').value = settings.items_per_page || 25;
     }
 
     renderDiscogsStatus(status) {
@@ -67,16 +52,6 @@ class SettingsManager {
         document.getElementById('disconnect-discogs').addEventListener('click', () => this.disconnectDiscogs());
         document.getElementById('reset-database').addEventListener('click', () => this.resetDatabase());
         document.getElementById('seed-database').addEventListener('click', () => this.seedDatabase());
-
-        document.getElementById('sync-settings-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.saveSyncSettings();
-        });
-
-        document.getElementById('app-settings-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.saveAppSettings();
-        });
     }
 
     async connectDiscogs() {
@@ -111,57 +86,6 @@ class SettingsManager {
         } catch (error) {
             console.error('Failed to disconnect Discogs:', error);
             this.showNotification('Failed to disconnect from Discogs', 'error');
-        }
-    }
-
-    async saveSyncSettings() {
-        const data = {
-            sync_confirm_batches: document.getElementById('sync-confirm-batches').checked,
-            sync_batch_size: parseInt(document.getElementById('sync-batch-size').value),
-            auto_apply_safe_updates: document.getElementById('auto-apply-safe').checked,
-            auto_sync_new_albums: document.getElementById('auto-sync-new').checked
-        };
-
-        try {
-            const response = await fetch(`${API_BASE}/settings`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-
-            if (response.ok) {
-                this.showNotification('Sync settings saved', 'success');
-            } else {
-                const error = await response.json();
-                this.showNotification(error.error || 'Failed to save settings', 'error');
-            }
-        } catch (error) {
-            console.error('Failed to save sync settings:', error);
-            this.showNotification('Failed to save settings', 'error');
-        }
-    }
-
-    async saveAppSettings() {
-        const data = {
-            items_per_page: parseInt(document.getElementById('items-per-page').value)
-        };
-
-        try {
-            const response = await fetch(`${API_BASE}/settings`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-
-            if (response.ok) {
-                this.showNotification('App settings saved', 'success');
-            } else {
-                const error = await response.json();
-                this.showNotification(error.error || 'Failed to save settings', 'error');
-            }
-        } catch (error) {
-            console.error('Failed to save app settings:', error);
-            this.showNotification('Failed to save settings', 'error');
         }
     }
 

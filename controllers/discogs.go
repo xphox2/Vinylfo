@@ -74,28 +74,27 @@ func (c *DiscogsController) getDiscogsClientWithOAuth() *discogs.Client {
 // Sync state management
 type SyncBatch = sync.SyncBatch
 
-var syncManager = sync.DefaultLegacyManager
+var syncManager = sync.DefaultManager
 
-func getSyncState() sync.LegacySyncState {
+func getSyncState() sync.SyncState {
 	return syncManager.GetState()
 }
 
-func updateSyncState(fn func(*sync.LegacySyncState)) {
+func updateSyncState(fn func(*sync.SyncState)) {
 	syncManager.UpdateState(fn)
 }
 
-// ResetSyncState resets the sync state to initial values
 func ResetSyncState() {
 	syncManager.Reset()
 }
 
-func setSyncState(state sync.LegacySyncState) {
-	syncManager.UpdateState(func(s *sync.LegacySyncState) {
+func setSyncState(state sync.SyncState) {
+	syncManager.UpdateState(func(s *sync.SyncState) {
 		*s = state
 	})
 }
 
-func removeFirstAlbumFromBatch(s *sync.LegacySyncState) {
+func removeFirstAlbumFromBatch(s *sync.SyncState) {
 	if s.LastBatch != nil && len(s.LastBatch.Albums) > 0 {
 		s.LastBatch.Albums = s.LastBatch.Albums[1:]
 		if len(s.LastBatch.Albums) == 0 {
@@ -104,11 +103,11 @@ func removeFirstAlbumFromBatch(s *sync.LegacySyncState) {
 	}
 }
 
-func isSyncComplete(state sync.LegacySyncState) bool {
-	if state.IsPaused {
+func isSyncComplete(state sync.SyncState) bool {
+	if state.IsPaused() {
 		return false
 	}
-	if !state.IsRunning {
+	if !state.IsRunning() {
 		return true
 	}
 	if state.LastBatch != nil && len(state.LastBatch.Albums) > 0 {
@@ -567,15 +566,15 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 func (c *DiscogsController) StartSync(ctx *gin.Context) {
 	logToFile("StartSync: called")
 	state := getSyncState()
-	logToFile("StartSync: IsRunning=%v, IsPaused=%v", state.IsRunning, state.IsPaused)
+	logToFile("StartSync: IsRunning=%v, IsPaused=%v", state.IsRunning(), state.IsPaused())
 
-	if state.IsRunning {
+	if state.IsRunning() {
 		logToFile("StartSync: sync already in progress")
 		ctx.JSON(400, gin.H{"error": "Sync already in progress"})
 		return
 	}
 
-	if state.IsPaused {
+	if state.IsPaused() {
 		logToFile("StartSync: sync is paused, resuming...")
 		c.ResumeSyncFromPause(ctx)
 		return
@@ -583,9 +582,9 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 
 	existingProgress := c.progressService.Load(state)
 	if existingProgress != nil {
-		logToFile("StartSync: Found existing sync progress, status=%s, is_running=%v, is_paused=%v", existingProgress.Status, state.IsRunning, state.IsPaused)
+		logToFile("StartSync: Found existing sync progress, status=%s, is_running=%v, is_paused=%v", existingProgress.Status, state.IsRunning(), state.IsPaused())
 
-		if !state.IsRunning && !state.IsPaused && existingProgress.Status == "completed" {
+		if !state.IsRunning() && !state.IsPaused() && existingProgress.Status == "completed" {
 			logToFile("StartSync: Previous sync completed, archiving to history and starting fresh")
 			c.progressService.ArchiveToHistory(existingProgress)
 			c.progressService.Delete(existingProgress.ID)
@@ -597,7 +596,7 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 			c.progressService.Delete(existingProgress.ID)
 			ResetSyncState()
 			existingProgress = nil
-		} else if !state.IsRunning && !state.IsPaused {
+		} else if !state.IsRunning() && !state.IsPaused() {
 			logToFile("StartSync: No active sync, clearing state and starting fresh")
 			ResetSyncState()
 			existingProgress = nil
@@ -688,8 +687,8 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 		client := discogs.NewClientWithOAuth("", oauth)
 		username, err := client.GetUserIdentity()
 		if err != nil {
-			updateSyncState(func(s *sync.LegacySyncState) {
-				s.IsRunning = false
+			updateSyncState(func(s *sync.SyncState) {
+				s.Status = sync.SyncStatusIdle
 			})
 			logToFile("StartSync: Failed to fetch username: %v", err)
 			ctx.JSON(500, gin.H{"error": "Failed to fetch Discogs username", "details": err.Error()})
@@ -700,8 +699,8 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 		logToFile("StartSync: Fetched username: %s", username)
 	}
 
-	state = sync.LegacySyncState{
-		IsRunning:    true,
+	state = sync.SyncState{
+		Status:       sync.SyncStatusRunning,
 		CurrentPage:  1,
 		SyncMode:     input.SyncMode,
 		LastActivity: time.Now(),
@@ -715,8 +714,8 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 	client := c.getDiscogsClientWithOAuth()
 
 	if client == nil {
-		updateSyncState(func(s *sync.LegacySyncState) {
-			s.IsRunning = false
+		updateSyncState(func(s *sync.SyncState) {
+			s.Status = sync.SyncStatusIdle
 		})
 		logToFile("StartSync: failed to get client - nil returned")
 		ctx.JSON(500, gin.H{"error": "Failed to initialize Discogs client. Please reconnect your Discogs account in Settings."})
@@ -726,8 +725,8 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 	if input.SyncMode == "all-folders" {
 		folders, err := client.GetUserFolders(config.DiscogsUsername)
 		if err != nil {
-			updateSyncState(func(s *sync.LegacySyncState) {
-				s.IsRunning = false
+			updateSyncState(func(s *sync.SyncState) {
+				s.Status = sync.SyncStatusIdle
 			})
 			logToFile("StartSync: GetUserFolders FAILED: %v", err)
 			ctx.JSON(500, gin.H{"error": "Failed to fetch Discogs folders", "details": err.Error()})
@@ -760,8 +759,8 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 	}
 
 	if err != nil {
-		updateSyncState(func(s *sync.LegacySyncState) {
-			s.IsRunning = false
+		updateSyncState(func(s *sync.SyncState) {
+			s.Status = sync.SyncStatusIdle
 		})
 		logToFile("StartSync: Failed to start sync - %v", err)
 		ctx.JSON(500, gin.H{"error": "Failed to start sync: " + err.Error()})
@@ -782,14 +781,15 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 
 	setSyncState(state)
 
-	// Start the sync worker
+	// Start the sync worker with a background context
+	workerCtx, workerCancel := context.WithCancel(context.Background())
 	worker := services.NewSyncWorker(c.db, client, syncManager, services.SyncConfig{
 		Username:      config.DiscogsUsername,
 		BatchSize:     config.SyncBatchSize,
 		SyncMode:      input.SyncMode,
 		CurrentFolder: state.CurrentFolder,
 		Folders:       &state.Folders,
-	})
+	}, workerCtx, workerCancel)
 	go worker.Run()
 
 	ctx.JSON(200, gin.H{
@@ -851,7 +851,7 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 	err := c.db.WithContext(ctxWithTimeout).Raw("SELECT id, folder_id, folder_name, current_page, processed, total_albums, last_activity_at, status FROM sync_progresses ORDER BY id DESC LIMIT 1").Scan(&savedProgress).Error
 	if err == nil && savedProgress.ID > 0 {
 		maxAge := 30 * time.Minute
-		if state.IsPaused {
+		if state.IsPaused() {
 			maxAge = 4 * time.Hour
 		}
 		if time.Since(savedProgress.LastActivityAt) <= maxAge {
@@ -864,7 +864,7 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 	}
 
 	logToFile("GetSyncProgress: IsRunning=%v, IsPaused=%v, Processed=%d, Total=%d, LastBatch=%v, savedProgress=%v",
-		state.IsRunning, state.IsPaused, state.Processed, state.Total,
+		state.IsRunning(), state.IsPaused(), state.Processed, state.Total,
 		state.LastBatch != nil && len(state.LastBatch.Albums) > 0, hasSavedProgress)
 
 	totalFolders := 0
@@ -879,15 +879,15 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 	}
 
 	isStalled := false
-	if state.IsRunning && !state.IsPaused && state.LastActivity.IsZero() == false {
+	if state.IsRunning() && !state.IsPaused() && state.LastActivity.IsZero() == false {
 		if time.Since(state.LastActivity) > 90*time.Second {
 			isStalled = true
 		}
 	}
 
 	response := ProgressResponse{
-		IsRunning:         state.IsRunning,
-		IsPaused:          state.IsPaused,
+		IsRunning:         state.IsRunning(),
+		IsPaused:          state.IsPaused(),
 		CurrentPage:       state.CurrentPage,
 		TotalPages:        state.TotalPages,
 		Processed:         state.Processed,
@@ -913,7 +913,7 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, response)
-	logToFile("GetSyncProgress: IsRunning=%v, Processed=%d, Total=%d, IsStalled=%v", state.IsRunning, state.Processed, state.Total, isStalled)
+	logToFile("GetSyncProgress: IsRunning=%v, Processed=%d, Total=%d, IsStalled=%v", state.IsRunning(), state.Processed, state.Total, isStalled)
 }
 
 // GetSyncHistory returns the sync history
@@ -999,7 +999,7 @@ func (c *DiscogsController) ApplyBatch(ctx *gin.Context) {
 		}
 	}
 
-	updateSyncState(func(s *sync.LegacySyncState) {
+	updateSyncState(func(s *sync.SyncState) {
 		s.Processed += len(input.ApplyAlbums)
 		s.Processed += len(input.SkipAlbums)
 	})
@@ -1014,9 +1014,8 @@ func (c *DiscogsController) ApplyBatch(ctx *gin.Context) {
 
 // StopSync stops the current sync
 func (c *DiscogsController) StopSync(ctx *gin.Context) {
-	updateSyncState(func(s *sync.LegacySyncState) {
-		s.IsRunning = false
-		s.IsPaused = false
+	updateSyncState(func(s *sync.SyncState) {
+		s.Status = sync.SyncStatusIdle
 		s.Processed = 0
 		s.LastBatch = nil
 		s.LastActivity = time.Time{}
@@ -1045,7 +1044,7 @@ func (c *DiscogsController) ResumeSync(ctx *gin.Context) {
 		return
 	}
 
-	if state.IsRunning {
+	if state.IsRunning() {
 		ctx.JSON(400, gin.H{"error": "Sync is already running"})
 		return
 	}
@@ -1061,7 +1060,7 @@ func (c *DiscogsController) ResumeSync(ctx *gin.Context) {
 		return
 	}
 
-	state.IsRunning = true
+	state.Status = sync.SyncStatusRunning
 	state.SyncMode = existingProgress.SyncMode
 	state.CurrentFolder = existingProgress.FolderID
 	state.FolderIndex = existingProgress.FolderIndex
@@ -1073,8 +1072,8 @@ func (c *DiscogsController) ResumeSync(ctx *gin.Context) {
 
 	client := c.getDiscogsClientWithOAuth()
 	if client == nil {
-		updateSyncState(func(s *sync.LegacySyncState) {
-			s.IsRunning = false
+		updateSyncState(func(s *sync.SyncState) {
+			s.Status = sync.SyncStatusIdle
 		})
 		ctx.JSON(500, gin.H{"error": "Failed to get Discogs client"})
 		return
@@ -1083,7 +1082,7 @@ func (c *DiscogsController) ResumeSync(ctx *gin.Context) {
 	if existingProgress.SyncMode == "all-folders" {
 		folders, err := client.GetUserFolders(config.DiscogsUsername)
 		if err == nil {
-			updateSyncState(func(s *sync.LegacySyncState) {
+			updateSyncState(func(s *sync.SyncState) {
 				s.Folders = folders
 			})
 			logToFile("ResumeSync: restored %d folders from Discogs", len(folders))
@@ -1096,13 +1095,14 @@ func (c *DiscogsController) ResumeSync(ctx *gin.Context) {
 		existingProgress.FolderID, existingProgress.CurrentPage, existingProgress.Processed, len(getSyncState().Folders))
 
 	updatedState := getSyncState()
+	workerCtx, workerCancel := context.WithCancel(context.Background())
 	worker := services.NewSyncWorker(c.db, client, syncManager, services.SyncConfig{
 		Username:      config.DiscogsUsername,
 		BatchSize:     config.SyncBatchSize,
 		SyncMode:      existingProgress.SyncMode,
 		CurrentFolder: existingProgress.FolderID,
 		Folders:       &updatedState.Folders,
-	})
+	}, workerCtx, workerCancel)
 	go worker.Run()
 
 	ctx.JSON(200, gin.H{
@@ -1181,7 +1181,7 @@ func (c *DiscogsController) SkipBatch(ctx *gin.Context) {
 		return
 	}
 
-	updateSyncState(func(s *sync.LegacySyncState) {
+	updateSyncState(func(s *sync.SyncState) {
 		s.Processed += len(s.LastBatch.Albums)
 		s.LastBatch = nil
 	})
@@ -1193,9 +1193,8 @@ func (c *DiscogsController) SkipBatch(ctx *gin.Context) {
 
 // CancelSync cancels the current sync
 func (c *DiscogsController) CancelSync(ctx *gin.Context) {
-	updateSyncState(func(s *sync.LegacySyncState) {
-		s.IsRunning = false
-		s.IsPaused = false
+	updateSyncState(func(s *sync.SyncState) {
+		s.Status = sync.SyncStatusIdle
 		s.Processed = 0
 		s.LastBatch = nil
 		s.LastActivity = time.Time{}
@@ -1212,20 +1211,20 @@ func (c *DiscogsController) CancelSync(ctx *gin.Context) {
 // PauseSync pauses the current sync
 func (c *DiscogsController) PauseSync(ctx *gin.Context) {
 	state := getSyncState()
-	if !state.IsRunning {
+	if !state.IsRunning() {
 		logToFile("PauseSync: No sync in progress, cannot pause")
 		ctx.JSON(400, gin.H{"error": "No sync in progress"})
 		return
 	}
 
-	if state.IsPaused {
+	if state.IsPaused() {
 		logToFile("PauseSync: Sync is already paused")
 		ctx.JSON(400, gin.H{"error": "Sync is already paused"})
 		return
 	}
 
 	logToFile("PauseSync: setting IsPaused=true, current state - IsRunning=%v, Processed=%d, Total=%d, LastBatch=%v",
-		state.IsRunning, state.Processed, state.Total, state.LastBatch != nil && len(state.LastBatch.Albums) > 0)
+		state.IsRunning(), state.Processed, state.Total, state.LastBatch != nil && len(state.LastBatch.Albums) > 0)
 
 	c.progressService.Save(state)
 
@@ -1234,10 +1233,10 @@ func (c *DiscogsController) PauseSync(ctx *gin.Context) {
 	logToFile("PauseSync: RequestPause() returned %v", pauseSuccess)
 	stateAfterPause := getSyncState()
 	logToFile("PauseSync: after RequestPause - IsRunning=%v, IsPaused=%v",
-		stateAfterPause.IsRunning, stateAfterPause.IsPaused)
+		stateAfterPause.IsRunning(), stateAfterPause.IsPaused())
 
-	updateSyncState(func(s *sync.LegacySyncState) {
-		s.IsPaused = true
+	updateSyncState(func(s *sync.SyncState) {
+		s.Status = sync.SyncStatusPaused
 	})
 
 	c.progressService.Save(getSyncState())
@@ -1250,7 +1249,7 @@ func (c *DiscogsController) PauseSync(ctx *gin.Context) {
 	}
 
 	newState := getSyncState()
-	logToFile("PauseSync: after setting - IsPaused=%v, IsRunning=%v", newState.IsPaused, newState.IsRunning)
+	logToFile("PauseSync: after setting - IsPaused=%v, IsRunning=%v", newState.IsPaused(), newState.IsRunning())
 
 	ctx.JSON(200, gin.H{
 		"message":    "Sync paused",
@@ -1262,12 +1261,12 @@ func (c *DiscogsController) PauseSync(ctx *gin.Context) {
 func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 	state := getSyncState()
 
-	if state.IsRunning && !state.IsPaused {
+	if state.IsRunning() && !state.IsPaused() {
 		ctx.JSON(400, gin.H{"error": "Sync is already running"})
 		return
 	}
 
-	if state.IsRunning && state.IsPaused {
+	if state.IsRunning() && state.IsPaused() {
 		progress := c.progressService.Load(state)
 		if progress == nil {
 			ctx.JSON(400, gin.H{"error": "No paused sync to resume"})
@@ -1291,8 +1290,8 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 		resumeSuccess := syncManager.RequestResume()
 		logToFile("ResumeSyncFromPause: RequestResume() returned %v, restarting worker...", resumeSuccess)
 
-		updateSyncState(func(s *sync.LegacySyncState) {
-			s.IsPaused = false
+		updateSyncState(func(s *sync.SyncState) {
+			s.Status = sync.SyncStatusRunning
 			s.Processed = progress.Processed
 			s.Total = progress.TotalAlbums
 			s.CurrentPage = progress.CurrentPage
@@ -1312,9 +1311,8 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 
 		client := c.getDiscogsClientWithOAuth()
 		if client == nil {
-			updateSyncState(func(s *sync.LegacySyncState) {
-				s.IsRunning = false
-				s.IsPaused = false
+			updateSyncState(func(s *sync.SyncState) {
+				s.Status = sync.SyncStatusIdle
 				s.LastActivity = time.Time{}
 			})
 			ctx.JSON(500, gin.H{"error": "Failed to get Discogs client"})
@@ -1323,13 +1321,14 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 
 		newState := getSyncState()
 		logToFile("ResumeSyncFromPause: restarting sync worker at page %d, processed=%d", newState.CurrentPage, newState.Processed)
+		workerCtx, workerCancel := context.WithCancel(context.Background())
 		worker := services.NewSyncWorker(c.db, client, syncManager, services.SyncConfig{
 			Username:      config.DiscogsUsername,
 			BatchSize:     config.SyncBatchSize,
 			SyncMode:      newState.SyncMode,
 			CurrentFolder: newState.CurrentFolder,
 			Folders:       &newState.Folders,
-		})
+		}, workerCtx, workerCancel)
 		go worker.Run()
 
 		ctx.JSON(200, gin.H{
@@ -1339,7 +1338,7 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 		return
 	}
 
-	if !state.IsRunning {
+	if !state.IsRunning() {
 		existingProgress := c.progressService.Load(state)
 		if existingProgress == nil {
 			ctx.JSON(400, gin.H{"error": "No paused sync to resume"})
@@ -1366,14 +1365,14 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 		logToFile("ResumeSyncFromPause: proceeding with resume, IsConnected=%v, HasTokens=%v",
 			config.IsDiscogsConnected, config.DiscogsAccessToken != "" && config.DiscogsAccessSecret != "")
 
-		state.IsRunning = true
+		state.Status = sync.SyncStatusRunning
 		state.SyncMode = existingProgress.SyncMode
 		state.CurrentFolder = existingProgress.FolderID
 		state.FolderIndex = existingProgress.FolderIndex
 		state.CurrentPage = existingProgress.CurrentPage
 		state.Processed = existingProgress.Processed
 		state.Total = existingProgress.TotalAlbums
-		state.IsPaused = false
+		state.Status = sync.SyncStatusRunning
 		setSyncState(state)
 
 		state = getSyncState()
@@ -1389,9 +1388,8 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 
 		client := c.getDiscogsClientWithOAuth()
 		if client == nil {
-			updateSyncState(func(s *sync.LegacySyncState) {
-				s.IsRunning = false
-				s.IsPaused = false
+			updateSyncState(func(s *sync.SyncState) {
+				s.Status = sync.SyncStatusIdle
 				s.Processed = 0
 				s.LastActivity = time.Time{}
 			})
@@ -1402,7 +1400,7 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 		if existingProgress.SyncMode == "all-folders" {
 			folders, err := client.GetUserFolders(config.DiscogsUsername)
 			if err == nil {
-				updateSyncState(func(s *sync.LegacySyncState) {
+				updateSyncState(func(s *sync.SyncState) {
 					s.Folders = folders
 				})
 				logToFile("ResumeSyncFromPause: restored %d folders from Discogs", len(folders))
@@ -1415,13 +1413,14 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 			existingProgress.FolderID, existingProgress.CurrentPage, existingProgress.Processed, len(getSyncState().Folders))
 
 		updatedState := getSyncState()
+		workerCtx, workerCancel := context.WithCancel(context.Background())
 		worker := services.NewSyncWorker(c.db, client, syncManager, services.SyncConfig{
 			Username:      config.DiscogsUsername,
 			BatchSize:     config.SyncBatchSize,
 			SyncMode:      existingProgress.SyncMode,
 			CurrentFolder: existingProgress.FolderID,
 			Folders:       &updatedState.Folders,
-		})
+		}, workerCtx, workerCancel)
 		go worker.Run()
 
 		ctx.JSON(200, gin.H{
