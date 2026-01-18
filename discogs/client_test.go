@@ -472,3 +472,344 @@ func TestRateLimiterWaitShouldNotWaitForOppositeType(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePosition(t *testing.T) {
+	tests := []struct {
+		name          string
+		position      string
+		expectedDisc  int
+		expectedTrack int
+		expectedSide  string
+		expectedValid bool
+	}{
+		{
+			name:          "A1 - Side A, Disc 1, Track 1",
+			position:      "A1",
+			expectedDisc:  1,
+			expectedTrack: 1,
+			expectedSide:  "A",
+			expectedValid: true,
+		},
+		{
+			name:          "B2 - Side B, Disc 1, Track 2",
+			position:      "B2",
+			expectedDisc:  1,
+			expectedTrack: 2,
+			expectedSide:  "B",
+			expectedValid: true,
+		},
+		{
+			name:          "C1 - Side C, Disc 2, Track 1",
+			position:      "C1",
+			expectedDisc:  2,
+			expectedTrack: 1,
+			expectedSide:  "C",
+			expectedValid: true,
+		},
+		{
+			name:          "D3 - Side D, Disc 2, Track 3",
+			position:      "D3",
+			expectedDisc:  2,
+			expectedTrack: 3,
+			expectedSide:  "D",
+			expectedValid: true,
+		},
+		{
+			name:          "E1 - Side E, Disc 3, Track 1",
+			position:      "E1",
+			expectedDisc:  3,
+			expectedTrack: 1,
+			expectedSide:  "E",
+			expectedValid: true,
+		},
+		{
+			name:          "F4 - Side F, Disc 3, Track 4",
+			position:      "F4",
+			expectedDisc:  3,
+			expectedTrack: 4,
+			expectedSide:  "F",
+			expectedValid: true,
+		},
+		{
+			name:          "A10 - Side A, Disc 1, Track 10",
+			position:      "A10",
+			expectedDisc:  1,
+			expectedTrack: 10,
+			expectedSide:  "A",
+			expectedValid: true,
+		},
+		{
+			name:          "Empty position",
+			position:      "",
+			expectedDisc:  0,
+			expectedTrack: 0,
+			expectedSide:  "",
+			expectedValid: false,
+		},
+		{
+			name:          "Whitespace only",
+			position:      "   ",
+			expectedDisc:  0,
+			expectedTrack: 0,
+			expectedSide:  "",
+			expectedValid: false,
+		},
+		{
+			name:          "1-5 format - Disc 1, Track 5",
+			position:      "1-5",
+			expectedDisc:  1,
+			expectedTrack: 5,
+			expectedSide:  "A",
+			expectedValid: true,
+		},
+		{
+			name:          "2-1 format - Disc 1, Track 1 (Side B)",
+			position:      "2-1",
+			expectedDisc:  1,
+			expectedTrack: 1,
+			expectedSide:  "B",
+			expectedValid: true,
+		},
+		{
+			name:          "105 format - Disc 1, Track 5",
+			position:      "105",
+			expectedDisc:  1,
+			expectedTrack: 5,
+			expectedSide:  "A",
+			expectedValid: true,
+		},
+		{
+			name:          "201 format - Disc 1, Track 1 (Side B)",
+			position:      "201",
+			expectedDisc:  1,
+			expectedTrack: 1,
+			expectedSide:  "B",
+			expectedValid: true,
+		},
+		{
+			name:          "210 format - Disc 1, Track 10 (Side B)",
+			position:      "210",
+			expectedDisc:  1,
+			expectedTrack: 10,
+			expectedSide:  "B",
+			expectedValid: true,
+		},
+		{
+			name:          "Just number 1 - should return as-is",
+			position:      "1",
+			expectedDisc:  0,
+			expectedTrack: 0,
+			expectedSide:  "",
+			expectedValid: false,
+		},
+		{
+			name:          "Just number 5 - should return as-is",
+			position:      "5",
+			expectedDisc:  0,
+			expectedTrack: 0,
+			expectedSide:  "",
+			expectedValid: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := ParsePosition(tt.position)
+			if info.IsValid != tt.expectedValid {
+				t.Errorf("ParsePosition(%q).IsValid = %v, want %v", tt.position, info.IsValid, tt.expectedValid)
+			}
+			if info.DiscNumber != tt.expectedDisc {
+				t.Errorf("ParsePosition(%q).DiscNumber = %d, want %d", tt.position, info.DiscNumber, tt.expectedDisc)
+			}
+			if info.TrackNumber != tt.expectedTrack {
+				t.Errorf("ParsePosition(%q).TrackNumber = %d, want %d", tt.position, info.TrackNumber, tt.expectedTrack)
+			}
+			if info.Side != tt.expectedSide {
+				t.Errorf("ParsePosition(%q).Side = %q, want %q", tt.position, info.Side, tt.expectedSide)
+			}
+		})
+	}
+}
+
+func TestParseTracklistIntegration(t *testing.T) {
+	tracklist := []struct {
+		Title       string `json:"title"`
+		Duration    string `json:"duration"`
+		Position    string `json:"position"`
+		TrackNumber string `json:"track_number"`
+		DiscNumber  string `json:"disc_number"`
+	}{
+		{"Track 1", "3:30", "A1", "", ""},
+		{"Track 2", "4:15", "A2", "", ""},
+		{"Track 3", "3:45", "A3", "", ""},
+		{"Track 4", "5:00", "A4", "", ""},
+		{"Track 5", "3:30", "B5", "", ""},
+		{"Track 6", "4:15", "B6", "", ""},
+		{"Track 7", "3:45", "B7", "", ""},
+		{"Track 8", "5:00", "B8", "", ""},
+	}
+
+	tracks := parseTracklist(tracklist)
+
+	if len(tracks) != 8 {
+		t.Errorf("Expected 8 tracks, got %d", len(tracks))
+	}
+
+	expectedResults := []struct {
+		trackNumber int
+		discNumber  int
+		position    string
+	}{
+		{1, 1, "A1"},
+		{2, 1, "A2"},
+		{3, 1, "A3"},
+		{4, 1, "A4"},
+		{5, 1, "B5"},
+		{6, 1, "B6"},
+		{7, 1, "B7"},
+		{8, 1, "B8"},
+	}
+
+	for i, expected := range expectedResults {
+		track := tracks[i]
+
+		trackNumber, ok := track["track_number"].(int)
+		if !ok {
+			t.Errorf("Track %d: track_number is not an int, got %T", i+1, track["track_number"])
+		}
+		if trackNumber != expected.trackNumber {
+			t.Errorf("Track %d: track_number = %d, want %d", i+1, trackNumber, expected.trackNumber)
+		}
+
+		discNumber, ok := track["disc_number"].(int)
+		if !ok {
+			t.Errorf("Track %d: disc_number is not an int, got %T", i+1, track["disc_number"])
+		}
+		if discNumber != expected.discNumber {
+			t.Errorf("Track %d: disc_number = %d, want %d", i+1, discNumber, expected.discNumber)
+		}
+
+		position, ok := track["position"].(string)
+		if !ok {
+			t.Errorf("Track %d: position is not a string, got %T", i+1, track["position"])
+		}
+		if position != expected.position {
+			t.Errorf("Track %d: position = %s, want %s", i+1, position, expected.position)
+		}
+	}
+}
+
+func TestFetchAndSaveTracksDataFlow(t *testing.T) {
+	tracklist := []struct {
+		Title       string `json:"title"`
+		Duration    string `json:"duration"`
+		Position    string `json:"position"`
+		TrackNumber string `json:"track_number"`
+		DiscNumber  string `json:"disc_number"`
+	}{
+		{"Track 1", "3:30", "A1", "", ""},
+		{"Track 2", "4:15", "A2", "", ""},
+		{"Track 3", "3:45", "B1", "", ""},
+		{"Track 4", "5:00", "B2", "", ""},
+	}
+
+	tracks := parseTracklist(tracklist)
+
+	// Simulate the FetchAndSaveTracks logic
+	for i, track := range tracks {
+		title := track["title"].(string)
+		position := track["position"].(string)
+
+		trackNumber := 0
+		switch tn := track["track_number"].(type) {
+		case int:
+			trackNumber = tn
+		case int64:
+			trackNumber = int(tn)
+		case float64:
+			trackNumber = int(tn)
+		}
+
+		discNumber := 0
+		switch dn := track["disc_number"].(type) {
+		case int:
+			discNumber = dn
+		case int64:
+			discNumber = int(dn)
+		case float64:
+			discNumber = int(dn)
+		}
+
+		t.Logf("Track %d: title=%s, position=%s, track_number=%d, disc_number=%d, types: tn=%T, dn=%T",
+			i+1, title, position, trackNumber, discNumber, track["track_number"], track["disc_number"])
+
+		if trackNumber == 0 {
+			t.Errorf("Track %d: track_number is 0, should be > 0", i+1)
+		}
+		if discNumber == 0 {
+			t.Errorf("Track %d: disc_number is 0, should be > 0", i+1)
+		}
+	}
+}
+
+func TestGetTracksForAlbumDataFlow(t *testing.T) {
+	// Simulate what Discogs API returns
+	discogsTracklist := []struct {
+		Title       string `json:"title"`
+		Duration    string `json:"duration"`
+		Position    string `json:"position"`
+		TrackNumber string `json:"track_number"`
+		DiscNumber  string `json:"disc_number"`
+	}{
+		{"Track 1", "3:30", "A1", "", ""},
+		{"Track 2", "4:15", "A2", "", ""},
+		{"Track 3", "3:45", "B1", "", ""},
+		{"Track 4", "5:00", "B2", "", ""},
+	}
+
+	// This is what parseTracklist does
+	tracks := parseTracklist(discogsTracklist)
+
+	t.Logf("parseTracklist returned %d tracks", len(tracks))
+	for i, track := range tracks {
+		for k, v := range track {
+			t.Logf("  Track %d: key=%s value=%v type=%T", i+1, k, v, v)
+		}
+	}
+
+	// Now simulate what FetchAndSaveTracks does
+	for i, track := range tracks {
+		title := track["title"].(string)
+		position := track["position"].(string)
+
+		trackNumber := 0
+		switch tn := track["track_number"].(type) {
+		case int:
+			trackNumber = tn
+		case int64:
+			trackNumber = int(tn)
+		case float64:
+			trackNumber = int(tn)
+		}
+
+		discNumber := 0
+		switch dn := track["disc_number"].(type) {
+		case int:
+			discNumber = dn
+		case int64:
+			discNumber = int(dn)
+		case float64:
+			discNumber = int(dn)
+		}
+
+		t.Logf("FetchAndSaveTracks sim: title=%s, position=%s, track_number=%d, disc_number=%d",
+			title, position, trackNumber, discNumber)
+
+		if trackNumber == 0 {
+			t.Errorf("Track %d: track_number is 0, should be > 0", i+1)
+		}
+		if discNumber == 0 {
+			t.Errorf("Track %d: disc_number is 0, should be > 0", i+1)
+		}
+	}
+}

@@ -974,9 +974,11 @@ func parseAlbumResponse(resp *http.Response) (map[string]interface{}, error) {
 			Name string `json:"name"`
 		} `json:"artists"`
 		Tracklist []struct {
-			Title    string `json:"title"`
-			Duration string `json:"duration"`
-			Position string `json:"position"`
+			Title       string `json:"title"`
+			Duration    string `json:"duration"`
+			Position    string `json:"position"`
+			TrackNumber string `json:"track_number"`
+			DiscNumber  string `json:"disc_number"`
 		} `json:"tracklist"`
 	}
 
@@ -1028,15 +1030,65 @@ func parseAlbumResponse(resp *http.Response) (map[string]interface{}, error) {
 }
 
 func parseTracklist(tracklist []struct {
-	Title    string `json:"title"`
-	Duration string `json:"duration"`
-	Position string `json:"position"`
+	Title       string `json:"title"`
+	Duration    string `json:"duration"`
+	Position    string `json:"position"`
+	TrackNumber string `json:"track_number"`
+	DiscNumber  string `json:"disc_number"`
 }) []map[string]interface{} {
 	tracks := make([]map[string]interface{}, 0)
+
+	logToFile("parseTracklist: processing %d tracks", len(tracklist))
+
+	positionInfos := make([]PositionInfo, 0, len(tracklist))
+	for _, track := range tracklist {
+		posInfo := ParsePosition(track.Position)
+		positionInfos = append(positionInfos, posInfo)
+		logToFile("parseTracklist: raw_position=%s -> standard=%s, disc=%d, track=%d, side=%s, valid=%v",
+			track.Position, convertPositionToStandard(track.Position),
+			posInfo.DiscNumber, posInfo.TrackNumber, posInfo.Side, posInfo.IsValid)
+	}
+
+	trackCounter := 0
 	for i, track := range tracklist {
+		posInfo := positionInfos[i]
 		side := convertPositionToStandard(track.Position)
+
+		discNumber := 0
+		trackNumber := 0
+
+		if track.TrackNumber != "" {
+			if n, err := strconv.Atoi(track.TrackNumber); err == nil {
+				trackNumber = n
+			} else {
+				trackCounter++
+				trackNumber = trackCounter
+			}
+		} else {
+			trackCounter++
+			trackNumber = trackCounter
+		}
+
+		if track.DiscNumber != "" {
+			if n, err := strconv.Atoi(track.DiscNumber); err == nil {
+				discNumber = n
+			} else if posInfo.IsValid {
+				discNumber = posInfo.DiscNumber
+			} else {
+				discNumber = 1
+			}
+		} else if posInfo.IsValid {
+			discNumber = posInfo.DiscNumber
+		} else {
+			discNumber = 1
+		}
+
+		logToFile("parseTracklist: track=%s, position=%s -> disc_number=%d, track_number=%d",
+			track.Title, side, discNumber, trackNumber)
+
 		tracks = append(tracks, map[string]interface{}{
-			"track_number": i + 1,
+			"track_number": trackNumber,
+			"disc_number":  discNumber,
 			"position":     side,
 			"title":        track.Title,
 			"duration":     durationToSeconds(track.Duration),
@@ -1110,6 +1162,77 @@ func durationToSeconds(duration string) int {
 	}
 
 	return totalSeconds
+}
+
+type PositionInfo struct {
+	DiscNumber  int
+	TrackNumber int
+	Side        string
+	SideNumber  int
+	IsValid     bool
+}
+
+func ParsePosition(position string) PositionInfo {
+	if position == "" {
+		return PositionInfo{IsValid: false}
+	}
+
+	position = strings.TrimSpace(position)
+	if position == "" {
+		return PositionInfo{IsValid: false}
+	}
+
+	standardPos := convertPositionToStandard(position)
+	if standardPos == "" {
+		return PositionInfo{IsValid: false}
+	}
+
+	firstChar := standardPos[0]
+	if firstChar < 'A' || firstChar > 'Z' {
+		return PositionInfo{IsValid: false}
+	}
+
+	side := string(firstChar)
+	discNumber := 0
+	sideNumber := 0
+
+	switch firstChar {
+	case 'A':
+		discNumber = 1
+		sideNumber = 1
+	case 'B':
+		discNumber = 1
+		sideNumber = 2
+	case 'C':
+		discNumber = 2
+		sideNumber = 1
+	case 'D':
+		discNumber = 2
+		sideNumber = 2
+	case 'E':
+		discNumber = 3
+		sideNumber = 1
+	case 'F':
+		discNumber = 3
+		sideNumber = 2
+	default:
+		discNumber = 1
+		sideNumber = 1
+	}
+
+	trackNumStr := standardPos[1:]
+	trackNum, err := strconv.Atoi(trackNumStr)
+	if err != nil || trackNum < 0 {
+		trackNum = 0
+	}
+
+	return PositionInfo{
+		DiscNumber:  discNumber,
+		TrackNumber: trackNum,
+		Side:        side,
+		SideNumber:  sideNumber,
+		IsValid:     true,
+	}
 }
 
 func maskValue(s string) string {

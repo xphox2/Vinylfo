@@ -469,6 +469,27 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 								}
 							}
 						}
+
+						trackNumber := 0
+						switch tn := t["track_number"].(type) {
+						case int:
+							trackNumber = tn
+						case int64:
+							trackNumber = int(tn)
+						case float64:
+							trackNumber = int(tn)
+						}
+
+						discNumber := 0
+						switch dn := t["disc_number"].(type) {
+						case int:
+							discNumber = dn
+						case int64:
+							discNumber = int(dn)
+						case float64:
+							discNumber = int(dn)
+						}
+
 						input.Tracks = append(input.Tracks, struct {
 							Title       string `json:"title"`
 							Duration    int    `json:"duration"`
@@ -477,10 +498,12 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 							Side        string `json:"side"`
 							Position    string `json:"position"`
 						}{
-							Title:    t["title"].(string),
-							Duration: duration,
-							Side:     t["position"].(string),
-							Position: t["position"].(string),
+							Title:       t["title"].(string),
+							Duration:    duration,
+							TrackNumber: trackNumber,
+							DiscNumber:  discNumber,
+							Side:        t["position"].(string),
+							Position:    t["position"].(string),
 						})
 					}
 				}

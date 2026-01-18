@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.3-alpha] - 2026-01-18
 
+### Fixed
+
+#### Discogs Manual Import Track Detection
+- **Fixed `track_number` and `disc_number` not being detected in manual Discogs search/add**: The `parseAlbumResponse()` function was not capturing `track_number` and `disc_number` fields from the Discogs API response because the parsing struct didn't include these fields
+  - Added `TrackNumber` and `DiscNumber` fields to the Tracklist parsing struct
+  - Updated `parseTracklist()` function to use API-provided values when available
+  - Falls back to position parsing (e.g., "A1" → disc 1, track 1) when API fields are missing
+  - Both sync and manual import now use identical track parsing logic
+
 ### Changed
 
 #### Code Cleanup

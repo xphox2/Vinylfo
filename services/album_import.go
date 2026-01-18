@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -227,13 +228,44 @@ func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID 
 		}
 		duration := parseDuration(track["duration"])
 
+		// Debug: show all keys and values in the track map
+		log.Printf("FetchAndSaveTracks DEBUG: track map has %d keys", len(track))
+		for k, v := range track {
+			log.Printf("FetchAndSaveTracks DEBUG: key=%s value=%v type=%T", k, v, v)
+		}
+
+		// Get track_number - use default 0 if not present or wrong type
+		trackNumber := 0
+		switch tn := track["track_number"].(type) {
+		case int:
+			trackNumber = tn
+		case int64:
+			trackNumber = int(tn)
+		case float64:
+			trackNumber = int(tn)
+		}
+
+		// Get disc_number - use default 0 if not present or wrong type
+		discNumber := 0
+		switch dn := track["disc_number"].(type) {
+		case int:
+			discNumber = dn
+		case int64:
+			discNumber = int(dn)
+		case float64:
+			discNumber = int(dn)
+		}
+
+		log.Printf("FetchAndSaveTracks: title=%s, position=%s, track_number=%d, disc_number=%d",
+			title, position, trackNumber, discNumber)
+
 		newTrack := models.Track{
 			AlbumID:     albumID,
 			AlbumTitle:  albumTitle,
 			Title:       title,
 			Duration:    duration,
-			TrackNumber: 0,
-			DiscNumber:  0,
+			TrackNumber: trackNumber,
+			DiscNumber:  discNumber,
 			Side:        position,
 			Position:    position,
 		}
@@ -299,7 +331,18 @@ func (i *AlbumImporter) ImportFromDiscogs(discogsID int) (*models.Album, error) 
 	// Parse tracks
 	var tracks []TrackInput
 	if tracklist, ok := discogsData["tracklist"].([]map[string]interface{}); ok {
+		positionInfos := make([]discogs.PositionInfo, 0, len(tracklist))
 		for _, t := range tracklist {
+			if pos, ok := t["position"].(string); ok {
+				posInfo := discogs.ParsePosition(pos)
+				positionInfos = append(positionInfos, posInfo)
+			} else {
+				positionInfos = append(positionInfos, discogs.PositionInfo{IsValid: false})
+			}
+		}
+
+		trackCounter := 0
+		for i, t := range tracklist {
 			track := TrackInput{
 				Duration: parseDuration(t["duration"]),
 			}
@@ -310,6 +353,17 @@ func (i *AlbumImporter) ImportFromDiscogs(discogsID int) (*models.Album, error) 
 				track.Side = position
 				track.Position = position
 			}
+
+			posInfo := positionInfos[i]
+			trackCounter++
+			track.TrackNumber = trackCounter
+
+			if posInfo.IsValid {
+				track.DiscNumber = posInfo.DiscNumber
+			} else {
+				track.DiscNumber = 1
+			}
+
 			tracks = append(tracks, track)
 		}
 	}
