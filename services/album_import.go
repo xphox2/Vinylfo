@@ -1,0 +1,348 @@
+package services
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"vinylfo/discogs"
+	"vinylfo/models"
+
+	"gorm.io/gorm"
+)
+
+// AlbumImporter handles importing albums from Discogs
+type AlbumImporter struct {
+	db     *gorm.DB
+	client *discogs.Client
+}
+
+// NewAlbumImporter creates a new AlbumImporter instance
+func NewAlbumImporter(db *gorm.DB, client *discogs.Client) *AlbumImporter {
+	return &AlbumImporter{
+		db:     db,
+		client: client,
+	}
+}
+
+// AlbumInput represents the input data for creating an album
+type AlbumInput struct {
+	Title       string
+	Artist      string
+	ReleaseYear int
+	Genre       string
+	Label       string
+	Country     string
+	ReleaseDate string
+	Style       string
+	CoverImage  string
+	DiscogsID   int
+	FolderID    int
+}
+
+// TrackInput represents the input data for creating a track
+type TrackInput struct {
+	Title       string
+	Duration    int
+	TrackNumber int
+	DiscNumber  int
+	Side        string
+	Position    string
+}
+
+// DownloadCoverImage downloads a cover image from a URL
+func (i *AlbumImporter) DownloadCoverImage(imageURL string) ([]byte, string, error) {
+	if imageURL == "" {
+		return nil, "", nil
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequest("GET", imageURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Vinylfo/1.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to download image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("failed to download image: status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read image data: %w", err)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+
+	if !strings.HasPrefix(contentType, "image/") {
+		return nil, "", fmt.Errorf("invalid content type: %s", contentType)
+	}
+
+	return data, contentType, nil
+}
+
+// CreateAlbumWithTracks creates an album with its tracks in the database
+func (i *AlbumImporter) CreateAlbumWithTracks(input AlbumInput, tracks []TrackInput) (*models.Album, error) {
+	album := models.Album{
+		Title:           input.Title,
+		Artist:          input.Artist,
+		ReleaseYear:     input.ReleaseYear,
+		Genre:           input.Genre,
+		Label:           input.Label,
+		Country:         input.Country,
+		ReleaseDate:     input.ReleaseDate,
+		Style:           input.Style,
+		CoverImageURL:   input.CoverImage,
+		DiscogsID:       intPtr(input.DiscogsID),
+		DiscogsFolderID: input.FolderID,
+	}
+
+	// Download cover image if URL provided
+	if input.CoverImage != "" {
+		imageData, imageType, err := i.DownloadCoverImage(input.CoverImage)
+		if err != nil {
+			album.CoverImageFailed = true
+		} else {
+			album.DiscogsCoverImage = imageData
+			album.DiscogsCoverImageType = imageType
+		}
+	}
+
+	if err := i.db.Create(&album).Error; err != nil {
+		return nil, fmt.Errorf("failed to create album: %w", err)
+	}
+
+	// Create tracks
+	for _, trackInput := range tracks {
+		track := models.Track{
+			AlbumID:     album.ID,
+			AlbumTitle:  album.Title,
+			Title:       trackInput.Title,
+			Duration:    trackInput.Duration,
+			TrackNumber: trackInput.TrackNumber,
+			DiscNumber:  trackInput.DiscNumber,
+			Side:        trackInput.Side,
+			Position:    trackInput.Position,
+		}
+		if err := i.db.Create(&track).Error; err != nil {
+			return nil, fmt.Errorf("failed to create track: %w", err)
+		}
+	}
+
+	// Reload with tracks
+	i.db.Preload("Tracks").First(&album, album.ID)
+	return &album, nil
+}
+
+// FetchAndSaveTracks fetches tracks from Discogs and saves them to the database
+func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID int, albumTitle, artist string) (bool, string) {
+	tracks, err := i.client.GetTracksForAlbum(discogsID)
+	if err != nil {
+		errMsg := fmt.Sprintf("Failed to fetch tracks: %v", err)
+		db.Create(&models.SyncLog{
+			DiscogsID:  discogsID,
+			AlbumTitle: albumTitle,
+			Artist:     artist,
+			ErrorType:  "tracks",
+			ErrorMsg:   errMsg,
+		})
+		return false, errMsg
+	}
+
+	if len(tracks) == 0 {
+		errMsg := "No tracks found for release"
+		db.Create(&models.SyncLog{
+			DiscogsID:  discogsID,
+			AlbumTitle: albumTitle,
+			Artist:     artist,
+			ErrorType:  "tracks",
+			ErrorMsg:   errMsg,
+		})
+		return false, errMsg
+	}
+
+	// Fetch full album metadata
+	fullAlbumData, err := i.client.GetAlbum(discogsID)
+	if err == nil {
+		updates := make(map[string]interface{})
+
+		if v, ok := fullAlbumData["genre"].(string); ok && v != "" {
+			updates["genre"] = v
+		}
+		if v, ok := fullAlbumData["style"].(string); ok && v != "" {
+			updates["style"] = v
+		}
+		if v, ok := fullAlbumData["label"].(string); ok && v != "" {
+			updates["label"] = v
+		}
+		if v, ok := fullAlbumData["country"].(string); ok && v != "" {
+			updates["country"] = v
+		}
+		if v, ok := fullAlbumData["cover_image"].(string); ok && v != "" {
+			updates["cover_image_url"] = v
+
+			imageData, imageType, imageErr := i.DownloadCoverImage(v)
+			if imageErr != nil {
+				updates["cover_image_failed"] = true
+			} else if len(imageData) > 0 {
+				updates["discogs_cover_image"] = imageData
+				updates["discogs_cover_image_type"] = imageType
+				updates["cover_image_failed"] = false
+			}
+		}
+
+		if len(updates) > 0 {
+			db.Model(&models.Album{}).Where("id = ?", albumID).Updates(updates)
+		}
+	}
+
+	// Remove existing tracks before syncing
+	db.Where("album_id = ?", albumID).Delete(&models.Track{})
+
+	// Create new tracks
+	for _, track := range tracks {
+		title := ""
+		if t, ok := track["title"].(string); ok {
+			title = t
+		}
+		position := ""
+		if p, ok := track["position"].(string); ok {
+			position = p
+		}
+		duration := parseDuration(track["duration"])
+
+		newTrack := models.Track{
+			AlbumID:     albumID,
+			AlbumTitle:  albumTitle,
+			Title:       title,
+			Duration:    duration,
+			TrackNumber: 0,
+			DiscNumber:  0,
+			Side:        position,
+			Position:    position,
+		}
+
+		if err := db.Create(&newTrack).Error; err != nil {
+			errMsg := fmt.Sprintf("Failed to create track %s: %v", title, err)
+			db.Create(&models.SyncLog{
+				DiscogsID:  discogsID,
+				AlbumTitle: albumTitle,
+				Artist:     artist,
+				ErrorType:  "track",
+				ErrorMsg:   errMsg,
+			})
+			return false, errMsg
+		}
+	}
+
+	return true, ""
+}
+
+// ImportFromDiscogs imports an album from Discogs by its ID
+func (i *AlbumImporter) ImportFromDiscogs(discogsID int) (*models.Album, error) {
+	discogsData, err := i.client.GetAlbum(discogsID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch album from Discogs: %w", err)
+	}
+
+	input := AlbumInput{
+		DiscogsID: discogsID,
+	}
+
+	if v, ok := discogsData["title"].(string); ok {
+		input.Title = v
+	}
+	if v, ok := discogsData["artist"].(string); ok {
+		input.Artist = v
+	}
+	switch v := discogsData["year"].(type) {
+	case float64:
+		input.ReleaseYear = int(v)
+	case int:
+		input.ReleaseYear = v
+	}
+	if v, ok := discogsData["genre"].(string); ok {
+		input.Genre = v
+	}
+	if v, ok := discogsData["label"].(string); ok {
+		input.Label = v
+	}
+	if v, ok := discogsData["country"].(string); ok {
+		input.Country = v
+	}
+	if v, ok := discogsData["release_date"].(string); ok {
+		input.ReleaseDate = v
+	}
+	if v, ok := discogsData["style"].(string); ok {
+		input.Style = v
+	}
+	if v, ok := discogsData["cover_image"].(string); ok {
+		input.CoverImage = v
+	}
+
+	// Parse tracks
+	var tracks []TrackInput
+	if tracklist, ok := discogsData["tracklist"].([]map[string]interface{}); ok {
+		for _, t := range tracklist {
+			track := TrackInput{
+				Duration: parseDuration(t["duration"]),
+			}
+			if title, ok := t["title"].(string); ok {
+				track.Title = title
+			}
+			if position, ok := t["position"].(string); ok {
+				track.Side = position
+				track.Position = position
+			}
+			tracks = append(tracks, track)
+		}
+	}
+
+	return i.CreateAlbumWithTracks(input, tracks)
+}
+
+// parseDuration parses a duration from various formats
+func parseDuration(v interface{}) int {
+	switch d := v.(type) {
+	case float64:
+		return int(d)
+	case int:
+		return d
+	case string:
+		if d != "" {
+			parts := strings.Split(d, ":")
+			if len(parts) == 2 {
+				if mins, err := strconv.Atoi(parts[0]); err == nil {
+					if secs, err := strconv.Atoi(parts[1]); err == nil {
+						return mins*60 + secs
+					}
+				}
+			}
+		}
+	}
+	return 0
+}
+
+// intPtr returns a pointer to the given int, or nil if the value is 0
+func intPtr(i int) *int {
+	if i == 0 {
+		return nil
+	}
+	return &i
+}

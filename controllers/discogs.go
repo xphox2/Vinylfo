@@ -2,10 +2,7 @@ package controllers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -13,90 +10,34 @@ import (
 
 	"vinylfo/discogs"
 	"vinylfo/models"
+	"vinylfo/services"
 	"vinylfo/sync"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-// intPtr returns a pointer to the given int, or nil if the value is 0
-func intPtr(i int) *int {
-	if i == 0 {
-		return nil
-	}
-	return &i
-}
-
-func downloadImage(imageURL string) ([]byte, string, error) {
-	if imageURL == "" {
-		return nil, "", nil
-	}
-
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	req, err := http.NewRequest("GET", imageURL, nil)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("User-Agent", "Vinylfo/1.0")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to download image: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("failed to download image: status %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to read image data: %w", err)
-	}
-
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "image/jpeg"
-	}
-
-	if !strings.HasPrefix(contentType, "image/") {
-		return nil, "", fmt.Errorf("invalid content type: %s", contentType)
-	}
-
-	return data, contentType, nil
-}
-
-func logToFile(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	f, _ := os.OpenFile("sync_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	defer f.Close()
-	f.WriteString(fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), msg))
-}
-
-func isLockTimeout(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "Lock wait timeout") || strings.Contains(errStr, "deadlock") || strings.Contains(errStr, "try restarting transaction")
-}
-
-func maskValue(s string) string {
-	if len(s) <= 8 {
-		return "****"
-	}
-	return s[:4] + "****" + s[len(s)-4:]
-}
-
+// getDiscogsClient returns a Discogs client without OAuth
 func getDiscogsClient() *discogs.Client {
 	client := discogs.NewClient("")
 	return client
 }
 
+// DiscogsController handles all Discogs-related HTTP endpoints
+type DiscogsController struct {
+	db              *gorm.DB
+	progressService *services.SyncProgressService
+}
+
+// NewDiscogsController creates a new DiscogsController instance
+func NewDiscogsController(db *gorm.DB) *DiscogsController {
+	return &DiscogsController{
+		db:              db,
+		progressService: services.NewSyncProgressService(db),
+	}
+}
+
+// getDiscogsClientWithOAuth returns a Discogs client with OAuth credentials
 func (c *DiscogsController) getDiscogsClientWithOAuth() *discogs.Client {
 	var config models.AppConfig
 	err := c.db.First(&config).Error
@@ -130,6 +71,55 @@ func (c *DiscogsController) getDiscogsClientWithOAuth() *discogs.Client {
 	return discogs.NewClientWithOAuth("", oauth)
 }
 
+// Sync state management
+type SyncBatch = sync.SyncBatch
+
+var syncManager = sync.DefaultLegacyManager
+
+func getSyncState() sync.LegacySyncState {
+	return syncManager.GetState()
+}
+
+func updateSyncState(fn func(*sync.LegacySyncState)) {
+	syncManager.UpdateState(fn)
+}
+
+// ResetSyncState resets the sync state to initial values
+func ResetSyncState() {
+	syncManager.Reset()
+}
+
+func setSyncState(state sync.LegacySyncState) {
+	syncManager.UpdateState(func(s *sync.LegacySyncState) {
+		*s = state
+	})
+}
+
+func removeFirstAlbumFromBatch(s *sync.LegacySyncState) {
+	if s.LastBatch != nil && len(s.LastBatch.Albums) > 0 {
+		s.LastBatch.Albums = s.LastBatch.Albums[1:]
+		if len(s.LastBatch.Albums) == 0 {
+			s.LastBatch = nil
+		}
+	}
+}
+
+func isSyncComplete(state sync.LegacySyncState) bool {
+	if state.IsPaused {
+		return false
+	}
+	if !state.IsRunning {
+		return true
+	}
+	if state.LastBatch != nil && len(state.LastBatch.Albums) > 0 {
+		return false
+	}
+	return true
+}
+
+// OAuth Handlers
+
+// GetOAuthURL returns the OAuth authorization URL for Discogs
 func (c *DiscogsController) GetOAuthURL(ctx *gin.Context) {
 	var config models.AppConfig
 	err := c.db.First(&config).Error
@@ -177,6 +167,7 @@ func (c *DiscogsController) GetOAuthURL(ctx *gin.Context) {
 	})
 }
 
+// OAuthCallback handles the OAuth callback from Discogs
 func (c *DiscogsController) OAuthCallback(ctx *gin.Context) {
 	if ctx.Query("oauth_token") == "" || ctx.Query("oauth_verifier") == "" {
 		ctx.String(400, "Missing oauth_token or oauth_verifier")
@@ -233,6 +224,7 @@ func (c *DiscogsController) OAuthCallback(ctx *gin.Context) {
 	ctx.Redirect(302, "/settings?discogs_connected=true")
 }
 
+// Disconnect removes Discogs OAuth credentials
 func (c *DiscogsController) Disconnect(ctx *gin.Context) {
 	c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(map[string]interface{}{
 		"discogs_access_token":  "",
@@ -247,6 +239,9 @@ func (c *DiscogsController) Disconnect(ctx *gin.Context) {
 	})
 }
 
+// Status and Folder Handlers
+
+// GetStatus returns the current Discogs connection status
 func (c *DiscogsController) GetStatus(ctx *gin.Context) {
 	var config models.AppConfig
 	if err := c.db.First(&config).Error; err != nil {
@@ -273,6 +268,7 @@ func (c *DiscogsController) GetStatus(ctx *gin.Context) {
 	})
 }
 
+// GetFolders returns the user's Discogs folders
 func (c *DiscogsController) GetFolders(ctx *gin.Context) {
 	var config models.AppConfig
 	if err := c.db.First(&config).Error; err != nil {
@@ -302,6 +298,9 @@ func (c *DiscogsController) GetFolders(ctx *gin.Context) {
 	})
 }
 
+// Search and Preview Handlers
+
+// Search searches for albums on Discogs
 func (c *DiscogsController) Search(ctx *gin.Context) {
 	query := ctx.Query("q")
 	page := 1
@@ -340,6 +339,7 @@ func (c *DiscogsController) Search(ctx *gin.Context) {
 	})
 }
 
+// PreviewAlbum returns preview data for an album from Discogs
 func (c *DiscogsController) PreviewAlbum(ctx *gin.Context) {
 	discogsID := ctx.Param("id")
 	id, err := strconv.Atoi(discogsID)
@@ -370,6 +370,9 @@ func (c *DiscogsController) PreviewAlbum(ctx *gin.Context) {
 	ctx.JSON(200, discogsData)
 }
 
+// Album Creation Handler
+
+// CreateAlbum creates a new album from Discogs or manual input
 func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 	var input struct {
 		DiscogsID   int    `json:"discogs_id"`
@@ -558,50 +561,9 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 	ctx.JSON(201, album)
 }
 
-type SyncBatch = sync.SyncBatch
+// Sync Handlers
 
-var syncManager = sync.DefaultLegacyManager
-
-func getSyncState() sync.LegacySyncState {
-	return syncManager.GetState()
-}
-
-func updateSyncState(fn func(*sync.LegacySyncState)) {
-	syncManager.UpdateState(fn)
-}
-
-func ResetSyncState() {
-	syncManager.Reset()
-}
-
-func setSyncState(state sync.LegacySyncState) {
-	syncManager.UpdateState(func(s *sync.LegacySyncState) {
-		*s = state
-	})
-}
-
-func removeFirstAlbumFromBatch(s *sync.LegacySyncState) {
-	if s.LastBatch != nil && len(s.LastBatch.Albums) > 0 {
-		s.LastBatch.Albums = s.LastBatch.Albums[1:]
-		if len(s.LastBatch.Albums) == 0 {
-			s.LastBatch = nil
-		}
-	}
-}
-
-func isSyncComplete(state sync.LegacySyncState) bool {
-	if state.IsPaused {
-		return false
-	}
-	if !state.IsRunning {
-		return true
-	}
-	if state.LastBatch != nil && len(state.LastBatch.Albums) > 0 {
-		return false
-	}
-	return true
-}
-
+// StartSync initiates a new sync with Discogs
 func (c *DiscogsController) StartSync(ctx *gin.Context) {
 	logToFile("StartSync: called")
 	state := getSyncState()
@@ -619,32 +581,27 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 		return
 	}
 
-	existingProgress := loadSyncProgress(c.db)
+	existingProgress := c.progressService.Load(state)
 	if existingProgress != nil {
 		logToFile("StartSync: Found existing sync progress, status=%s, is_running=%v, is_paused=%v", existingProgress.Status, state.IsRunning, state.IsPaused)
 
-		// If sync is not running and not paused, it means the previous sync completed
-		// Archive it to history and start fresh
 		if !state.IsRunning && !state.IsPaused && existingProgress.Status == "completed" {
 			logToFile("StartSync: Previous sync completed, archiving to history and starting fresh")
-			archiveSyncToHistory(c.db, existingProgress)
-			c.db.Exec("DELETE FROM sync_progresses WHERE id = ?", existingProgress.ID)
+			c.progressService.ArchiveToHistory(existingProgress)
+			c.progressService.Delete(existingProgress.ID)
 			ResetSyncState()
 			existingProgress = nil
 		} else if existingProgress.Status == "completed" {
-			// Even if state isn't synced, if DB shows completed, archive and start fresh
 			logToFile("StartSync: DB shows sync completed, archiving to history and starting fresh")
-			archiveSyncToHistory(c.db, existingProgress)
-			c.db.Exec("DELETE FROM sync_progresses WHERE id = ?", existingProgress.ID)
+			c.progressService.ArchiveToHistory(existingProgress)
+			c.progressService.Delete(existingProgress.ID)
 			ResetSyncState()
 			existingProgress = nil
 		} else if !state.IsRunning && !state.IsPaused {
-			// No progress in DB, start fresh
 			logToFile("StartSync: No active sync, clearing state and starting fresh")
 			ResetSyncState()
 			existingProgress = nil
 		} else {
-			// Sync is actually in progress or paused
 			logToFile("StartSync: Returning existing progress to frontend")
 			ctx.JSON(200, gin.H{
 				"message":       "Existing sync in progress",
@@ -681,7 +638,7 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 	}
 
 	if input.ForceNew && existingProgress != nil {
-		c.db.Delete(&models.SyncProgress{})
+		c.progressService.Clear()
 		ResetSyncState()
 		existingProgress = nil
 		logToFile("StartSync: Cleared existing progress, starting fresh")
@@ -825,7 +782,15 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 
 	setSyncState(state)
 
-	go processSyncBatches(c.db, client, config.DiscogsUsername, config.SyncBatchSize, input.SyncMode, state.CurrentFolder, &state.Folders)
+	// Start the sync worker
+	worker := services.NewSyncWorker(c.db, client, syncManager, services.SyncConfig{
+		Username:      config.DiscogsUsername,
+		BatchSize:     config.SyncBatchSize,
+		SyncMode:      input.SyncMode,
+		CurrentFolder: state.CurrentFolder,
+		Folders:       &state.Folders,
+	})
+	go worker.Run()
 
 	ctx.JSON(200, gin.H{
 		"message":   "Sync started",
@@ -834,840 +799,11 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 	})
 }
 
-func processSyncBatches(db *gorm.DB, client *discogs.Client, username string, batchSize int, syncMode string, currentFolder int, folders *[]map[string]interface{}) {
-	defer func() {
-		if r := recover(); r != nil {
-			logToFile("Sync: PANIC in processSyncBatches: %v", r)
-			// Reset sync state on panic
-			updateSyncState(func(s *sync.LegacySyncState) {
-				s.IsRunning = false
-				s.IsPaused = false
-				s.LastActivity = time.Time{}
-			})
-		}
-	}()
-
-	logToFile("Sync: processSyncBatches STARTING")
-
-	// Get initial state for logging
-	initialState := getSyncState()
-	logToFile("Sync: initial state - IsRunning=%v, IsPaused=%v, Processed=%d, Total=%d",
-		initialState.IsRunning, initialState.IsPaused, initialState.Processed, initialState.Total)
-
-	for {
-		logToFile("Sync: ========== LOOP ITERATION START ==========")
-
-		// ALWAYS update last activity timestamp
-		logToFile("Sync: updating last activity")
-		updateSyncState(func(s *sync.LegacySyncState) {
-			s.LastActivity = time.Now()
-		})
-
-		// ALWAYS read fresh state
-		logToFile("Sync: reading fresh state")
-		state := getSyncState()
-		lastBatchAlbums := 0
-		if state.LastBatch != nil {
-			lastBatchAlbums = len(state.LastBatch.Albums)
-		}
-		logToFile("Sync: loop TOP - IsRunning=%v, IsPaused=%v, Processed=%d, LastBatch=%v, albums_in_batch=%d",
-			state.IsRunning, state.IsPaused, state.Processed,
-			state.LastBatch != nil && lastBatchAlbums > 0, lastBatchAlbums)
-
-		if !state.IsRunning {
-			logToFile("Sync: complete (not running), Processed=%d/%d", state.Processed, state.Total)
-			return
-		}
-
-		logToFile("Sync: NOT PAUSED - proceeding with batch processing, Processed=%d, LastBatch=%v, albums_in_batch=%d",
-			state.Processed,
-			state.LastBatch != nil && lastBatchAlbums > 0, lastBatchAlbums)
-
-		// Determine if we need to fetch new data from API
-		var needFetch bool
-		page := state.CurrentPage
-		folderID := state.CurrentFolder
-
-		if state.LastBatch == nil || len(state.LastBatch.Albums) == 0 {
-			needFetch = true
-
-			if syncMode == "all-folders" && len(*folders) > 0 {
-				if state.CurrentPage > 1 {
-					// Move to next folder
-					if state.FolderIndex >= len(*folders)-1 {
-						logToFile("processSyncBatches: all folders synced complete. Total processed: %d", state.Processed)
-						updateSyncState(func(s *sync.LegacySyncState) {
-							s.IsRunning = false
-							s.IsPaused = false
-							s.Total = state.Processed // Use actual processed count as final total
-							s.LastBatch = nil
-							s.LastActivity = time.Time{}
-						})
-						saveSyncProgress(db)
-						if progress := loadSyncProgress(db); progress != nil {
-							archiveSyncToHistory(db, progress)
-							db.Exec("DELETE FROM sync_progresses WHERE id = ?", progress.ID)
-						}
-						db.Model(&models.AppConfig{}).Where("id = ?", 1).Update("last_sync_at", time.Now())
-						return
-					}
-					state.FolderIndex++
-					state.CurrentFolder = (*folders)[state.FolderIndex]["id"].(int)
-					state.CurrentPage = 1
-					folderID = state.CurrentFolder
-					page = 1
-					logToFile("processSyncBatches: moving to folder %d (%s)", state.CurrentFolder, (*folders)[state.FolderIndex]["name"])
-				}
-			} else {
-				// Will increment page after successful fetch (in the fetch block below)
-			}
-		} else {
-			// Use current batch data
-			needFetch = false
-		}
-
-		// Check if sync was stopped during our processing
-		if !state.IsRunning {
-			return
-		}
-
-		// Get current releases to process
-		currentReleases := []map[string]interface{}{}
-		if state.LastBatch != nil {
-			currentReleases = state.LastBatch.Albums
-		}
-
-		if needFetch {
-			logToFile("processSyncBatches: fetching page %d from API for folder %d", page, folderID)
-			time.Sleep(500 * time.Millisecond)
-
-			// Check if sync was stopped or paused before making API call
-			if !state.IsRunning || state.IsPaused {
-				return
-			}
-
-			var releases []map[string]interface{}
-			var err error
-			var totalItems int
-
-			if syncMode == "all-folders" && folderID > 0 {
-				releases, totalItems, err = client.GetUserCollectionByFolder(username, folderID, page, batchSize)
-			} else if syncMode == "all-folders" {
-				releases, totalItems, err = client.GetUserCollectionByFolder(username, 0, page, batchSize)
-			} else if syncMode == "specific" {
-				releases, totalItems, err = client.GetUserCollectionByFolder(username, folderID, page, batchSize)
-			} else {
-				releases, err = client.GetUserCollection(username, page, batchSize)
-			}
-
-			// Update total if API reports a different count (collection may have changed)
-			if totalItems > 0 {
-				currentState := getSyncState()
-				if totalItems != currentState.Total {
-					logToFile("processSyncBatches: API reports total=%d, updating from %d", totalItems, currentState.Total)
-					updateSyncState(func(s *sync.LegacySyncState) {
-						s.Total = totalItems
-					})
-				}
-			}
-
-			if err != nil {
-				errStr := err.Error()
-				if strings.Contains(errStr, "Page") && strings.Contains(errStr, "outside of valid range") {
-					logToFile("processSyncBatches: reached end of pagination (page %d doesn't exist)", page)
-
-					// Handle end of current folder
-					if syncMode == "all-folders" && len(*folders) > 0 && state.FolderIndex < len(*folders)-1 {
-						// Move to next folder
-						logToFile("processSyncBatches: more folders to process, continuing")
-						updateSyncState(func(s *sync.LegacySyncState) {
-							s.CurrentPage = 1
-							s.LastBatch = nil
-						})
-						continue
-					}
-
-					// All folders/pagination complete - mark as completed with actual count
-					logToFile("processSyncBatches: all pagination complete. Processed: %d, Total: %d", state.Processed, state.Total)
-					updateSyncState(func(s *sync.LegacySyncState) {
-						s.IsRunning = false
-						s.IsPaused = false
-						s.Total = state.Processed // Use actual processed count as final total
-						s.LastBatch = nil
-						s.LastActivity = time.Time{}
-					})
-					saveSyncProgress(db)
-					if progress := loadSyncProgress(db); progress != nil {
-						archiveSyncToHistory(db, progress)
-						db.Exec("DELETE FROM sync_progresses WHERE id = ?", progress.ID)
-					}
-					db.Model(&models.AppConfig{}).Where("id = ?", 1).Update("last_sync_at", time.Now())
-					return
-				}
-				logToFile("processSyncBatches: failed to fetch page %d: %v", page, err)
-				updateSyncState(func(s *sync.LegacySyncState) {
-					s.IsRunning = false
-					s.IsPaused = false
-					s.LastBatch = nil
-					s.LastActivity = time.Time{}
-				})
-				return
-			}
-
-			if len(releases) == 0 {
-				logToFile("processSyncBatches: received empty releases list at page %d", page)
-
-				// Update total to reflect actual processed count if we've gone past the initial estimate
-				checkState := getSyncState()
-				if checkState.Processed > checkState.Total {
-					updateSyncState(func(s *sync.LegacySyncState) {
-						s.Total = checkState.Processed
-					})
-					logToFile("processSyncBatches: adjusted total to %d (was %d)", checkState.Processed, checkState.Total)
-				}
-
-				// Handle empty page - move to next folder or complete
-				if syncMode == "all-folders" && len(*folders) > 0 {
-					if state.FolderIndex < len(*folders)-1 {
-						logToFile("processSyncBatches: moving to next folder after empty page in folder %d", state.CurrentFolder)
-						updateSyncState(func(s *sync.LegacySyncState) {
-							s.FolderIndex++
-							s.CurrentFolder = (*folders)[s.FolderIndex]["id"].(int)
-							s.CurrentPage = 1
-							s.LastBatch = nil
-						})
-						logToFile("processSyncBatches: moving to folder %d (%s)",
-							state.CurrentFolder, (*folders)[state.FolderIndex]["name"])
-						continue
-					}
-				}
-
-				// No more albums to sync
-				currentState := getSyncState()
-				logToFile("processSyncBatches: sync complete. Processed=%d, Total=%d, Mode=%s", currentState.Processed, currentState.Total, syncMode)
-
-				updateSyncState(func(s *sync.LegacySyncState) {
-					s.IsRunning = false
-					s.IsPaused = false
-					s.Total = currentState.Processed // Use actual processed count as final total
-					s.LastBatch = nil
-					s.LastActivity = time.Time{}
-				})
-				saveSyncProgress(db)
-				if progress := loadSyncProgress(db); progress != nil {
-					archiveSyncToHistory(db, progress)
-					db.Exec("DELETE FROM sync_progresses WHERE id = ?", progress.ID)
-				}
-				db.Model(&models.AppConfig{}).Where("id = ?", 1).Update("last_sync_at", time.Now())
-				return
-			}
-
-			apiRem := client.GetAPIRemaining()
-			anonRem := client.GetAPIRemainingAnon()
-			logToFile("processSyncBatches: fetched %d albums from page %d folder %d, api_remaining=%d", len(releases), page, folderID, apiRem)
-
-			if len(releases) < batchSize {
-				logToFile("processSyncBatches: received fewer albums than page size (%d < %d), sync complete", len(releases), batchSize)
-				currentState := getSyncState()
-				updateSyncState(func(s *sync.LegacySyncState) {
-					s.IsRunning = false
-					s.IsPaused = false
-					s.Total = currentState.Processed
-					s.LastBatch = nil
-					s.LastActivity = time.Time{}
-				})
-				saveSyncProgress(db)
-				if progress := loadSyncProgress(db); progress != nil {
-					archiveSyncToHistory(db, progress)
-					db.Exec("DELETE FROM sync_progresses WHERE id = ?", progress.ID)
-				}
-				db.Model(&models.AppConfig{}).Where("id = ?", 1).Update("last_sync_at", time.Now())
-				return
-			}
-
-			updateSyncState(func(s *sync.LegacySyncState) {
-				s.LastBatch = &SyncBatch{
-					ID:     page,
-					Albums: releases,
-				}
-				s.APIRemaining = apiRem
-				s.AnonRemaining = anonRem
-				s.CurrentPage = page + 1
-			})
-
-			// Check if sync was stopped or paused after API call
-			state = getSyncState()
-			if !state.IsRunning || state.IsPaused {
-				return
-			}
-
-			// Use the newly set batch
-			currentReleases = releases
-		} else {
-			logToFile("processSyncBatches: processing batch %d with %d albums", state.CurrentPage, len(currentReleases))
-		}
-
-		// Re-check running state after potential API call delays
-		state = getSyncState()
-		if !state.IsRunning || state.IsPaused {
-			return
-		}
-
-		releases := currentReleases
-		if len(releases) == 0 {
-			logToFile("processSyncBatches: no releases to process, continuing loop")
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-
-		logToFile("Sync: processing batch of %d albums, Processed=%d/%d", len(releases), state.Processed, state.Total)
-
-		for _, album := range releases {
-			// Check if sync stopped or paused before processing each album
-			// Note: We need to check global state here since it could have changed
-			currentCheck := getSyncState()
-			if !currentCheck.IsRunning || currentCheck.IsPaused {
-				return
-			}
-
-			title, _ := album["title"].(string)
-			artist, _ := album["artist"].(string)
-			year, _ := album["year"].(int)
-			coverImage, _ := album["cover_image"].(string)
-			discogsID := 0
-			if v, ok := album["discogs_id"].(int); ok {
-				discogsID = v
-			}
-			albumFolderID := 0
-			if f, ok := album["folder_id"].(int); ok {
-				albumFolderID = f
-			}
-			if albumFolderID == 0 {
-				albumFolderID = state.CurrentFolder
-			}
-
-			var existingAlbum models.Album
-			var result *gorm.DB
-
-			// Check for existing album - prefer DiscogsID match, fall back to title+artist
-			if discogsID > 0 {
-				result = db.Where("discogs_id = ?", discogsID).First(&existingAlbum)
-				if result.Error == gorm.ErrRecordNotFound {
-					// No match by DiscogsID, check by title+artist as fallback
-					result = db.Where("title = ? AND artist = ?", title, artist).First(&existingAlbum)
-				}
-			} else {
-				result = db.Where("title = ? AND artist = ?", title, artist).First(&existingAlbum)
-			}
-
-			if result.Error == gorm.ErrRecordNotFound {
-				maxRetries := 3
-				var newAlbum models.Album
-				var tx *gorm.DB
-				var createErr error
-
-				imageData, imageType, imageErr := downloadImage(coverImage)
-				imageFailed := imageErr != nil
-				if imageErr != nil {
-					logToFile("processSyncBatches: failed to download image for %s - %s: %v", artist, title, imageErr)
-				}
-
-				for attempt := 0; attempt <= maxRetries; attempt++ {
-					newAlbum = models.Album{
-						Title:                 title,
-						Artist:                artist,
-						ReleaseYear:           year,
-						CoverImageURL:         coverImage,
-						DiscogsCoverImage:     imageData,
-						DiscogsCoverImageType: imageType,
-						CoverImageFailed:      imageFailed,
-						DiscogsID:             intPtr(discogsID),
-						DiscogsFolderID:       albumFolderID,
-					}
-					tx = db.Begin()
-					if tx.Error != nil {
-						if attempt < maxRetries && isLockTimeout(tx.Error) {
-							tx.Rollback()
-							time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
-							continue
-						}
-						logToFile("processSyncBatches: failed to start transaction for album: %s - %s", artist, title)
-						db.Create(&models.SyncLog{
-							DiscogsID:  discogsID,
-							AlbumTitle: title,
-							Artist:     artist,
-							ErrorType:  "album",
-							ErrorMsg:   fmt.Sprintf("Failed to start transaction: %v", tx.Error),
-						})
-						break
-					}
-
-					createErr = tx.Create(&newAlbum).Error
-					if createErr != nil {
-						tx.Rollback()
-						if attempt < maxRetries && isLockTimeout(createErr) {
-							time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
-							continue
-						}
-						logToFile("processSyncBatches: failed to create album: %s - %s: %v", artist, title, createErr)
-						db.Create(&models.SyncLog{
-							DiscogsID:  discogsID,
-							AlbumTitle: title,
-							Artist:     artist,
-							ErrorType:  "album",
-							ErrorMsg:   fmt.Sprintf("Failed to create album: %v", createErr),
-						})
-						saveSyncProgress(db)
-						break
-					}
-
-					logToFile("processSyncBatches: Created album: %s - %s (folder: %d)", artist, title, albumFolderID)
-
-					if discogsID > 0 {
-						success, errMsg := fetchTracksForAlbum(tx, client, newAlbum.ID, discogsID, title, artist)
-						if !success {
-							logToFile("processSyncBatches: Failed to fetch tracks for album %s - %s: %s", artist, title, errMsg)
-							tx.Rollback()
-							break
-						}
-						logToFile("processSyncBatches: Successfully synced album with tracks: %s - %s", artist, title)
-					}
-
-					if err := tx.Commit().Error; err != nil {
-						if attempt < maxRetries && isLockTimeout(err) {
-							time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
-							continue
-						}
-						logToFile("processSyncBatches: failed to commit album: %s - %s: %v", artist, title, err)
-						saveSyncProgress(db)
-						break
-					}
-					updateSyncState(func(s *sync.LegacySyncState) {
-						s.Processed++
-					})
-					saveSyncProgress(db)
-					updateSyncState(func(s *sync.LegacySyncState) {
-						removeFirstAlbumFromBatch(s)
-					})
-					saveSyncProgress(db)
-					logToFile("processSyncBatches: Album synced successfully: %s - %s, Processed=%d", artist, title, getSyncState().Processed)
-					break
-				}
-				continue
-			} else {
-				// Album exists - check if we should update metadata from Discogs
-				updated := false
-				updates := make(map[string]interface{})
-
-				// Update DiscogsID if it was previously missing
-				if existingAlbum.DiscogsID == nil && discogsID > 0 {
-					updates["discogs_id"] = discogsID
-					updated = true
-				}
-
-				// Update folder ID if changed
-				if albumFolderID > 0 && existingAlbum.DiscogsFolderID != albumFolderID {
-					updates["discogs_folder_id"] = albumFolderID
-					updated = true
-				}
-
-				// Update cover image if we have one and it's different or was missing
-				if coverImage != "" && existingAlbum.CoverImageURL != coverImage {
-					updates["cover_image_url"] = coverImage
-					// Also download the new image
-					if imageData, imageType, err := downloadImage(coverImage); err == nil && imageData != nil {
-						updates["discogs_cover_image"] = imageData
-						updates["discogs_cover_image_type"] = imageType
-						updates["cover_image_failed"] = false
-					}
-					updated = true
-				}
-
-				// Update year if we have one and existing is 0
-				if year > 0 && existingAlbum.ReleaseYear == 0 {
-					updates["release_year"] = year
-					updated = true
-				}
-
-				if updated {
-					if err := db.Model(&existingAlbum).Updates(updates).Error; err != nil {
-						logToFile("Sync: failed to update album %s - %s: %v", artist, title, err)
-					} else {
-						logToFile("Sync: updated existing album: %s - %s", artist, title)
-					}
-				} else {
-					logToFile("Sync: album exists (no updates needed): %s - %s", artist, title)
-				}
-
-				// Note: Track re-sync is NOT done here to keep sync fast.
-				// Use the separate "Refresh Tracks" feature to re-sync tracks for existing albums.
-
-				updateSyncState(func(s *sync.LegacySyncState) {
-					s.Processed++
-				})
-				saveSyncProgress(db)
-				updateSyncState(func(s *sync.LegacySyncState) {
-					removeFirstAlbumFromBatch(s)
-					if s.Processed%5 == 0 {
-						s.APIRemaining = client.GetAPIRemaining()
-						s.AnonRemaining = client.GetAPIRemainingAnon()
-					}
-				})
-				saveSyncProgress(db)
-				logToFile("Sync: processed=%d/%d", getSyncState().Processed, getSyncState().Total)
-				continue
-			}
-		}
-
-		// Check if LastBatch is empty after processing - if so, fetch next page
-		state = getSyncState()
-		if state.LastBatch == nil || len(state.LastBatch.Albums) == 0 {
-			// Before fetching next page, check if paused
-			// This ensures we finish processing current batch before pausing
-			if state.IsPaused {
-				logToFile("Sync: PAUSED - entering wait loop (batch empty), current state IsPaused=%v, IsRunning=%v", state.IsPaused, state.IsRunning)
-
-				// Poll for resume without timeout - wait until not paused
-				waitStart := time.Now()
-				for {
-					checkState := getSyncState()
-					elapsed := time.Since(waitStart)
-
-					// Log every check to help debug
-					if elapsed.Seconds() < 1 || elapsed.Seconds() > 5 || checkState.IsPaused != state.IsPaused {
-						logToFile("Sync: wait loop check #%d - IsPaused=%v, IsRunning=%v, elapsed=%v",
-							int(elapsed.Seconds()*10), checkState.IsPaused, checkState.IsRunning, elapsed)
-					}
-
-					if !checkState.IsPaused {
-						logToFile("Sync: RESUME DETECTED after %v", elapsed)
-						break
-					}
-
-					if !checkState.IsRunning {
-						logToFile("Sync: sync stopped while paused")
-						return
-					}
-
-					time.Sleep(100 * time.Millisecond)
-				}
-
-				logToFile("Sync: continuing loop after wait, about to re-read state")
-				continue
-			}
-
-			logToFile("processSyncBatches: batch empty, will fetch next page")
-			// LastBatch will be cleared and next page fetched in next loop iteration
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-
-		// Save progress - LastBatch still has failed albums that need retry
-		saveSyncProgress(db)
-
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	apiRem := client.GetAPIRemaining()
-	anonRem := client.GetAPIRemainingAnon()
-	updateSyncState(func(s *sync.LegacySyncState) {
-		s.LastBatch = nil
-		s.APIRemaining = apiRem
-		s.AnonRemaining = anonRem
-	})
-	time.Sleep(100 * time.Millisecond)
-	saveSyncProgress(db)
-	if progress := loadSyncProgress(db); progress != nil {
-		archiveSyncToHistory(db, progress)
-		db.Exec("DELETE FROM sync_progresses WHERE id = ?", progress.ID)
-	}
-	db.Model(&models.AppConfig{}).Where("id = ?", 1).Update("last_sync_at", time.Now())
-}
-
-func fetchTracksForAlbum(db *gorm.DB, client *discogs.Client, albumID uint, discogsID int, albumTitle, artist string) (bool, string) {
-	logToFile("fetchTracksForAlbum: fetching tracks for album ID %d, discogs ID %d", albumID, discogsID)
-
-	// Check pause state before making API call - if paused, abort early
-	checkState := getSyncState()
-	if checkState.IsPaused {
-		logToFile("fetchTracksForAlbum: sync was paused, aborting track fetch for %s - %s", artist, albumTitle)
-		return false, "sync paused"
-	}
-
-	tracks, err := client.GetTracksForAlbum(discogsID)
-	if err != nil {
-		errMsg := fmt.Sprintf("Failed to fetch tracks: %v", err)
-		logToFile("fetchTracksForAlbum: %s", errMsg)
-		db.Create(&models.SyncLog{
-			DiscogsID:  discogsID,
-			AlbumTitle: albumTitle,
-			Artist:     artist,
-			ErrorType:  "tracks",
-			ErrorMsg:   errMsg,
-		})
-		return false, errMsg
-	}
-
-	if len(tracks) == 0 {
-		errMsg := "No tracks found for release"
-		logToFile("fetchTracksForAlbum: %s", errMsg)
-		db.Create(&models.SyncLog{
-			DiscogsID:  discogsID,
-			AlbumTitle: albumTitle,
-			Artist:     artist,
-			ErrorType:  "tracks",
-			ErrorMsg:   errMsg,
-		})
-		return false, errMsg
-	}
-
-	// Check pause state before second API call
-	checkState = getSyncState()
-	if checkState.IsPaused {
-		logToFile("fetchTracksForAlbum: sync was paused, aborting metadata fetch for %s - %s", artist, albumTitle)
-		return false, "sync paused"
-	}
-
-	logToFile("fetchTracksForAlbum: Fetching full album metadata for discogs ID %d", discogsID)
-	fullAlbumData, err := client.GetAlbum(discogsID)
-	if err == nil {
-		updates := make(map[string]interface{})
-
-		if v, ok := fullAlbumData["genre"].(string); ok && v != "" {
-			updates["genre"] = v
-		}
-		if v, ok := fullAlbumData["style"].(string); ok && v != "" {
-			updates["style"] = v
-		}
-		if v, ok := fullAlbumData["label"].(string); ok && v != "" {
-			updates["label"] = v
-		}
-		if v, ok := fullAlbumData["country"].(string); ok && v != "" {
-			updates["country"] = v
-		}
-		if v, ok := fullAlbumData["cover_image"].(string); ok && v != "" {
-			updates["cover_image_url"] = v
-
-			imageData, imageType, imageErr := downloadImage(v)
-			if imageErr != nil {
-				logToFile("fetchTracksForAlbum: failed to download image for album %s - %s: %v", albumTitle, artist, imageErr)
-				updates["cover_image_failed"] = true
-			} else if len(imageData) > 0 {
-				updates["discogs_cover_image"] = imageData
-				updates["discogs_cover_image_type"] = imageType
-				updates["cover_image_failed"] = false
-			}
-		}
-
-		if len(updates) > 0 {
-			if err := db.Model(&models.Album{}).Where("id = ?", albumID).Updates(updates).Error; err != nil {
-				logToFile("fetchTracksForAlbum: Failed to update album metadata: %v", err)
-			} else {
-				logToFile("fetchTracksForAlbum: Updated album metadata: genre=%v, style=%v, label=%v, country=%v, cover_image=%v",
-					updates["genre"], updates["style"], updates["label"], updates["country"], updates["cover_image_url"])
-			}
-		}
-	} else {
-		logToFile("fetchTracksForAlbum: Failed to fetch full album metadata: %v", err)
-	}
-
-	logToFile("fetchTracksForAlbum: Removing existing tracks for album ID %d before syncing %d new tracks", albumID, len(tracks))
-	if err := db.Where("album_id = ?", albumID).Delete(&models.Track{}).Error; err != nil {
-		logToFile("fetchTracksForAlbum: Warning - failed to delete existing tracks: %v", err)
-	}
-
-	for _, track := range tracks {
-		title := ""
-		if t, ok := track["title"].(string); ok {
-			title = t
-		}
-		position := ""
-		if p, ok := track["position"].(string); ok {
-			position = p
-		}
-		duration := 0
-		switch v := track["duration"].(type) {
-		case float64:
-			duration = int(v)
-		case int:
-			duration = v
-		case string:
-			if v != "" {
-				parts := strings.Split(v, ":")
-				if len(parts) == 2 {
-					if mins, err := strconv.Atoi(parts[0]); err == nil {
-						if secs, err := strconv.Atoi(parts[1]); err == nil {
-							duration = mins*60 + secs
-						}
-					}
-				}
-			}
-		}
-
-		maxTrackRetries := 3
-		var newTrack models.Track
-		var trackErr error
-
-		for attempt := 0; attempt <= maxTrackRetries; attempt++ {
-			newTrack = models.Track{
-				AlbumID:     albumID,
-				AlbumTitle:  albumTitle,
-				Title:       title,
-				Duration:    duration,
-				TrackNumber: 0,
-				DiscNumber:  0,
-				Side:        position,
-				Position:    position,
-			}
-			trackErr = db.Create(&newTrack).Error
-			if trackErr != nil {
-				if attempt < maxTrackRetries && isLockTimeout(trackErr) {
-					time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
-					continue
-				}
-				errMsg := fmt.Sprintf("Failed to create track %s: %v", title, trackErr)
-				logToFile("fetchTracksForAlbum: %s", errMsg)
-				db.Create(&models.SyncLog{
-					DiscogsID:  discogsID,
-					AlbumTitle: albumTitle,
-					Artist:     artist,
-					ErrorType:  "track",
-					ErrorMsg:   errMsg,
-				})
-				return false, errMsg
-			}
-			break
-		}
-	}
-
-	return true, ""
-}
-
-func loadSyncProgress(db *gorm.DB) *models.SyncProgress {
-	var progress models.SyncProgress
-
-	// Use raw SQL with a short timeout to avoid hanging on locked tables
-	// This prevents GetSyncProgress from blocking when sync goroutine has transactions
-	err := db.Raw("SELECT id, folder_id, folder_name, current_page, processed, total_albums, last_activity_at, status, last_batch_json FROM sync_progresses ORDER BY id DESC LIMIT 1").Scan(&progress).Error
-
-	if err != nil || progress.ID == 0 {
-		return nil
-	}
-
-	state := getSyncState()
-	maxAge := 30 * time.Minute
-	if state.IsPaused {
-		maxAge = 4 * time.Hour
-	}
-
-	if time.Since(progress.LastActivityAt) > maxAge {
-		// Use raw SQL to avoid transaction issues
-		db.Exec("DELETE FROM sync_progresses WHERE id = ?", progress.ID)
-		return nil
-	}
-
-	return &progress
-}
-
-func archiveSyncToHistory(db *gorm.DB, progress *models.SyncProgress) {
-	var history models.SyncHistory
-	history.SyncMode = progress.SyncMode
-	history.FolderID = progress.FolderID
-	history.FolderName = progress.FolderName
-	history.Processed = progress.Processed
-	history.TotalAlbums = progress.TotalAlbums
-	history.Status = progress.Status
-	history.StartedAt = progress.CreatedAt
-	history.CompletedAt = progress.LastActivityAt
-	if progress.LastActivityAt.IsZero() {
-		history.CompletedAt = time.Now()
-	}
-	history.DurationSecs = int(history.CompletedAt.Sub(history.StartedAt).Seconds())
-	if history.DurationSecs < 1 {
-		history.DurationSecs = 1
-	}
-
-	db.Create(&history)
-	logToFile("archiveSyncToHistory: archived sync with %d/%d albums in %d seconds", history.Processed, history.TotalAlbums, history.DurationSecs)
-}
-
-func restoreLastBatch(db *gorm.DB, state *sync.LegacySyncState) {
-	progress := loadSyncProgress(db)
-	if progress == nil || progress.LastBatchJSON == "" {
-		logToFile("restoreLastBatch: no batch to restore")
-		return
-	}
-
-	var batch SyncBatch
-	if err := json.Unmarshal([]byte(progress.LastBatchJSON), &batch); err == nil {
-		state.LastBatch = &batch
-		logToFile("restoreLastBatch: restored batch with %d albums from page %d, processed=%d",
-			len(batch.Albums), batch.ID, state.Processed)
-	} else {
-		logToFile("restoreLastBatch: failed to unmarshal batch: %v", err)
-	}
-}
-
-func saveSyncProgress(db *gorm.DB) {
-	state := getSyncState()
-
-	var progress models.SyncProgress
-	db.FirstOrCreate(&progress, models.SyncProgress{ID: 1})
-
-	progress.SyncMode = state.SyncMode
-	progress.FolderID = state.CurrentFolder
-	progress.FolderIndex = state.FolderIndex
-	progress.CurrentPage = state.CurrentPage
-	progress.Processed = state.Processed
-	progress.TotalAlbums = state.Total
-	progress.LastActivityAt = time.Now()
-
-	if !state.IsRunning && !state.IsPaused {
-		progress.Status = "completed"
-	} else if state.IsPaused {
-		progress.Status = "paused"
-	} else {
-		progress.Status = "running"
-	}
-
-	var folderNames []string
-	for _, f := range state.Folders {
-		if name, ok := f["name"].(string); ok {
-			folderNames = append(folderNames, name)
-		}
-	}
-	if len(folderNames) > 0 && state.FolderIndex < len(folderNames) {
-		progress.FolderName = folderNames[state.FolderIndex]
-	}
-
-	if state.LastBatch != nil && len(state.LastBatch.Albums) > 0 {
-		batchJSON, err := json.Marshal(state.LastBatch)
-		if err == nil {
-			progress.LastBatchJSON = string(batchJSON)
-		}
-	} else {
-		progress.LastBatchJSON = ""
-	}
-
-	db.Save(&progress)
-	logToFile("saveSyncProgress: saved progress - page=%d, processed=%d, total=%d, has_batch=%v",
-		progress.CurrentPage, progress.Processed, progress.TotalAlbums, progress.LastBatchJSON != "")
-}
-
-type DiscogsController struct {
-	db *gorm.DB
-}
-
-func NewDiscogsController(db *gorm.DB) *DiscogsController {
-	return &DiscogsController{db: db}
-}
-
+// GetSyncProgress returns the current sync progress
 func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
-	// Add a timeout context to prevent hanging
 	ctxWithTimeout, cancel := context.WithTimeout(ctx.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	// Use a separate read-only database connection to avoid blocking
 	type ProgressResponse struct {
 		IsRunning         bool                     `json:"is_running"`
 		IsPaused          bool                     `json:"is_paused"`
@@ -1697,7 +833,6 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 
 	state := getSyncState()
 
-	// Check context timeout before making DB call
 	select {
 	case <-ctxWithTimeout.Done():
 		logToFile("GetSyncProgress: TIMEOUT - context cancelled")
@@ -1706,7 +841,6 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 	default:
 	}
 
-	// Query saved progress with a separate DB connection to avoid locks
 	var savedProgress models.SyncProgress
 	var hasSavedProgress bool
 	var savedFolderName string
@@ -1714,7 +848,6 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 	var savedTotalAlbums int
 	var savedLastActivity time.Time
 
-	// Use raw SQL with shorter timeout to avoid hanging
 	err := c.db.WithContext(ctxWithTimeout).Raw("SELECT id, folder_id, folder_name, current_page, processed, total_albums, last_activity_at, status FROM sync_progresses ORDER BY id DESC LIMIT 1").Scan(&savedProgress).Error
 	if err == nil && savedProgress.ID > 0 {
 		maxAge := 30 * time.Minute
@@ -1747,8 +880,6 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 
 	isStalled := false
 	if state.IsRunning && !state.IsPaused && state.LastActivity.IsZero() == false {
-		// Stall timeout must be longer than Discogs API rate limit reset (60s)
-		// Using 90s to give buffer for rate limit wait + processing time
 		if time.Since(state.LastActivity) > 90*time.Second {
 			isStalled = true
 		}
@@ -1785,6 +916,7 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 	logToFile("GetSyncProgress: IsRunning=%v, Processed=%d, Total=%d, IsStalled=%v", state.IsRunning, state.Processed, state.Total, isStalled)
 }
 
+// GetSyncHistory returns the sync history
 func (c *DiscogsController) GetSyncHistory(ctx *gin.Context) {
 	var history []models.SyncHistory
 	result := c.db.Order("completed_at DESC").Find(&history)
@@ -1800,6 +932,7 @@ func (c *DiscogsController) GetSyncHistory(ctx *gin.Context) {
 	})
 }
 
+// ApplyBatch applies a batch of albums
 func (c *DiscogsController) ApplyBatch(ctx *gin.Context) {
 	var input struct {
 		ApplyAlbums []int `json:"apply_albums"`
@@ -1812,6 +945,8 @@ func (c *DiscogsController) ApplyBatch(ctx *gin.Context) {
 	}
 
 	state := getSyncState()
+	client := c.getDiscogsClientWithOAuth()
+	importer := services.NewAlbumImporter(c.db, client)
 
 	for _, discogsID := range input.ApplyAlbums {
 		var albumInBatch *map[string]interface{}
@@ -1849,14 +984,11 @@ func (c *DiscogsController) ApplyBatch(ctx *gin.Context) {
 			continue
 		}
 
-		if discogsID > 0 {
-			client := c.getDiscogsClientWithOAuth()
-			if client != nil {
-				success, _ := fetchTracksForAlbum(tx, client, newAlbum.ID, discogsID, title, artist)
-				if !success {
-					tx.Rollback()
-					continue
-				}
+		if discogsID > 0 && client != nil {
+			success, _ := importer.FetchAndSaveTracks(tx, newAlbum.ID, discogsID, title, artist)
+			if !success {
+				tx.Rollback()
+				continue
 			}
 		}
 
@@ -1880,16 +1012,17 @@ func (c *DiscogsController) ApplyBatch(ctx *gin.Context) {
 	})
 }
 
+// StopSync stops the current sync
 func (c *DiscogsController) StopSync(ctx *gin.Context) {
 	updateSyncState(func(s *sync.LegacySyncState) {
 		s.IsRunning = false
 		s.IsPaused = false
-		s.Processed = 0 // Reset processed count
+		s.Processed = 0
 		s.LastBatch = nil
 		s.LastActivity = time.Time{}
 	})
 
-	c.db.Delete(&models.SyncProgress{}, "1=1")
+	c.progressService.Clear()
 
 	ctx.JSON(200, gin.H{
 		"message":    "Sync stopped",
@@ -1897,19 +1030,21 @@ func (c *DiscogsController) StopSync(ctx *gin.Context) {
 	})
 }
 
+// ClearProgress clears the sync progress
 func (c *DiscogsController) ClearProgress(ctx *gin.Context) {
-	c.db.Delete(&models.SyncProgress{}, "1=1")
+	c.progressService.Clear()
 	ctx.JSON(200, gin.H{"message": "Progress cleared"})
 }
 
+// ResumeSync resumes a stopped sync
 func (c *DiscogsController) ResumeSync(ctx *gin.Context) {
-	existingProgress := loadSyncProgress(c.db)
+	state := getSyncState()
+	existingProgress := c.progressService.Load(state)
 	if existingProgress == nil {
 		ctx.JSON(400, gin.H{"error": "No sync in progress to resume"})
 		return
 	}
 
-	state := getSyncState()
 	if state.IsRunning {
 		ctx.JSON(400, gin.H{"error": "Sync is already running"})
 		return
@@ -1933,7 +1068,7 @@ func (c *DiscogsController) ResumeSync(ctx *gin.Context) {
 	state.CurrentPage = existingProgress.CurrentPage
 	state.Processed = existingProgress.Processed
 	state.Total = existingProgress.TotalAlbums
-	restoreLastBatch(c.db, &state)
+	c.progressService.RestoreLastBatch(&state)
 	setSyncState(state)
 
 	client := c.getDiscogsClientWithOAuth()
@@ -1946,24 +1081,29 @@ func (c *DiscogsController) ResumeSync(ctx *gin.Context) {
 	}
 
 	if existingProgress.SyncMode == "all-folders" {
-		client := c.getDiscogsClientWithOAuth()
-		if client != nil {
-			folders, err := client.GetUserFolders(config.DiscogsUsername)
-			if err == nil {
-				updateSyncState(func(s *sync.LegacySyncState) {
-					s.Folders = folders
-				})
-				logToFile("ResumeSync: restored %d folders from Discogs", len(folders))
-			} else {
-				logToFile("ResumeSync: failed to fetch folders: %v", err)
-			}
+		folders, err := client.GetUserFolders(config.DiscogsUsername)
+		if err == nil {
+			updateSyncState(func(s *sync.LegacySyncState) {
+				s.Folders = folders
+			})
+			logToFile("ResumeSync: restored %d folders from Discogs", len(folders))
+		} else {
+			logToFile("ResumeSync: failed to fetch folders: %v", err)
 		}
 	}
 
 	logToFile("ResumeSync: starting sync from folder %d, page %d, processed=%d, folders_count=%d",
 		existingProgress.FolderID, existingProgress.CurrentPage, existingProgress.Processed, len(getSyncState().Folders))
 
-	go processSyncBatches(c.db, client, config.DiscogsUsername, config.SyncBatchSize, existingProgress.SyncMode, existingProgress.FolderID, &state.Folders)
+	updatedState := getSyncState()
+	worker := services.NewSyncWorker(c.db, client, syncManager, services.SyncConfig{
+		Username:      config.DiscogsUsername,
+		BatchSize:     config.SyncBatchSize,
+		SyncMode:      existingProgress.SyncMode,
+		CurrentFolder: existingProgress.FolderID,
+		Folders:       &updatedState.Folders,
+	})
+	go worker.Run()
 
 	ctx.JSON(200, gin.H{
 		"message":    "Sync resumed",
@@ -1971,6 +1111,7 @@ func (c *DiscogsController) ResumeSync(ctx *gin.Context) {
 	})
 }
 
+// GetBatchDetails returns details of a specific batch
 func (c *DiscogsController) GetBatchDetails(ctx *gin.Context) {
 	batchID := ctx.Param("id")
 	id, err := strconv.Atoi(batchID)
@@ -1995,6 +1136,7 @@ func (c *DiscogsController) GetBatchDetails(ctx *gin.Context) {
 	})
 }
 
+// ConfirmBatch confirms a batch
 func (c *DiscogsController) ConfirmBatch(ctx *gin.Context) {
 	batchID := ctx.Param("id")
 	id, err := strconv.Atoi(batchID)
@@ -2019,6 +1161,7 @@ func (c *DiscogsController) ConfirmBatch(ctx *gin.Context) {
 	})
 }
 
+// SkipBatch skips a batch
 func (c *DiscogsController) SkipBatch(ctx *gin.Context) {
 	batchID := ctx.Param("id")
 	id, err := strconv.Atoi(batchID)
@@ -2048,16 +1191,17 @@ func (c *DiscogsController) SkipBatch(ctx *gin.Context) {
 	})
 }
 
+// CancelSync cancels the current sync
 func (c *DiscogsController) CancelSync(ctx *gin.Context) {
 	updateSyncState(func(s *sync.LegacySyncState) {
 		s.IsRunning = false
 		s.IsPaused = false
-		s.Processed = 0 // Reset processed count
+		s.Processed = 0
 		s.LastBatch = nil
 		s.LastActivity = time.Time{}
 	})
 
-	c.db.Delete(&models.SyncProgress{}, "1=1")
+	c.progressService.Clear()
 
 	ctx.JSON(200, gin.H{
 		"message":    "Sync cancelled",
@@ -2065,6 +1209,7 @@ func (c *DiscogsController) CancelSync(ctx *gin.Context) {
 	})
 }
 
+// PauseSync pauses the current sync
 func (c *DiscogsController) PauseSync(ctx *gin.Context) {
 	state := getSyncState()
 	if !state.IsRunning {
@@ -2082,10 +1227,8 @@ func (c *DiscogsController) PauseSync(ctx *gin.Context) {
 	logToFile("PauseSync: setting IsPaused=true, current state - IsRunning=%v, Processed=%d, Total=%d, LastBatch=%v",
 		state.IsRunning, state.Processed, state.Total, state.LastBatch != nil && len(state.LastBatch.Albums) > 0)
 
-	// Save current progress including LastBatch before setting paused state
-	saveSyncProgress(c.db)
+	c.progressService.Save(state)
 
-	// IMPORTANT: Signal pause FIRST, then update state
 	logToFile("PauseSync: calling RequestPause()...")
 	pauseSuccess := syncManager.RequestPause()
 	logToFile("PauseSync: RequestPause() returned %v", pauseSuccess)
@@ -2093,13 +1236,11 @@ func (c *DiscogsController) PauseSync(ctx *gin.Context) {
 	logToFile("PauseSync: after RequestPause - IsRunning=%v, IsPaused=%v",
 		stateAfterPause.IsRunning, stateAfterPause.IsPaused)
 
-	// Now update the legacy state
 	updateSyncState(func(s *sync.LegacySyncState) {
 		s.IsPaused = true
 	})
 
-	// Save again after setting paused state to persist the paused status
-	saveSyncProgress(c.db)
+	c.progressService.Save(getSyncState())
 
 	var config models.AppConfig
 	if err := c.db.First(&config).Error; err == nil {
@@ -2117,6 +1258,7 @@ func (c *DiscogsController) PauseSync(ctx *gin.Context) {
 	})
 }
 
+// ResumeSyncFromPause resumes a paused sync
 func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 	state := getSyncState()
 
@@ -2126,8 +1268,7 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 	}
 
 	if state.IsRunning && state.IsPaused {
-		// Load progress once to avoid nested database calls
-		progress := loadSyncProgress(c.db)
+		progress := c.progressService.Load(state)
 		if progress == nil {
 			ctx.JSON(400, gin.H{"error": "No paused sync to resume"})
 			return
@@ -2146,7 +1287,6 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 			return
 		}
 
-		// IMPORTANT: Signal resume FIRST, then update state
 		logToFile("ResumeSyncFromPause: calling RequestResume()...")
 		resumeSuccess := syncManager.RequestResume()
 		logToFile("ResumeSyncFromPause: RequestResume() returned %v, restarting worker...", resumeSuccess)
@@ -2156,13 +1296,10 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 			s.Processed = progress.Processed
 			s.Total = progress.TotalAlbums
 			s.CurrentPage = progress.CurrentPage
-			// Keep LastBatch - will restore below
 		})
 
-		// Restore LastBatch from database so worker continues with remaining albums
-		// instead of re-fetching the same page from API
 		state = getSyncState()
-		restoreLastBatch(c.db, &state)
+		c.progressService.RestoreLastBatch(&state)
 		setSyncState(state)
 
 		newStateAfterRestore := getSyncState()
@@ -2186,8 +1323,14 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 
 		newState := getSyncState()
 		logToFile("ResumeSyncFromPause: restarting sync worker at page %d, processed=%d", newState.CurrentPage, newState.Processed)
-		go processSyncBatches(c.db, client, config.DiscogsUsername, config.SyncBatchSize,
-			newState.SyncMode, newState.CurrentFolder, &newState.Folders)
+		worker := services.NewSyncWorker(c.db, client, syncManager, services.SyncConfig{
+			Username:      config.DiscogsUsername,
+			BatchSize:     config.SyncBatchSize,
+			SyncMode:      newState.SyncMode,
+			CurrentFolder: newState.CurrentFolder,
+			Folders:       &newState.Folders,
+		})
+		go worker.Run()
 
 		ctx.JSON(200, gin.H{
 			"message":    "Sync resumed from pause",
@@ -2197,7 +1340,7 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 	}
 
 	if !state.IsRunning {
-		existingProgress := loadSyncProgress(c.db)
+		existingProgress := c.progressService.Load(state)
 		if existingProgress == nil {
 			ctx.JSON(400, gin.H{"error": "No paused sync to resume"})
 			return
@@ -2233,10 +1376,8 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 		state.IsPaused = false
 		setSyncState(state)
 
-		// Restore LastBatch from database so worker continues with remaining albums
-		// instead of re-fetching the same page from API
 		state = getSyncState()
-		restoreLastBatch(c.db, &state)
+		c.progressService.RestoreLastBatch(&state)
 		setSyncState(state)
 
 		batchCount := 0
@@ -2273,8 +1414,15 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 		logToFile("ResumeSyncFromPause: resuming sync from folder %d, page %d, processed=%d, folders_count=%d",
 			existingProgress.FolderID, existingProgress.CurrentPage, existingProgress.Processed, len(getSyncState().Folders))
 
-		go processSyncBatches(c.db, client, config.DiscogsUsername, config.SyncBatchSize,
-			existingProgress.SyncMode, existingProgress.FolderID, &state.Folders)
+		updatedState := getSyncState()
+		worker := services.NewSyncWorker(c.db, client, syncManager, services.SyncConfig{
+			Username:      config.DiscogsUsername,
+			BatchSize:     config.SyncBatchSize,
+			SyncMode:      existingProgress.SyncMode,
+			CurrentFolder: existingProgress.FolderID,
+			Folders:       &updatedState.Folders,
+		})
+		go worker.Run()
 
 		ctx.JSON(200, gin.H{
 			"message":    "Sync resumed from pause",
@@ -2289,6 +1437,7 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 	})
 }
 
+// FetchUsername fetches the username from Discogs
 func (c *DiscogsController) FetchUsername(ctx *gin.Context) {
 	client := c.getDiscogsClientWithOAuth()
 	if client == nil {
@@ -2309,9 +1458,7 @@ func (c *DiscogsController) FetchUsername(ctx *gin.Context) {
 	})
 }
 
-// RefreshTracks re-syncs tracks for all albums that have a DiscogsID.
-// This fetches the latest tracklist from Discogs and replaces local tracks.
-// Use this to sync track additions/removals that happened on Discogs.
+// RefreshTracks re-syncs tracks for all albums that have a DiscogsID
 func (c *DiscogsController) RefreshTracks(ctx *gin.Context) {
 	client := c.getDiscogsClientWithOAuth()
 	if client == nil {
@@ -2319,7 +1466,6 @@ func (c *DiscogsController) RefreshTracks(ctx *gin.Context) {
 		return
 	}
 
-	// Get all albums with a DiscogsID
 	var albums []models.Album
 	if err := c.db.Where("discogs_id IS NOT NULL AND discogs_id > 0").Find(&albums).Error; err != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch albums"})
@@ -2338,6 +1484,7 @@ func (c *DiscogsController) RefreshTracks(ctx *gin.Context) {
 
 	logToFile("RefreshTracks: Starting track refresh for %d albums", len(albums))
 
+	importer := services.NewAlbumImporter(c.db, client)
 	updated := 0
 	failed := 0
 
@@ -2350,7 +1497,7 @@ func (c *DiscogsController) RefreshTracks(ctx *gin.Context) {
 		logToFile("RefreshTracks: Refreshing tracks for album %d: %s - %s (DiscogsID: %d)",
 			album.ID, album.Artist, album.Title, discogsID)
 
-		success, errMsg := fetchTracksForAlbum(c.db, client, album.ID, discogsID, album.Title, album.Artist)
+		success, errMsg := importer.FetchAndSaveTracks(c.db, album.ID, discogsID, album.Title, album.Artist)
 		if success {
 			updated++
 			logToFile("RefreshTracks: Successfully refreshed tracks for %s - %s", album.Artist, album.Title)
@@ -2359,7 +1506,6 @@ func (c *DiscogsController) RefreshTracks(ctx *gin.Context) {
 			logToFile("RefreshTracks: Failed to refresh tracks for %s - %s: %s", album.Artist, album.Title, errMsg)
 		}
 
-		// Small delay to respect rate limits
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -2373,8 +1519,7 @@ func (c *DiscogsController) RefreshTracks(ctx *gin.Context) {
 	})
 }
 
-// FindUnlinkedAlbums finds albums that have a DiscogsID but are no longer in the user's Discogs collection.
-// This helps identify albums that were removed from Discogs and may need cleanup.
+// FindUnlinkedAlbums finds albums that have a DiscogsID but are no longer in the user's Discogs collection
 func (c *DiscogsController) FindUnlinkedAlbums(ctx *gin.Context) {
 	client := c.getDiscogsClientWithOAuth()
 	if client == nil {
@@ -2393,7 +1538,6 @@ func (c *DiscogsController) FindUnlinkedAlbums(ctx *gin.Context) {
 		return
 	}
 
-	// Get all local albums with a DiscogsID
 	var localAlbums []models.Album
 	if err := c.db.Where("discogs_id IS NOT NULL").Find(&localAlbums).Error; err != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch local albums"})
@@ -2411,7 +1555,6 @@ func (c *DiscogsController) FindUnlinkedAlbums(ctx *gin.Context) {
 
 	logToFile("FindUnlinkedAlbums: Checking %d local albums against Discogs collection", len(localAlbums))
 
-	// Build a set of local DiscogsIDs for quick lookup
 	localDiscogsIDs := make(map[int]models.Album)
 	for _, album := range localAlbums {
 		if album.DiscogsID != nil && *album.DiscogsID > 0 {
@@ -2419,15 +1562,13 @@ func (c *DiscogsController) FindUnlinkedAlbums(ctx *gin.Context) {
 		}
 	}
 
-	// Fetch all releases from Discogs collection (all pages)
 	discogsIDs := make(map[int]bool)
 	page := 1
-	batchSize := 100 // Max per page for efficiency
+	batchSize := 100
 
 	for {
 		releases, _, err := client.GetUserCollectionByFolder(config.DiscogsUsername, 0, page, batchSize)
 		if err != nil {
-			// Check if we've reached the end of pagination
 			if strings.Contains(err.Error(), "outside of valid range") {
 				break
 			}
@@ -2448,11 +1589,9 @@ func (c *DiscogsController) FindUnlinkedAlbums(ctx *gin.Context) {
 		logToFile("FindUnlinkedAlbums: Fetched page %d, got %d releases, total so far: %d", page, len(releases), len(discogsIDs))
 		page++
 
-		// Small delay to respect rate limits
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	// Find albums that are local but not in Discogs
 	var unlinkedAlbums []gin.H
 	for discogsID, album := range localDiscogsIDs {
 		if !discogsIDs[discogsID] {
@@ -2476,8 +1615,7 @@ func (c *DiscogsController) FindUnlinkedAlbums(ctx *gin.Context) {
 	})
 }
 
-// DeleteUnlinkedAlbums deletes specified albums and their tracks from the local database.
-// This is used to clean up albums that are no longer in the user's Discogs collection.
+// DeleteUnlinkedAlbums deletes specified albums and their tracks from the local database
 func (c *DiscogsController) DeleteUnlinkedAlbums(ctx *gin.Context) {
 	var input struct {
 		AlbumIDs []uint `json:"album_ids"`
@@ -2499,10 +1637,8 @@ func (c *DiscogsController) DeleteUnlinkedAlbums(ctx *gin.Context) {
 	failed := 0
 
 	for _, albumID := range input.AlbumIDs {
-		// Start transaction
 		tx := c.db.Begin()
 
-		// Delete tracks first (foreign key constraint)
 		if err := tx.Where("album_id = ?", albumID).Delete(&models.Track{}).Error; err != nil {
 			logToFile("DeleteUnlinkedAlbums: Failed to delete tracks for album %d: %v", albumID, err)
 			tx.Rollback()
@@ -2510,7 +1646,6 @@ func (c *DiscogsController) DeleteUnlinkedAlbums(ctx *gin.Context) {
 			continue
 		}
 
-		// Delete the album
 		if err := tx.Delete(&models.Album{}, albumID).Error; err != nil {
 			logToFile("DeleteUnlinkedAlbums: Failed to delete album %d: %v", albumID, err)
 			tx.Rollback()

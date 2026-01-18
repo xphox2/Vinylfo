@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2-alpha] - 2026-01-17
+
+### Changed
+
+#### Code Refactoring: Discogs Controller
+- **Extracted utility functions to `controllers/discogs_helpers.go`** (~80 lines)
+  - `intPtr()` - Helper for creating int pointers
+  - `downloadImage()` - Downloads and validates images from URLs
+  - `logToFile()` - Debug logging utility for sync operations
+  - `isLockTimeout()` - Database lock timeout detection
+  - `maskValue()` - Masks sensitive values for logging
+
+- **Created new `services/` package** with focused, testable modules:
+  - `services/album_import.go` (~280 lines) - Album import service
+    - `AlbumImporter` struct for handling album creation from Discogs
+    - `DownloadCoverImage()` - Image downloading with validation
+    - `CreateAlbumWithTracks()` - Album creation with associated tracks
+    - `FetchAndSaveTracks()` - Fetch and persist tracks from Discogs API
+    - `ImportFromDiscogs()` - Full album import by Discogs ID
+
+  - `services/sync_progress.go` (~120 lines) - Sync progress persistence
+    - `SyncProgressService` for database persistence
+    - `Load()` / `Save()` - Progress state management
+    - `ArchiveToHistory()` - Move completed syncs to history
+    - `RestoreLastBatch()` - Restore batch from database on resume
+    - `Clear()` / `Delete()` - Progress cleanup operations
+
+  - `services/sync_worker.go` (~480 lines) - Sync processing engine
+    - `SyncWorker` struct replacing monolithic `processSyncBatches()` function
+    - `Run()` - Main sync loop with proper error handling
+    - `handlePagination()` - Pagination and folder transition logic
+    - `fetchNextBatch()` - API fetch with rate limit handling
+    - `processAlbum()` - Single album processing
+    - `createNewAlbum()` / `updateExistingAlbum()` - Album CRUD operations
+    - `checkPauseState()` - Pause detection and wait loop
+    - `markComplete()` - Completion handling and cleanup
+
+- **Slimmed down `controllers/discogs.go`** from ~2,538 to ~1,674 lines
+  - Now a thin HTTP layer that delegates to services
+  - Controllers handle request parsing, validation, and response formatting
+  - Business logic moved to service layer
+  - Improved separation of concerns and testability
+
+### Technical Details
+- No behavior changes - this is a structural refactoring only
+- All existing tests continue to pass
+- Backward compatible with existing database schema
+- The `sync/` package (state.go, legacy.go) remains unchanged
+
+---
+
 ## [0.1.1-alpha] - 2026-01-17
 
 ### Added
@@ -350,7 +401,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.2.0] - 2026-01-15
+## [0.0.3-alpha] - 2026-01-15
 
 ### Added
 - **Discogs Data Sync Feature**: Full Discogs API integration for syncing vinyl collection
@@ -437,7 +488,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0] - 2026-01-14
+## [0.0.2-alpha] - 2026-01-14
 
 ### Added
 - **Playlist Playback Feature**: Users can now play playlists from the dashboard
@@ -478,7 +529,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2026-01-13
+## [0.0.1-alpha] - 2026-01-13
 
 ### Added
 - Playlist management UI with full CRUD functionality
@@ -514,7 +565,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0] - 2026-01-12
+## [0.0.0-alpha] - 2026-01-12
 
 ### Added
 - Initial project setup
@@ -524,9 +575,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Playback timer functionality
 - Collection management interface
 
-[Unreleased]: https://github.com/yourusername/vinylfo/compare/v0.1.0-alpha...HEAD
+[0.1.2-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.2-alpha
+[0.1.1-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.1-alpha
 [0.1.0-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.0-alpha
-[1.2.0]: https://github.com/yourusername/vinylfo/releases/tag/v1.2.0
-[1.1.0]: https://github.com/yourusername/vinylfo/releases/tag/v1.1.0
-[1.0.0]: https://github.com/yourusername/vinylfo/releases/tag/v1.0.0
-[0.1.0]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.0
