@@ -55,6 +55,7 @@ func main() {
 		"templates/playlist.html",
 		"templates/track-detail.html",
 		"templates/album-detail.html",
+		"templates/duration-review.html",
 	))
 	r.SetHTMLTemplate(tmpl)
 
@@ -88,6 +89,10 @@ func main() {
 
 	r.GET("/search", func(c *gin.Context) {
 		c.HTML(200, "search-page", nil)
+	})
+
+	r.GET("/duration-review", func(c *gin.Context) {
+		c.HTML(200, "duration-review-page", nil)
 	})
 
 	routes.SetupRoutes(r)

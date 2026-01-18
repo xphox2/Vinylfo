@@ -1,0 +1,81 @@
+{{ define "duration-review-page" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Duration Review - Vinylfo</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/duration-review.css">
+</head>
+<body>
+{{ template "header" }}
+<main class="container">
+    <div class="review-header">
+        <h1>Duration Resolution Review</h1>
+        <div class="review-stats">
+            <div class="stat-card">
+                <span class="stat-value" id="total-count">-</span>
+                <span class="stat-label">Total Pending</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="resolved-count">-</span>
+                <span class="stat-label">Resolved</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="review-count">-</span>
+                <span class="stat-label">Needs Review</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="review-actions">
+        <button id="start-bulk" class="btn btn-primary">Start Bulk Resolution</button>
+        <button id="pause-bulk" class="btn btn-secondary hidden">Pause</button>
+        <button id="resume-bulk" class="btn btn-secondary hidden">Resume</button>
+        <button id="cancel-bulk" class="btn btn-danger hidden">Cancel</button>
+        <button id="refresh-btn" class="btn btn-secondary">Refresh</button>
+        <div class="action-group">
+            <button id="apply-all" class="btn btn-success">Apply All Highest Confidence</button>
+            <button id="reject-all" class="btn btn-warning">Reject All</button>
+        </div>
+    </div>
+
+    <div id="progress-container" class="progress-container hidden">
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+        </div>
+        <div class="progress-text" id="progress-text">Processing: 0/0 (0%)</div>
+    </div>
+
+    <div class="review-queue">
+        <div class="queue-header">
+            <h2>Review Queue</h2>
+            <div class="pagination">
+                <button id="prev-page" class="btn btn-small">&lt; Prev</button>
+                <span id="page-info">Page 1 of 1</span>
+                <button id="next-page" class="btn btn-small">Next &gt;</button>
+            </div>
+        </div>
+
+        <div id="review-list" class="review-list">
+            <div class="loading">Loading review queue...</div>
+        </div>
+    </div>
+</main>
+
+<div id="review-modal" class="modal hidden">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modal-title">Review Track</h2>
+            <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/duration-review.js"></script>
+</body>
+</html>
+{{ end }}

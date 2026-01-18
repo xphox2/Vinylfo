@@ -34,7 +34,7 @@ func InitDB() (*gorm.DB, error) {
 	}
 
 	// Run migrations for all models
-	err = db.AutoMigrate(&models.Album{}, &models.Track{}, &models.PlaybackSession{}, &models.SessionPlaylist{}, &models.SessionSharing{}, &models.SessionNote{}, &models.AppConfig{}, &models.TrackHistory{}, &models.SyncLog{}, &models.SyncProgress{}, &models.SyncHistory{})
+	err = db.AutoMigrate(&models.Album{}, &models.Track{}, &models.PlaybackSession{}, &models.SessionPlaylist{}, &models.SessionSharing{}, &models.SessionNote{}, &models.AppConfig{}, &models.TrackHistory{}, &models.SyncLog{}, &models.SyncProgress{}, &models.SyncHistory{}, &models.DurationSource{}, &models.DurationResolution{}, &models.DurationResolverProgress{})
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)
 		return nil, err

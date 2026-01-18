@@ -5,6 +5,148 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-alpha] - 2026-01-18
+
+### Added
+
+#### Track Duration Resolution Feature
+- **Automatic Duration Lookup**: New feature to resolve missing track durations (duration = 0) by querying external music databases
+- **MusicBrainz Integration**: Queries MusicBrainz database for track durations
+  - Uses official MusicBrainz API (no authentication required)
+  - Rate limited to 50 requests per minute
+  - Proper User-Agent header with project URL
+  - Searches by track title, artist, and album for accurate matching
+- **Wikipedia Integration**: Queries Wikipedia for track durations from album pages
+  - Parses track listing templates from album Wikipedia pages
+  - Supports standard {{Track listing}} template format
+  - Fallback parsing for alternative table formats
+- **Consensus Algorithm**: Multiple sources are queried and compared
+  - Tracks require 2+ sources agreeing on duration for auto-apply
+  - Tolerance of 3 seconds for duration matching
+  - Sources with different durations go to review queue
+- **Background Bulk Resolution**: Process all tracks with missing durations
+  - Starts via API endpoint or web UI
+  - Progress saved to database for resume capability
+  - Can be paused, resumed, and cancelled
+  - Rate limiting prevents API throttling
+
+#### New Database Models
+- **DurationSource**: Stores individual source query results
+  - Links to DurationResolution via foreign key
+  - Stores source name, duration, confidence, match score
+  - Includes external ID and URL for verification
+- **DurationResolution**: Tracks resolution attempts for each track
+  - Aggregates results from multiple sources
+  - Tracks status: in_progress, resolved, needs_review, failed, approved, rejected
+  - Stores consensus count and auto-apply status
+- **DurationResolverProgress**: Persists bulk resolution state
+  - Enables resume after pause/cancel
+  - Tracks total, processed, resolved, needs_review, failed counts
+  - Includes timeout detection for stalled operations
+
+#### New API Endpoints
+- `GET /api/duration/stats` - Get duration resolution statistics
+- `GET /api/duration/tracks` - Get tracks needing resolution with pagination
+- `POST /api/duration/resolve/track/:id` - Resolve single track duration
+- `POST /api/duration/resolve/album/:id` - Resolve all tracks in album
+- `POST /api/duration/resolve/start` - Start bulk resolution
+- `POST /api/duration/resolve/pause` - Pause running resolution
+- `POST /api/duration/resolve/resume` - Resume paused resolution
+- `POST /api/duration/resolve/cancel` - Cancel running resolution
+- `GET /api/duration/resolve/progress` - Get bulk resolution progress
+- `GET /api/duration/review` - Get review queue with sources
+- `GET /api/duration/review/:id` - Get detailed resolution with all sources
+- `POST /api/duration/review/:id` - Submit review decision (apply, reject, manual)
+- `POST /api/duration/review/bulk` - Bulk apply/reject resolutions
+
+#### New Web UI
+- **Duration Resolution Page** (`/duration-review`): New dedicated page for managing duration resolution
+  - Statistics dashboard showing missing, resolved, and needs_review counts
+  - Bulk resolution controls (Start, Pause, Resume, Cancel, Refresh)
+  - Progress bar with real-time status updates
+  - Review queue with pagination
+  - Source badges showing duration from each provider
+  - Modal dialog for detailed review with source comparison
+  - Apply highest confidence or reject all bulk actions
+
+#### New Files
+- `models/duration_resolution.go` - DurationResolution, DurationSource, DurationResolverProgress models
+- `duration/client.go` - Base client interface and Levenshtein string similarity
+- `duration/rate_limiter.go` - Sliding window rate limiter
+- `duration/musicbrainz_client.go` - MusicBrainz API integration
+- `duration/wikipedia_client.go` - Wikipedia API integration
+- `services/duration_resolver.go` - Core resolution service with consensus logic
+- `services/duration_progress.go` - Progress persistence for resume
+- `services/duration_worker.go` - Background worker for bulk processing
+- `controllers/duration.go` - REST API controller for duration endpoints
+- `templates/duration-review.html` - Review page template
+- `static/css/duration-review.css` - Review page styles
+- `static/js/duration-review.js` - Review page JavaScript
+
+### Fixed
+
+#### Wikipedia Track Matching Bug
+- **Fixed Wikipedia not finding tracks due to wiki markup parsing errors**
+  - Title/length values were incorrectly including `= ` prefix from wiki template syntax (e.g., `= 3:57` instead of `3:57`)
+  - Added `=` sign removal when extracting title and length values from Wikipedia track listing templates
+  - Duration parser now correctly parses time strings
+
+#### Wikipedia Link Cleanup Bug
+- **Fixed `cleanWikiMarkup()` not handling incomplete wiki links**
+  - Wiki links like `[[Target|Display` without closing `]]` were not being cleaned
+  - Rewrote function with three-phase approach: process complete links first, then handle incomplete links
+  - Now correctly extracts display text from links like `[[All of You (song)|All of You]]` → `All of You`
+
+#### Wikipedia Sources Not Displayed
+- **Fixed Wikipedia sources not appearing in review queue UI**
+  - Sources were only saved when results met match score threshold
+  - Now saves source record for every queried API, even when no result found
+  - UI now shows "No matching track found" for sources that didn't return results
+  - Users can see which sources were queried and their results
+
+#### Artist Field Bug
+- Fixed `ResolveTrackDuration()` passing album title as artist parameter
+- Added `getAlbumInfo()` helper to fetch both album title and artist from database
+- Now properly queries APIs with artist name for accurate matching
+
+#### Source Display in Review Queue
+- Fixed `sources` field returning null in review queue API
+- Added `Sources` field to `ReviewItem` struct with proper GORM associations
+- Frontend now displays MusicBrainz and Wikipedia durations in badges
+
+#### Auto-Refresh on Resolution Completion
+- Fixed review page not reloading when bulk resolution completes
+- Added automatic stats and queue reload on completion
+- Added success notification with resolution summary
+- Added Refresh button for manual reload
+
+#### Database Reset
+- Updated ResetDatabase to include new duration resolution tables
+- Added `duration_sources`, `duration_resolver_progresses`, `duration_resolutions` to cleanup list
+- `app_configs` table preserved (OAuth settings not touched)
+
+### Changed
+
+#### UI Improvements
+- Added "Duration Resolution" to Sync dropdown navigation
+- Improved source badges with color coding (musicbrainz: blue, wikipedia: purple, error: red, no-result: gray)
+- Added toast notifications for user feedback
+- Action buttons grouped on right side of review page
+- Progress container shows real-time resolution counts
+
+#### Consensus Configuration
+- Default consensus threshold: 2 sources must agree
+- Default tolerance: 3 seconds
+- Default minimum match score: 0.6 (60%)
+- Auto-apply enabled when consensus is reached
+
+#### Rate Limiting
+- MusicBrainz: 50 requests per minute (sliding window)
+- Uses proper User-Agent: `Vinylfo/1.0 (https://github.com/xphox2/Vinylfo)`
+- Sleep between tracks in background worker: 1.2 seconds
+
+---
+
 ## [0.1.3-alpha] - 2026-01-18
 
 ### Fixed
@@ -611,6 +753,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Playback timer functionality
 - Collection management interface
 
+[0.2.0-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.0-alpha
 [0.1.3-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.3-alpha
 [0.1.2-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.2-alpha
 [0.1.1-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.1-alpha

@@ -72,6 +72,9 @@ func (c *SettingsController) ResetDatabase(ctx *gin.Context) {
 		"session_sharings",
 		"session_playlists",
 		"playback_sessions",
+		"duration_sources",
+		"duration_resolver_progress",
+		"duration_resolutions",
 		"tracks",
 		"albums",
 		"sync_logs",
@@ -95,7 +98,7 @@ func (c *SettingsController) ResetDatabase(ctx *gin.Context) {
 
 	ctx.JSON(200, gin.H{
 		"message": "Database reset successful",
-		"note":    "All music data and sync progress has been cleared. Your OAuth settings and preferences have been preserved.",
+		"note":    "All music data, sync progress, and duration resolution data has been cleared. Your OAuth settings and preferences have been preserved.",
 	})
 }
 

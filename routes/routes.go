@@ -116,4 +116,27 @@ func SetupRoutes(r *gin.Engine) {
 	r.PUT("/api/settings", settingsController.Update)
 	r.POST("/api/database/reset", settingsController.ResetDatabase)
 	r.POST("/api/database/seed", settingsController.SeedDatabase)
+
+	durationController := controllers.NewDurationController(db)
+
+	duration := r.Group("/api/duration")
+	{
+		duration.GET("/tracks", durationController.GetTracksNeedingResolution)
+		duration.GET("/stats", durationController.GetStatistics)
+
+		duration.POST("/resolve/track/:id", durationController.ResolveTrack)
+		duration.POST("/resolve/album/:id", durationController.ResolveAlbum)
+		duration.GET("/resolve/track/:id", durationController.GetResolutionStatus)
+
+		duration.POST("/resolve/start", durationController.StartBulkResolution)
+		duration.POST("/resolve/pause", durationController.PauseBulkResolution)
+		duration.POST("/resolve/resume", durationController.ResumeBulkResolution)
+		duration.POST("/resolve/cancel", durationController.CancelBulkResolution)
+		duration.GET("/resolve/progress", durationController.GetBulkProgress)
+
+		duration.GET("/review", durationController.GetReviewQueue)
+		duration.GET("/review/:id", durationController.GetReviewDetails)
+		duration.POST("/review/:id", durationController.SubmitReview)
+		duration.POST("/review/bulk", durationController.BulkReview)
+	}
 }
