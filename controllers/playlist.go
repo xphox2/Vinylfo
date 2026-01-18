@@ -233,8 +233,18 @@ func (c *PlaylistController) CreateNewPlaylist(ctx *gin.Context) {
 func (c *PlaylistController) GetPlaylist(ctx *gin.Context) {
 	sessionID := ctx.Param("id")
 
+	// For playlist management, fetch all tracks without pagination
+	page := 1
+	limit := 100000 // Effectively no limit for playlist management
+
+	offset := (page - 1) * limit
+
 	var playlistEntries []models.SessionPlaylist
-	result := c.db.Where("session_id = ? AND track_id > 0", sessionID).Order("`order` ASC").Find(&playlistEntries)
+	var total int64
+
+	c.db.Model(&models.SessionPlaylist{}).Where("session_id = ? AND track_id > 0", sessionID).Count(&total)
+
+	result := c.db.Where("session_id = ? AND track_id > 0", sessionID).Order("`order` ASC").Offset(offset).Limit(limit).Find(&playlistEntries)
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch playlist"})
 		return
@@ -245,6 +255,10 @@ func (c *PlaylistController) GetPlaylist(ctx *gin.Context) {
 			"session_id": sessionID,
 			"tracks":     []models.Track{},
 			"count":      0,
+			"total":      total,
+			"page":       page,
+			"limit":      limit,
+			"totalPages": int(total) / limit,
 		})
 		return
 	}
@@ -278,10 +292,19 @@ func (c *PlaylistController) GetPlaylist(ctx *gin.Context) {
 		}
 	}
 
+	totalPages := int(total) / limit
+	if int(total)%limit > 0 {
+		totalPages++
+	}
+
 	ctx.JSON(200, gin.H{
 		"session_id": sessionID,
 		"tracks":     sortedTracks,
 		"count":      len(sortedTracks),
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
 	})
 }
 

@@ -5,6 +5,95 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-01-17
+
+### Added
+
+- **Player Page Renamed from Dashboard**: The playback page is now accessible at `/player` instead of `/dashboard`
+  - Updated route in main.go
+  - Updated navigation link in header.html
+  - Updated playlist.js redirect after starting playback
+
+- **Queue Pagination on Player Page**: Added pagination to the queue display
+  - Shows 25 tracks per page
+  - Prev/Next buttons with page info
+  - Consistent styling with albums/tracks pages
+
+- **Queue Track Duration**: Track duration is now displayed on the queue
+  - Shown on the right side of each queue item
+  - Hidden on small mobile screens
+
+- **Bottom Pagination on Albums Page**: Added pagination controls at the bottom of albums list
+  - Works identically to top pagination controls
+  - Uses shared JavaScript event listeners via CSS classes
+
+### Changed
+
+- **Playlist Management No Longer Paginated**: Removed pagination from playlist detail view
+  - All tracks now load at once for easier management
+  - Album removal works correctly across all tracks
+  - Backend returns all tracks (limit: 100000)
+
+- **Add Album to Playlist**: New "Album" button next to "Add" button allows adding all tracks from an album at once
+  - Skips tracks already in the playlist
+  - No confirmation dialog
+  - Backend endpoint: `/albums/{albumId}/tracks` (already existed)
+
+- **Remove Album from Playlist**: New "Album" button next to "Remove" button allows removing all tracks from an album at once
+  - Shows confirmation dialog with number of tracks to remove
+  - Removes all tracks from that album in the playlist
+  - No popup when adding/removing albums
+
+### Changed
+
+- **Unified Track Display Format**: Add Tracks view now matches Playlist detail view format
+  - Album cover image on left
+  - Bold track title with artist below
+  - Album title and duration on right
+  - Add button on far right
+
+- **Removed Single Track Removal Confirmation**: Clicking "Remove" on a single track now removes it immediately without confirmation dialog
+
+- **Simplified JavaScript Structure**: Removed nested IIFE wrapper from playlist.js
+  - Single DOMContentLoaded handler instead of IIFE + DOMContentLoaded
+  - Prevents syntax errors when editing event listener section
+
+### Fixed
+
+- **Dashboard "Unknown Artist"**: Added `album_artist` field to `buildTrackResponse()` in playback controller
+  - Fixed "Unknown Artist" display when playing tracks
+
+- **Add/Album Buttons Not Working**: Fixed playlist.js to call `savePlaylistId()` when viewing a playlist
+  - This ensures `window.currentPlaylistId` is set when adding tracks
+  - Previously the ID was only saved to localStorage but not to the global variable
+
+- **Album Removal Not Working**: Removed pagination limit from playlist management
+  - Was causing only first 25 tracks to be loaded, missing album tracks on other pages
+  - Playlist detail now loads all tracks at once for proper management
+
+- **Dashboard "Playlist: -"**: Added `playlist_name` to playback state responses
+  - Backend returns `playlist_name` in `/playback/current` and `/playback/start-playlist`
+  - Frontend stores and displays playlist name on dashboard
+
+- **Play Button on Playlist Detail**: Added missing event listener for play button
+  - `playPlaylist()` function now properly called when clicking "Play"
+
+- **Add Tracks Page Formatting**: Fixed "Add Tracks to Playlist" page layout
+  - Wrapped title and search in proper `view-header` container
+  - Matches structure of albums/tracks pages for consistent styling
+
+- **Back to Playlists Button**: Added missing `clearPlaylistId()` function definition
+  - Button now navigates back to playlists list properly
+
+- **Delete Playlist Error Handling**: Improved error handling in `deletePlaylist()`
+  - Handles non-JSON responses gracefully
+
+- **Add/Remove Album Refresh**: Available tracks list now refreshes after adding/removing albums
+  - Backend filtering prevents showing tracks already in playlist
+  - Pagination recalculates based on filtered results
+
+---
+
 ## [0.1.0-alpha] - 2026-01-17
 
 ### Added

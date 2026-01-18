@@ -138,6 +138,7 @@ class PlaybackManager {
         this.saveInterval = null;
         this.autoResumeTimer = null;
         this.currentTrack = null;
+        this.currentPlaylistName = null;
         this.tabSync = new TabSyncManager();
         this.syncInterval = null;
         this.isLocalChange = false;
@@ -145,6 +146,8 @@ class PlaybackManager {
         this.lastServerSync = 0;
         this.autoPlayEnabled = false;
         this.trackEndedHandler = null;
+        this.queueCurrentPage = 1;
+        this.queueItemsPerPage = 25;
     }
 
     async init() {
@@ -205,6 +208,16 @@ class PlaybackManager {
                 if (data.queue && data.queue.length > 0) {
                     this.queue = data.queue;
                     this.renderQueue();
+                }
+
+                // Store and display playlist info
+                this.currentPlaylistName = data.playlist_name || null;
+                const playlistInfo = document.getElementById('playlist-info');
+                if (playlistInfo && this.currentPlaylistName) {
+                    playlistInfo.textContent = 'Playlist: ' + this.currentPlaylistName;
+                    playlistInfo.style.display = 'block';
+                } else if (playlistInfo) {
+                    playlistInfo.style.display = 'none';
                 }
             } else {
                 console.log('[PlaybackManager] No track currently playing');
@@ -504,6 +517,31 @@ class PlaybackManager {
                 autoPlayBtn.classList.add('active');
             }
         }
+        
+        // Queue pagination buttons
+        const prevPageBtn = document.getElementById('prev-page-btn');
+        const nextPageBtn = document.getElementById('next-page-btn');
+        
+        if (prevPageBtn) {
+            prevPageBtn.addEventListener('click', () => {
+                if (this.queueCurrentPage > 1) {
+                    this.queueCurrentPage--;
+                    this.renderQueue();
+                    this.updatePaginationControls();
+                }
+            });
+        }
+        
+        if (nextPageBtn) {
+            nextPageBtn.addEventListener('click', () => {
+                const totalPages = Math.ceil(this.queue.length / this.queueItemsPerPage);
+                if (this.queueCurrentPage < totalPages) {
+                    this.queueCurrentPage++;
+                    this.renderQueue();
+                    this.updatePaginationControls();
+                }
+            });
+        }
     }
 
     seekToPosition(event) {
@@ -745,31 +783,64 @@ class PlaybackManager {
 
     renderQueue() {
         const queueList = document.getElementById('queue-list');
+        const paginationContainer = document.querySelector('#queue-panel .pagination-controls');
         if (!queueList) return;
 
         queueList.innerHTML = '';
 
         if (this.queue.length === 0) {
             queueList.innerHTML = '<p class="empty-message">Queue is empty</p>';
+            if (paginationContainer) {
+                paginationContainer.style.display = 'none';
+            }
             return;
         }
-
-        this.queue.forEach((track, index) => {
+        
+        const totalPages = Math.ceil(this.queue.length / this.queueItemsPerPage);
+        const startIndex = (this.queueCurrentPage - 1) * this.queueItemsPerPage;
+        const endIndex = Math.min(startIndex + this.queueItemsPerPage, this.queue.length);
+        const pageQueue = this.queue.slice(startIndex, endIndex);
+        
+        pageQueue.forEach((track, index) => {
+            const globalIndex = startIndex + index;
             const item = document.createElement('div');
             item.className = 'queue-item';
-            if (index === this.queueIndex) {
+            if (globalIndex === this.queueIndex) {
                 item.classList.add('current');
             }
             item.innerHTML = `
-                <span class="queue-number">${index + 1}.</span>
+                <span class="queue-number">${globalIndex + 1}.</span>
                 <span class="queue-title">${this.escapeHtml(track.title || 'Unknown')}</span>
                 <span class="queue-album">${this.escapeHtml(cleanAlbumTitle(track.album_title, track.title) || 'Unknown Album')}</span>
+                <span class="queue-duration">${this.formatTime(track.duration || 0)}</span>
             `;
             item.addEventListener('click', () => {
-                this.playQueueItem(index);
+                this.playQueueItem(globalIndex);
             });
             queueList.appendChild(item);
         });
+        
+        if (paginationContainer) {
+            if (this.queue.length > this.queueItemsPerPage) {
+                paginationContainer.style.display = 'flex';
+                this.updatePaginationControls();
+            } else {
+                paginationContainer.style.display = 'none';
+            }
+        }
+    }
+    
+    updatePaginationControls() {
+        const prevBtn = document.getElementById('prev-page-btn');
+        const nextBtn = document.getElementById('next-page-btn');
+        const pageInfo = document.getElementById('page-info');
+        
+        if (!prevBtn || !nextBtn || !pageInfo) return;
+        
+        const totalPages = Math.ceil(this.queue.length / this.queueItemsPerPage);
+        pageInfo.textContent = `Page ${this.queueCurrentPage} of ${totalPages}`;
+        prevBtn.disabled = this.queueCurrentPage <= 1;
+        nextBtn.disabled = this.queueCurrentPage >= totalPages;
     }
 
     playQueueItem(index) {
@@ -788,7 +859,8 @@ class PlaybackManager {
 
     displayTrack(track, playlistName) {
         this.currentTrack = track;
-        
+        this.currentPlaylistName = playlistName || this.currentPlaylistName;
+
         console.log('[PlaybackManager] displayTrack called with:', {
             title: track.title,
             album_title: track.album_title,
@@ -805,9 +877,11 @@ class PlaybackManager {
 
         // Update playlist info if available
         const playlistInfo = document.getElementById('playlist-info');
-        if (playlistInfo && playlistName) {
-            playlistInfo.textContent = 'Playlist: ' + playlistName;
+        if (playlistInfo && this.currentPlaylistName) {
+            playlistInfo.textContent = 'Playlist: ' + this.currentPlaylistName;
             playlistInfo.style.display = 'block';
+        } else if (playlistInfo) {
+            playlistInfo.style.display = 'none';
         }
     }
 

@@ -39,6 +39,7 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "25"))
+	excludeIDs := ctx.Query("exclude_track_ids")
 
 	if page < 1 {
 		page = 1
@@ -55,12 +56,27 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 	var tracks []TrackResult
 	var total int64
 
-	c.db.Model(&models.Track{}).Count(&total)
+	baseQuery := c.db.Model(&models.Track{}).
+		Table("tracks").
+		Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
+		Joins("left join albums on tracks.album_id = albums.id")
 
-	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
-		Joins("left join albums on tracks.album_id = albums.id").
-		Offset(offset).Limit(limit).
-		Find(&tracks)
+	if excludeIDs != "" {
+		var ids []uint
+		idStrings := strings.Split(excludeIDs, ",")
+		for _, idStr := range idStrings {
+			if id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 32); err == nil {
+				ids = append(ids, uint(id))
+			}
+		}
+		if len(ids) > 0 {
+			baseQuery = baseQuery.Where("tracks.id NOT IN ?", ids)
+		}
+	}
+
+	baseQuery.Count(&total)
+
+	result := baseQuery.Offset(offset).Limit(limit).Find(&tracks)
 
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch tracks"})
@@ -108,6 +124,7 @@ func (c *TrackController) SearchTracks(ctx *gin.Context) {
 
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "25"))
+	excludeIDs := ctx.Query("exclude_track_ids")
 
 	if page < 1 {
 		page = 1
@@ -125,16 +142,28 @@ func (c *TrackController) SearchTracks(ctx *gin.Context) {
 	var total int64
 	searchTerm := "%" + strings.ToLower(query) + "%"
 
-	c.db.Model(&models.Track{}).
+	baseQuery := c.db.Model(&models.Track{}).
+		Table("tracks").
+		Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
 		Joins("left join albums on tracks.album_id = albums.id").
-		Where("LOWER(tracks.title) LIKE ? OR LOWER(albums.title) LIKE ? OR LOWER(albums.artist) LIKE ?", searchTerm, searchTerm, searchTerm).
-		Count(&total)
+		Where("LOWER(tracks.title) LIKE ? OR LOWER(albums.title) LIKE ? OR LOWER(albums.artist) LIKE ?", searchTerm, searchTerm, searchTerm)
 
-	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
-		Joins("left join albums on tracks.album_id = albums.id").
-		Where("LOWER(tracks.title) LIKE ? OR LOWER(albums.title) LIKE ? OR LOWER(albums.artist) LIKE ?", searchTerm, searchTerm, searchTerm).
-		Offset(offset).Limit(limit).
-		Find(&tracks)
+	if excludeIDs != "" {
+		var ids []uint
+		idStrings := strings.Split(excludeIDs, ",")
+		for _, idStr := range idStrings {
+			if id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 32); err == nil {
+				ids = append(ids, uint(id))
+			}
+		}
+		if len(ids) > 0 {
+			baseQuery = baseQuery.Where("tracks.id NOT IN ?", ids)
+		}
+	}
+
+	baseQuery.Count(&total)
+
+	result := baseQuery.Offset(offset).Limit(limit).Find(&tracks)
 
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to search tracks"})

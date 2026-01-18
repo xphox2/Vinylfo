@@ -218,6 +218,13 @@ footer {
     white-space: nowrap;
 }
 
+.queue-duration {
+    color: #666;
+    font-size: 12px;
+    margin-left: auto;
+    padding-left: 1rem;
+}
+
 .empty-message {
     color: #888;
     text-align: center;
@@ -250,5 +257,25 @@ footer {
 
     .queue-album {
         display: none;
+    }
+    
+    .queue-duration {
+        display: none;
+    }
+    
+    #queue-panel .pagination-controls {
+        margin-top: 1rem;
+        padding: 0.5rem;
+        gap: 0.25rem;
+    }
+    
+    #queue-panel .page-btn {
+        padding: 0.35rem 0.5rem;
+        font-size: 0.85rem;
+    }
+    
+    #queue-panel #page-info {
+        font-size: 0.85rem;
+        min-width: 80px;
     }
 }

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Playback Dashboard - Vinylfo</title>
+    <title>Player - Vinylfo</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/playback-dashboard.css">
 </head>
@@ -46,6 +46,13 @@
         <div id="queue-panel" style="display: none;">
             <h3>Up Next</h3>
             <div id="queue-list"><p class="empty-message">Queue is empty</p></div>
+            <div class="pagination-controls">
+                <div class="page-controls">
+                    <button type="button" id="prev-page-btn" class="page-btn" disabled>&larr; Prev</button>
+                    <span id="page-info">Page 1 of 1</span>
+                    <button type="button" id="next-page-btn" class="page-btn" disabled>Next &raquo;</button>
+                </div>
+            </div>
         </div>
     </main>
     <footer><p>Vinylfo - Vinyl Music Player</p></footer>

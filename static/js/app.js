@@ -18,69 +18,82 @@ document.addEventListener('DOMContentLoaded', function() {
         return albumTitle;
     };
 
-    // Pagination event listeners
-    document.getElementById('album-limit').addEventListener('change', function() {
-        window.albumPagination.limit = parseInt(this.value);
-        window.albumPagination.page = 1;
-        if (window.albumPagination.query) {
-            searchAlbums(window.albumPagination.query);
-        } else {
-            loadAlbums();
-        }
-    });
-
-    document.getElementById('track-limit').addEventListener('change', function() {
-        window.trackPagination.limit = parseInt(this.value);
-        window.trackPagination.page = 1;
-        if (window.trackPagination.query) {
-            searchTracks(window.trackPagination.query);
-        } else {
-            loadTracks();
-        }
-    });
-
-    document.getElementById('album-prev').addEventListener('click', function() {
-        if (window.albumPagination.page > 1) {
-            window.albumPagination.page--;
+    // Album pagination event listeners
+    document.querySelectorAll('.album-limit').forEach(el => {
+        el.addEventListener('change', function() {
+            window.albumPagination.limit = parseInt(this.value);
+            window.albumPagination.page = 1;
             if (window.albumPagination.query) {
                 searchAlbums(window.albumPagination.query);
             } else {
                 loadAlbums();
             }
-        }
+        });
     });
 
-    document.getElementById('album-next').addEventListener('click', function() {
-        if (window.albumPagination.page < window.albumPagination.totalPages) {
-            window.albumPagination.page++;
-            if (window.albumPagination.query) {
-                searchAlbums(window.albumPagination.query);
-            } else {
-                loadAlbums();
+    document.querySelectorAll('.album-prev').forEach(el => {
+        el.addEventListener('click', function() {
+            if (window.albumPagination.page > 1) {
+                window.albumPagination.page--;
+                if (window.albumPagination.query) {
+                    searchAlbums(window.albumPagination.query);
+                } else {
+                    loadAlbums();
+                }
             }
-        }
+        });
     });
 
-    document.getElementById('track-prev').addEventListener('click', function() {
-        if (window.trackPagination.page > 1) {
-            window.trackPagination.page--;
+    document.querySelectorAll('.album-next').forEach(el => {
+        el.addEventListener('click', function() {
+            if (window.albumPagination.page < window.albumPagination.totalPages) {
+                window.albumPagination.page++;
+                if (window.albumPagination.query) {
+                    searchAlbums(window.albumPagination.query);
+                } else {
+                    loadAlbums();
+                }
+            }
+        });
+    });
+
+    // Track pagination event listeners
+    document.querySelectorAll('.track-limit').forEach(el => {
+        el.addEventListener('change', function() {
+            window.trackPagination.limit = parseInt(this.value);
+            window.trackPagination.page = 1;
             if (window.trackPagination.query) {
                 searchTracks(window.trackPagination.query);
             } else {
                 loadTracks();
             }
-        }
+        });
     });
 
-    document.getElementById('track-next').addEventListener('click', function() {
-        if (window.trackPagination.page < window.trackPagination.totalPages) {
-            window.trackPagination.page++;
-            if (window.trackPagination.query) {
-                searchTracks(window.trackPagination.query);
-            } else {
-                loadTracks();
+    document.querySelectorAll('.track-prev').forEach(el => {
+        el.addEventListener('click', function() {
+            if (window.trackPagination.page > 1) {
+                window.trackPagination.page--;
+                if (window.trackPagination.query) {
+                    searchTracks(window.trackPagination.query);
+                } else {
+                    loadTracks();
+                }
             }
-        }
+        });
+    });
+
+    document.querySelectorAll('.track-next').forEach(el => {
+        el.addEventListener('click', function() {
+            if (window.trackPagination.page < window.trackPagination.totalPages) {
+                window.trackPagination.page++;
+                if (window.trackPagination.query) {
+                    searchTracks(window.trackPagination.query);
+                } else {
+                    loadTracks();
+                }
+            }
+        });
     });
 
     // Navigation
@@ -196,18 +209,25 @@ function escapeHtml(text) {
 
 function updatePaginationControls(type) {
     const pagination = type === 'album' ? window.albumPagination : window.trackPagination;
-    const prevBtn = document.getElementById(`${type}-prev`);
-    const nextBtn = document.getElementById(`${type}-next`);
-    const pageInfo = document.getElementById(`${type}-page-info`);
-    const limitSelect = document.getElementById(`${type}-limit`);
+    
+    // Update limit selects
+    document.querySelectorAll(`.${type}-limit`).forEach(el => {
+        el.value = pagination.limit;
+    });
 
-    if (limitSelect) {
-        limitSelect.value = pagination.limit;
-    }
+    // Update page info
+    const pageInfoElements = document.querySelectorAll(`[id^="${type}-page-info"]`);
+    pageInfoElements.forEach(el => {
+        el.textContent = `Page ${pagination.page} of ${pagination.totalPages}`;
+    });
 
-    pageInfo.textContent = `Page ${pagination.page} of ${pagination.totalPages}`;
-    prevBtn.disabled = pagination.page <= 1;
-    nextBtn.disabled = pagination.page >= pagination.totalPages;
+    // Update prev/next buttons
+    document.querySelectorAll(`.${type}-prev`).forEach(el => {
+        el.disabled = pagination.page <= 1;
+    });
+    document.querySelectorAll(`.${type}-next`).forEach(el => {
+        el.disabled = pagination.page >= pagination.totalPages;
+    });
 }
 
 function renderAlbums(albums) {

@@ -1,45 +1,49 @@
 // Playlist management JavaScript
-(function() {
-    console.log('Playlist management script executing');
-    
+
+window.currentPlaylistId = null;
+let playlists = [];
+let tracks = [];
+
+// Available tracks pagination state
+let availableTrackPagination = {
+    page: 1,
+    limit: 25,
+    query: '',
+    totalPages: 1,
+    total: 0
+};
+
+// Load saved playlist ID from localStorage
+const savedId = localStorage.getItem('vinylfo_currentPlaylistId');
+if (savedId) {
+    console.log('Loaded saved playlist ID:', savedId);
+    window.currentPlaylistId = savedId;
+}
+
+function savePlaylistId(id) {
+    localStorage.setItem('vinylfo_currentPlaylistId', id);
+    window.currentPlaylistId = id;
+    console.log('Saved playlist ID:', id);
+}
+
+function clearPlaylistId() {
+    localStorage.removeItem('vinylfo_currentPlaylistId');
     window.currentPlaylistId = null;
-    let playlists = [];
-    let tracks = [];
+    console.log('Cleared playlist ID');
+}
+
+function cleanAlbumTitle(albumTitle, trackTitle) {
+    if (!albumTitle) return 'Unknown Album';
     
-    // Available tracks pagination state
-    let availableTrackPagination = {
-        page: 1,
-        limit: 25,
-        query: '',
-        totalPages: 1,
-        total: 0
-    };
-    
-    // Load saved playlist ID from localStorage
-    const savedId = localStorage.getItem('vinylfo_currentPlaylistId');
-    if (savedId) {
-        console.log('Loaded saved playlist ID:', savedId);
-        window.currentPlaylistId = savedId;
+    if (albumTitle.includes(' / ') && albumTitle.includes(trackTitle)) {
+        const parts = albumTitle.split(' / ');
+        return parts[parts.length - 1].trim();
     }
     
-    function savePlaylistId(id) {
-        localStorage.setItem('vinylfo_currentPlaylistId', id);
-        window.currentPlaylistId = id;
-        console.log('Saved playlist ID:', id);
-    }
-    
-    function cleanAlbumTitle(albumTitle, trackTitle) {
-        if (!albumTitle) return 'Unknown Album';
-        
-        if (albumTitle.includes(' / ') && albumTitle.includes(trackTitle)) {
-            const parts = albumTitle.split(' / ');
-            return parts[parts.length - 1].trim();
-        }
-        
-        return albumTitle;
-    }
-    
-    function loadPlaylists() {
+    return albumTitle;
+}
+
+function loadPlaylists() {
     fetch('/sessions/playlist')
         .then(response => {
             if (!response.ok) {
@@ -111,7 +115,7 @@ function loadPlaylistTracks(sessionId, cardElement) {
 function showPlaylistDetail(sessionId) {
     console.log('showPlaylistDetail called with sessionId:', sessionId);
     savePlaylistId(sessionId);
-    
+
     document.getElementById('playlist-view').style.display = 'none';
     document.getElementById('playlist-detail-view').style.display = 'block';
     document.getElementById('playlist-name').textContent = sessionId || 'Untitled Playlist';
@@ -120,6 +124,10 @@ function showPlaylistDetail(sessionId) {
         if (confirm('Are you sure you want to delete this playlist?')) {
             deletePlaylist(sessionId);
         }
+    };
+
+    document.getElementById('play-playlist-btn').onclick = function() {
+        playPlaylist(sessionId);
     };
 
     loadPlaylistTracksForDetail(sessionId);
@@ -160,19 +168,24 @@ function createTrackListItem(track, index, sessionId) {
         </div>
         <span class="track-duration">${formatDuration(track.duration)}</span>
         <button class="remove-btn" data-track-id="${track.id}">Remove</button>
+        <button class="remove-album-btn" data-album-id="${track.album_id}">Album</button>
     `;
 
     item.querySelector('.remove-btn').addEventListener('click', function(e) {
         e.stopPropagation();
         const trackId = this.dataset.trackId;
-        if (confirm('Are you sure you want to remove this track from the playlist?')) {
-            removeTrackFromPlaylist(sessionId, trackId);
-        }
+        removeTrackFromPlaylist(sessionId, trackId);
+    });
+
+    item.querySelector('.remove-album-btn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        const albumId = this.dataset.albumId;
+        removeAlbumFromPlaylist(sessionId, albumId);
     });
 
     // Click to view track details
     item.addEventListener('click', function(e) {
-        if (e.target.classList.contains('remove-btn') || e.target.classList.contains('drag-handle')) return;
+        if (e.target.classList.contains('remove-btn') || e.target.classList.contains('drag-handle') || e.target.classList.contains('remove-album-btn')) return;
         window.location.href = '/track/' + track.id;
     });
 
@@ -256,13 +269,15 @@ function showPlaylistsList() {
     loadPlaylists();
 }
 
-function loadAllTracks() {
+function loadAllTracks(excludeTrackIds) {
     console.log('Loading all tracks...');
     let url;
+    let excludeParam = excludeTrackIds ? `&exclude_track_ids=${excludeTrackIds}` : '';
+
     if (availableTrackPagination.query) {
-        url = `/tracks/search?q=${encodeURIComponent(availableTrackPagination.query)}&page=${availableTrackPagination.page}&limit=${availableTrackPagination.limit}`;
+        url = `/tracks/search?q=${encodeURIComponent(availableTrackPagination.query)}&page=${availableTrackPagination.page}&limit=${availableTrackPagination.limit}${excludeParam}`;
     } else {
-        url = `/tracks?page=${availableTrackPagination.page}&limit=${availableTrackPagination.limit}`;
+        url = `/tracks?page=${availableTrackPagination.page}&limit=${availableTrackPagination.limit}${excludeParam}`;
     }
     return fetch(url)
         .then(response => {
@@ -292,14 +307,9 @@ function updateAvailableTrackPaginationControls() {
 }
 
 function renderAvailableTracks() {
-    console.log('Rendering available tracks, total loaded:', tracks.length);
+    console.log('Rendering available tracks...');
     const container = document.getElementById('available-tracks');
-    
-    if (tracks.length === 0) {
-        container.innerHTML = '<p class="empty-message">No tracks available. Add some albums first.</p>';
-        return;
-    }
-    
+
     fetch(`/sessions/playlist/${window.currentPlaylistId}`)
         .then(response => {
             if (!response.ok) {
@@ -309,38 +319,59 @@ function renderAvailableTracks() {
         })
         .then(data => {
             const currentTrackIds = (data.tracks || []).map(t => t.id);
-            const availableTracks = tracks.filter(t => !currentTrackIds.includes(t.id));
-            
-            if (availableTracks.length === 0) {
-                container.innerHTML = '<p class="empty-message">All tracks are already in this playlist.</p>';
-                return;
-            }
-            
-            container.innerHTML = '';
-            
-            availableTracks.forEach(track => {
-                const item = document.createElement('div');
-                item.className = 'available-track-item';
-                
-                let displayAlbumTitle = cleanAlbumTitle(track.album_title, track.title);
-                
-                item.innerHTML = `
-                    <div class="track-info">
-                        <div class="track-title">${escapeHtml(track.title)}</div>
-                        <div class="track-artist">${escapeHtml(displayAlbumTitle)}</div>
-                    </div>
-                    <button class="add-btn" data-track-id="${track.id}">Add</button>
-                `;
-                
-                item.querySelector('.add-btn').addEventListener('click', function() {
-                    addTrackToPlaylist(window.currentPlaylistId, track.id);
+            const excludeIds = currentTrackIds.join(',');
+
+            return loadAllTracks(excludeIds).then(() => {
+                if (tracks.length === 0) {
+                    container.innerHTML = '<p class="empty-message">No tracks available. Add some albums first.</p>';
+                    return;
+                }
+
+                if (tracks.length === 0 && availableTrackPagination.total > 0) {
+                    if (availableTrackPagination.page > 1) {
+                        availableTrackPagination.page--;
+                        return loadAllTracks(excludeIds).then(renderAvailableTracks);
+                    }
+                }
+
+                container.innerHTML = '';
+
+                tracks.forEach(track => {
+                    const item = document.createElement('div');
+                    item.className = 'available-track-item';
+
+                    let displayAlbumTitle = cleanAlbumTitle(track.album_title, track.title);
+
+                    item.innerHTML = `
+                        <div class="track-cover-small">
+                            <img src="/albums/${track.album_id}/image" alt="" class="track-cover-img" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'track-cover-placeholder-small\\'>♪</div>';">
+                        </div>
+                        <div class="track-info">
+                            <h3>${track.title || 'Unknown Title'}</h3>
+                            <p>${track.album_artist || 'Unknown Artist'}</p>
+                        </div>
+                        <div class="track-meta">
+                            <p class="track-album-title">${displayAlbumTitle}</p>
+                            <p class="track-duration">${formatDuration(track.duration) || ''}</p>
+                        </div>
+                        <button class="add-btn" data-track-id="${track.id}">Add</button>
+                        <button class="add-album-btn" data-album-id="${track.album_id}">Album</button>
+                    `;
+
+                    item.querySelector('.add-btn').addEventListener('click', function() {
+                        addTrackToPlaylist(window.currentPlaylistId, track.id);
+                    });
+
+                    item.querySelector('.add-album-btn').addEventListener('click', function() {
+                        addAlbumToPlaylist(window.currentPlaylistId, track.album_id);
+                    });
+
+                    container.appendChild(item);
                 });
-                
-                container.appendChild(item);
             });
         })
         .catch(error => {
-            console.error('Error loading current playlist:', error);
+            console.error('Error rendering available tracks:', error);
             container.innerHTML = '<p class="empty-message">Error loading tracks.</p>';
         });
 }
@@ -398,6 +429,53 @@ function addTrackToPlaylist(sessionId, trackId) {
     });
 }
 
+function addAlbumToPlaylist(sessionId, albumId) {
+    fetch(`/albums/${albumId}/tracks`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to fetch album tracks');
+            }
+            return response.json();
+        })
+        .then(tracks => {
+            if (!tracks || tracks.length === 0) {
+                alert('No tracks found for this album.');
+                return;
+            }
+            fetch(`/sessions/playlist/${sessionId}`)
+                .then(response => response.json())
+                .then(data => {
+                    const currentTrackIds = (data.tracks || []).map(t => t.id);
+                    const tracksToAdd = tracks.filter(t => !currentTrackIds.includes(t.id));
+
+                    if (tracksToAdd.length === 0) {
+                        return;
+                    }
+
+                    const addPromises = tracksToAdd.map(track => {
+                        return fetch(`/sessions/playlist/${sessionId}/tracks`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                track_id: track.id
+                            })
+                        });
+                    });
+
+                    return Promise.all(addPromises).then(() => {
+                        loadPlaylistTracksForDetail(sessionId);
+                        renderAvailableTracks();
+                    });
+                });
+        })
+        .catch(error => {
+            console.error('Error adding album tracks:', error);
+            alert('Error adding album tracks. Please try again.');
+        });
+}
+
 function removeTrackFromPlaylist(sessionId, trackId) {
     fetch(`/sessions/playlist/${sessionId}/tracks/${trackId}`, {
         method: 'DELETE'
@@ -410,11 +488,45 @@ function removeTrackFromPlaylist(sessionId, trackId) {
     })
     .then(data => {
         loadPlaylistTracksForDetail(sessionId);
+        renderAvailableTracks();
     })
     .catch(error => {
         console.error('Error removing track:', error);
         alert('Error removing track. Please try again.');
     });
+}
+
+function removeAlbumFromPlaylist(sessionId, albumId) {
+    fetch(`/sessions/playlist/${sessionId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load playlist');
+            }
+            return response.json();
+        })
+        .then(data => {
+            const tracks = data.tracks || [];
+            const tracksToRemove = tracks.filter(t => t.album_id === parseInt(albumId));
+
+            if (tracksToRemove.length === 0) {
+                return;
+            }
+
+            const removePromises = tracksToRemove.map(track => {
+                return fetch(`/sessions/playlist/${sessionId}/tracks/${track.id}`, {
+                    method: 'DELETE'
+                });
+            });
+
+            return Promise.all(removePromises).then(() => {
+                loadPlaylistTracksForDetail(sessionId);
+                renderAvailableTracks();
+            });
+        })
+        .catch(error => {
+            console.error('Error removing album tracks:', error);
+            alert('Error removing album tracks. Please try again.');
+        });
 }
 
 function reorderPlaylistTracks(sessionId, draggedTrackId, targetTrackId) {
@@ -490,7 +602,7 @@ function playPlaylist(sessionId) {
         })
         .then(data => {
             console.log('Playback started:', data);
-            window.location.href = '/dashboard';
+            window.location.href = '/player';
         })
         .catch(error => {
             console.error('Error starting playback:', error);
@@ -504,9 +616,11 @@ function deletePlaylist(sessionId) {
     })
     .then(response => {
         if (!response.ok) {
-            throw new Error('Failed to delete playlist');
+            return response.text().then(text => {
+                throw new Error('Failed to delete playlist: ' + text);
+            });
         }
-        return response.json();
+        return response.json().catch(() => ({}));
     })
     .then(data => {
         showPlaylistsList();
@@ -546,8 +660,11 @@ function escapeHtml(text) {
 
 // Initialize event listeners when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('Playlist management script executing');
+    
     // Back to playlists button
     document.getElementById('back-to-playlists').addEventListener('click', function() {
+        console.log('Back to playlists clicked');
         showPlaylistsList();
     });
 
@@ -574,7 +691,7 @@ document.addEventListener('DOMContentLoaded', function() {
             total: 0
         };
         document.getElementById('available-track-search').value = '';
-        loadAllTracks().then(renderAvailableTracks);
+        renderAvailableTracks();
     });
 
     // Create playlist button
@@ -613,7 +730,7 @@ document.addEventListener('DOMContentLoaded', function() {
         availableTrackSearchTimeout = setTimeout(() => {
             availableTrackPagination.page = 1;
             availableTrackPagination.query = query;
-            loadAllTracks().then(renderAvailableTracks);
+            renderAvailableTracks();
         }, 300);
     });
 
@@ -622,31 +739,30 @@ document.addEventListener('DOMContentLoaded', function() {
         searchInput.value = '';
         availableTrackPagination.page = 1;
         availableTrackPagination.query = '';
-        loadAllTracks().then(renderAvailableTracks);
+        renderAvailableTracks();
     });
 
     // Available track pagination
     document.getElementById('available-track-prev').addEventListener('click', function() {
         if (availableTrackPagination.page > 1) {
             availableTrackPagination.page--;
-            loadAllTracks().then(renderAvailableTracks);
+            renderAvailableTracks();
         }
     });
 
     document.getElementById('available-track-next').addEventListener('click', function() {
         if (availableTrackPagination.page < availableTrackPagination.totalPages) {
             availableTrackPagination.page++;
-            loadAllTracks().then(renderAvailableTracks);
+            renderAvailableTracks();
         }
     });
 
     document.getElementById('available-track-limit').addEventListener('change', function() {
         availableTrackPagination.limit = parseInt(this.value);
         availableTrackPagination.page = 1;
-        loadAllTracks().then(renderAvailableTracks);
+        renderAvailableTracks();
     });
 
     // Load playlists on page load
     loadPlaylists();
-})();
-})();
+});

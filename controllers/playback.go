@@ -155,14 +155,16 @@ func (c *PlaybackController) GetPlaybackState(ctx *gin.Context) {
 	queueTracks := c.getQueueTracks(playbackState.Queue)
 
 	response := gin.H{
-		"is_playing":  isPlaying,
-		"is_paused":   isPaused,
-		"position":    currentPosition,
-		"server_time": time.Now().UTC().Format(time.RFC3339),
-		"last_update": time.Now().UTC().Format(time.RFC3339),
-		"session":     session,
-		"queue_index": playbackState.QueueIndex,
-		"queue":       queueTracks,
+		"is_playing":    isPlaying,
+		"is_paused":     isPaused,
+		"position":      currentPosition,
+		"server_time":   time.Now().UTC().Format(time.RFC3339),
+		"last_update":   time.Now().UTC().Format(time.RFC3339),
+		"session":       session,
+		"queue_index":   playbackState.QueueIndex,
+		"queue":         queueTracks,
+		"playlist_id":   playbackState.PlaylistID,
+		"playlist_name": playbackState.PlaylistName,
 	}
 
 	if trackWithAlbum != nil {
@@ -177,6 +179,7 @@ func (c *PlaybackController) buildTrackResponse(track models.Track, album models
 		"id":             track.ID,
 		"album_id":       track.AlbumID,
 		"album_title":    album.Title,
+		"album_artist":   album.Artist,
 		"title":          track.Title,
 		"duration":       track.Duration,
 		"track_number":   track.TrackNumber,
@@ -264,10 +267,11 @@ func (c *PlaybackController) StartPlaylist(ctx *gin.Context) {
 	queueWithAlbums := c.getQueueTracks(string(queueJSON))
 
 	ctx.JSON(200, gin.H{
-		"message":     "Playlist playback started",
-		"track":       c.buildTrackResponse(firstTrack, album),
-		"queue":       queueWithAlbums,
-		"queue_index": 0,
+		"message":       "Playlist playback started",
+		"track":         c.buildTrackResponse(firstTrack, album),
+		"queue":         queueWithAlbums,
+		"queue_index":   0,
+		"playlist_name": req.PlaylistName,
 	})
 }
 

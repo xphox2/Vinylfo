@@ -62,7 +62,7 @@ func main() {
 		c.HTML(200, "index-page", nil)
 	})
 
-	r.GET("/dashboard", func(c *gin.Context) {
+	r.GET("/player", func(c *gin.Context) {
 		c.HTML(200, "playback-dashboard-page", nil)
 	})
 
