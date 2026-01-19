@@ -53,6 +53,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/playback/skip", playbackController.Skip)
 	r.POST("/playback/previous", playbackController.Previous)
 	r.POST("/playback/stop", playbackController.Stop)
+	r.POST("/playback/restore", playbackController.RestoreSession)
 	r.POST("/playback/clear", playbackController.Clear)
 	r.POST("/playback/update-progress", playbackController.UpdateProgress)
 	r.GET("/playback/state", playbackController.GetState)

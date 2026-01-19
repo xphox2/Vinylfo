@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"strconv"
 	"time"
 
 	"vinylfo/models"
@@ -29,9 +28,9 @@ func (c *PlaylistController) GetSessions(ctx *gin.Context) {
 }
 
 func (c *PlaylistController) GetSessionByID(ctx *gin.Context) {
-	id := ctx.Param("id")
+	playlistID := ctx.Param("id")
 	var session models.PlaybackSession
-	result := c.db.First(&session, id)
+	result := c.db.First(&session, "playlist_id = ?", playlistID)
 	if result.Error != nil {
 		ctx.JSON(404, gin.H{"error": "Playback session not found"})
 		return
@@ -96,7 +95,9 @@ func (c *PlaylistController) DeleteSession(ctx *gin.Context) {
 
 func (c *PlaylistController) CreatePlaylistSession(ctx *gin.Context) {
 	type PlaylistSessionRequest struct {
-		TrackIDs []uint `json:"track_ids"`
+		PlaylistID   string `json:"playlist_id"`
+		PlaylistName string `json:"playlist_name"`
+		TrackIDs     []uint `json:"track_ids"`
 	}
 
 	var req PlaylistSessionRequest
@@ -105,11 +106,26 @@ func (c *PlaylistController) CreatePlaylistSession(ctx *gin.Context) {
 		return
 	}
 
-	session := models.PlaybackSession{
-		TrackID: 1,
+	if req.PlaylistID == "" {
+		ctx.JSON(400, gin.H{"error": "playlist_id is required"})
+		return
 	}
 
-	result := c.db.Create(&session)
+	var existingSession models.PlaybackSession
+	result := c.db.First(&existingSession, "playlist_id = ?", req.PlaylistID)
+	if result.Error == nil {
+		ctx.JSON(400, gin.H{"error": "A session for this playlist already exists"})
+		return
+	}
+
+	session := models.PlaybackSession{
+		PlaylistID:   req.PlaylistID,
+		PlaylistName: req.PlaylistName,
+		TrackID:      0,
+		Status:       "stopped",
+	}
+
+	result = c.db.Create(&session)
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to create playback session"})
 		return
@@ -118,7 +134,7 @@ func (c *PlaylistController) CreatePlaylistSession(ctx *gin.Context) {
 	var playlistEntries []models.SessionPlaylist
 	for i, trackID := range req.TrackIDs {
 		entry := models.SessionPlaylist{
-			SessionID: strconv.FormatUint(uint64(session.ID), 10),
+			SessionID: req.PlaylistID,
 			TrackID:   trackID,
 			Order:     i + 1,
 		}
@@ -435,30 +451,33 @@ func (c *PlaylistController) ShufflePlaylist(ctx *gin.Context) {
 }
 
 func (c *PlaylistController) PlayPlaylist(ctx *gin.Context, playbackManager *PlaybackManager) {
-	sessionID := ctx.Param("id")
+	playlistID := ctx.Param("id")
 
 	var entries []models.SessionPlaylist
-	result := c.db.Where("session_id = ?", sessionID).Order("`order` ASC").Find(&entries)
+	result := c.db.Where("session_id = ?", playlistID).Order("`order` ASC").Find(&entries)
 	if result.Error != nil || len(entries) == 0 {
 		ctx.JSON(404, gin.H{"error": "Playlist not found or empty"})
 		return
 	}
 
-	firstTrack := entries[0]
+	firstTrackEntry := entries[0]
 	var track models.Track
-	result = c.db.First(&track, firstTrack.TrackID)
+	result = c.db.First(&track, firstTrackEntry.TrackID)
 	if result.Error != nil {
 		ctx.JSON(404, gin.H{"error": "Track not found"})
 		return
 	}
 
-	playbackManager.SetCurrentTrack(&track)
-	playbackManager.SetCurrentSession(&models.PlaybackSession{TrackID: track.ID})
-	playbackManager.UpdatePosition(0)
+	var session models.PlaybackSession
+	c.db.FirstOrCreate(&session, models.PlaybackSession{PlaylistID: playlistID})
+
+	playbackManager.SetCurrentTrack(playlistID, &track)
+	playbackManager.UpdatePosition(playlistID, 0)
 
 	ctx.JSON(200, gin.H{
-		"message":  "Playlist playback started",
-		"track_id": track.ID,
-		"title":    track.Title,
+		"message":     "Playlist playback started",
+		"track_id":    track.ID,
+		"title":       track.Title,
+		"playlist_id": playlistID,
 	})
 }

@@ -207,6 +207,13 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function formatTime(seconds) {
+    if (!seconds || seconds <= 0) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
 function updatePaginationControls(type) {
     const pagination = type === 'album' ? window.albumPagination : window.trackPagination;
     
@@ -561,11 +568,38 @@ function loadSessions() {
             data.forEach(session => {
                 const item = document.createElement('div');
                 item.className = 'session-item';
+                item.style.cursor = 'pointer';
+                item.title = 'Click to restore this session';
+                
+                const statusBadge = session.status === 'playing' ? '🔊 Playing' : 
+                                   session.status === 'paused' ? '⏸️ Paused' : 
+                                   '⏹️ Stopped';
+                
+                const startedDate = session.started_at ? new Date(session.started_at).toLocaleString() : 'Unknown';
+                const lastPlayed = session.last_played_at ? new Date(session.last_played_at).toLocaleString() : 'Unknown';
+                
+                const playlistId = session.playlist_id || 'Untitled';
+                const playlistName = session.playlist_name || playlistId;
+                
+                let queueInfo = '';
+                try {
+                    const queue = JSON.parse(session.queue || '[]');
+                    queueInfo = `<p>Tracks in queue: ${queue.length}</p>`;
+                } catch (e) {
+                    queueInfo = '';
+                }
+                
                 item.innerHTML = `
-                    <h3>Session ${session.id}</h3>
-                    <p>Started: ${session.start_time || 'Unknown time'}</p>
-                    <p>Duration: ${session.duration || 'Unknown duration'} seconds</p>
+                    <h3>${escapeHtml(playlistName)} <span style="font-size: 0.6em;">${statusBadge}</span></h3>
+                    <p><strong>Playlist ID:</strong> ${escapeHtml(playlistId)}</p>
+                    <p><strong>Status:</strong> ${statusBadge}</p>
+                    <p><strong>Started:</strong> ${startedDate}</p>
+                    <p><strong>Last Played:</strong> ${lastPlayed}</p>
+                    <p><strong>Queue Position:</strong> ${session.queue_position || 0}s in track ${session.queue_index + 1 || 1}</p>
+                    ${queueInfo}
                 `;
+                
+                item.addEventListener('click', () => restoreSession(session.playlist_id));
                 list.appendChild(item);
             });
         })
@@ -574,4 +608,24 @@ function loadSessions() {
             const list = document.getElementById('sessions-list');
             list.innerHTML = '<p>Error loading sessions</p>';
         });
+}
+
+function restoreSession(playlistId) {
+    console.log('Restoring session for playlist:', playlistId);
+    fetch('/playback/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlist_id: playlistId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Session restored:', data);
+        if (data.track) {
+            window.location.href = '/player';
+        }
+    })
+    .catch(error => {
+        console.error('Error restoring session:', error);
+        alert('Failed to restore session');
+    });
 }

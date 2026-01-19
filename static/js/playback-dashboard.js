@@ -2,8 +2,8 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Playback dashboard loaded');
 
-    const playbackManager = new PlaybackManager();
-    playbackManager.init();
+    window.playbackManager = new PlaybackManager();
+    window.playbackManager.init();
 });
 
 function cleanAlbumTitle(albumTitle, trackTitle) {
@@ -138,6 +138,7 @@ class PlaybackManager {
         this.saveInterval = null;
         this.autoResumeTimer = null;
         this.currentTrack = null;
+        this.currentPlaylistId = null;
         this.currentPlaylistName = null;
         this.tabSync = new TabSyncManager();
         this.syncInterval = null;
@@ -171,47 +172,41 @@ class PlaybackManager {
             
             console.log('[PlaybackManager] loadCurrentPlayback response:', JSON.stringify(data, null, 2));
             
-            if (data.track) {
-                // Display the track
-                this.currentTrack = data.track;
-                this.currentPosition = data.position || 0;
-                this.queueIndex = data.queue_index || 0;
+            if (data.track && data.playlist_id) {
+                this.currentPlaylistId = data.playlist_id;
+                this.currentPlaylistName = data.playlist_name || null;
                 
                 document.getElementById('track-title').textContent = data.track.title || 'Unknown Track';
                 document.getElementById('track-artist').textContent = data.track.album_artist || 'Unknown Artist';
                 document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(data.track.album_title, data.track.title);
                 document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(data.track.duration || 0);
-                document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(this.currentPosition);
+                document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(data.position || 0);
                 document.getElementById('progress-bar').style.width = '0%';
                 
-                // Set playing state
                 const playBtn = document.getElementById('play-btn');
                 const pauseBtn = document.getElementById('pause-btn');
                 
-                // If position < duration, assume playing
-                const isPlaying = data.position < (data.track.duration || 0);
+                this.isPlaying = data.is_playing;
+                this.isPaused = data.is_paused;
                 
-                if (isPlaying) {
-                    this.isPlaying = true;
-                    this.isPaused = false;
+                if (this.isPlaying) {
                     playBtn.disabled = true;
                     pauseBtn.disabled = false;
                     this.startProgressSaving();
+                } else if (this.isPaused) {
+                    playBtn.disabled = false;
+                    pauseBtn.disabled = true;
                 } else {
-                    this.isPlaying = false;
-                    this.isPaused = false;
                     playBtn.disabled = false;
                     pauseBtn.disabled = true;
                 }
                 
-                // Load queue
                 if (data.queue && data.queue.length > 0) {
                     this.queue = data.queue;
+                    this.queueIndex = data.queue_index || 0;
                     this.renderQueue();
                 }
 
-                // Store and display playlist info
-                this.currentPlaylistName = data.playlist_name || null;
                 const playlistInfo = document.getElementById('playlist-info');
                 if (playlistInfo && this.currentPlaylistName) {
                     playlistInfo.textContent = 'Playlist: ' + this.currentPlaylistName;
@@ -235,16 +230,20 @@ class PlaybackManager {
 
     async syncStateFromServer() {
         try {
-            const response = await fetch('/playback/current');
+            const url = this.currentPlaylistId 
+                ? `/playback/current?playlist_id=${encodeURIComponent(this.currentPlaylistId)}`
+                : '/playback/current';
+            const response = await fetch(url);
             const data = await response.json();
             
             console.log('[Sync] Server track:', data.track?.title, 'queue_index:', data.queue_index);
             console.log('[Sync] Local currentTrack:', this.currentTrack?.title, 'queueIndex:', this.queueIndex);
             
-            // Sync track if changed
             if (data.track && (!this.currentTrack || data.track.id !== this.currentTrack.id)) {
                 console.log('[Sync] TRACK CHANGED on server, updating from', this.currentTrack?.title, 'to', data.track.title);
                 this.currentTrack = data.track;
+                this.currentPlaylistId = data.playlist_id;
+                this.currentPlaylistName = data.playlist_name;
                 
                 document.getElementById('track-title').textContent = data.track.title || 'Unknown Track';
                 document.getElementById('track-artist').textContent = data.track.album_artist || 'Unknown Artist';
@@ -254,7 +253,6 @@ class PlaybackManager {
                 console.log('[Sync] No track change needed');
             }
             
-            // Sync queue - always sync queue_index and update queue if order differs
             if (data.queue && data.queue.length > 0) {
                 const serverQueueIds = data.queue.map(t => t.id).join(',');
                 const localQueueIds = this.queue.map(t => t.id).join(',');
@@ -575,7 +573,11 @@ class PlaybackManager {
     async play() {
         console.log('[PlaybackManager] Play button clicked');
         try {
-            const response = await fetch('/playback/resume', { method: 'POST' });
+            const response = await fetch('/playback/resume', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playlist_id: this.currentPlaylistId })
+            });
             if (response.ok) {
                 const data = await response.json();
                 this.isPlaying = data.is_playing;
@@ -583,7 +585,6 @@ class PlaybackManager {
                 this.startProgressSaving();
                 this.updateButtonStates();
 
-                // Broadcast play to other tabs
                 console.log('[PlaybackManager] Broadcasting play');
                 this.isLocalChange = true;
                 this.tabSync.broadcastPlay(this.currentTrack, this.currentPosition);
@@ -596,7 +597,11 @@ class PlaybackManager {
     async pause() {
         console.log('[PlaybackManager] Pause button clicked');
         try {
-            const response = await fetch('/playback/pause', { method: 'POST' });
+            const response = await fetch('/playback/pause', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playlist_id: this.currentPlaylistId })
+            });
             if (response.ok) {
                 const data = await response.json();
                 this.isPaused = data.is_paused;
@@ -605,7 +610,6 @@ class PlaybackManager {
                 this.saveProgress();
                 this.updateButtonStates();
 
-                // Broadcast pause to other tabs
                 console.log('[PlaybackManager] Broadcasting pause');
                 this.isLocalChange = true;
                 this.tabSync.broadcastPause();
@@ -618,7 +622,11 @@ class PlaybackManager {
     async previous() {
         console.log('[PlaybackManager] Previous button clicked');
         try {
-            const response = await fetch('/playback/previous', { method: 'POST' });
+            const response = await fetch('/playback/previous', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playlist_id: this.currentPlaylistId })
+            });
             if (response.ok) {
                 const data = await response.json();
                 console.log('[PlaybackManager] previous() - server response:', JSON.stringify(data, null, 2));
@@ -645,7 +653,6 @@ class PlaybackManager {
                     document.getElementById('progress-bar').style.width = '0%';
                 }
                 
-                // ALWAYS update queue from server to ensure sync
                 if (data.queue && data.queue.length > 0) {
                     console.log('[PlaybackManager] previous() - ALWAYS updating queue from server');
                     console.log('[PlaybackManager] previous() - new queue first 3:', data.queue.slice(0, 3).map(t => t.title));
@@ -673,7 +680,11 @@ class PlaybackManager {
     async next() {
         console.log('[PlaybackManager] Next button clicked');
         try {
-            const response = await fetch('/playback/skip', { method: 'POST' });
+            const response = await fetch('/playback/skip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playlist_id: this.currentPlaylistId })
+            });
             if (response.ok) {
                 const data = await response.json();
                 console.log('[PlaybackManager] next() - server response:', JSON.stringify(data, null, 2));
@@ -703,7 +714,6 @@ class PlaybackManager {
                     document.getElementById('progress-bar').style.width = '0%';
                 }
                 
-                // ALWAYS update queue from server to ensure sync
                 if (data.queue && data.queue.length > 0) {
                     console.log('[PlaybackManager] next() - ALWAYS updating queue from server');
                     console.log('[PlaybackManager] next() - new queue first 3:', data.queue.slice(0, 3).map(t => t.title));
@@ -732,15 +742,23 @@ class PlaybackManager {
     async stop() {
         console.log('[PlaybackManager] Stop button clicked');
         try {
-            const response = await fetch('/playback/stop', { method: 'POST' });
+            const response = await fetch('/playback/stop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playlist_id: this.currentPlaylistId })
+            });
             if (response.ok) {
                 this.isPlaying = false;
                 this.isPaused = false;
                 this.stopProgressSaving();
-                this.saveProgress();
+                this.currentPlaylistId = null;
+                this.currentPlaylistName = null;
+                this.currentTrack = null;
+                this.queue = [];
+                this.queueIndex = 0;
+                this.currentPosition = 0;
                 this.updatePlaybackStatus();
 
-                // Broadcast stop to other tabs
                 console.log('[PlaybackManager] Broadcasting stop');
                 this.isLocalChange = true;
                 this.tabSync.broadcastStop();
@@ -989,7 +1007,7 @@ class PlaybackManager {
     }
 
     saveProgress() {
-        if (!this.currentTrack) return;
+        if (!this.currentTrack || !this.currentPlaylistId) return;
 
         fetch('/playback/update-progress', {
             method: 'POST',
@@ -997,6 +1015,7 @@ class PlaybackManager {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
+                playlist_id: this.currentPlaylistId,
                 track_id: this.currentTrack.id,
                 position_seconds: this.currentPosition,
                 queue_index: this.queueIndex
@@ -1023,10 +1042,12 @@ class PlaybackManager {
 
     async updatePlaybackStatus() {
         try {
-            const response = await fetch('/playback/current');
+            const url = this.currentPlaylistId 
+                ? `/playback/current?playlist_id=${encodeURIComponent(this.currentPlaylistId)}`
+                : '/playback/current';
+            const response = await fetch(url);
             const data = await response.json();
 
-            // Sync time with server periodically
             if (data.server_time) {
                 const serverTime = new Date(data.server_time).getTime();
                 const localTime = Date.now();
@@ -1036,16 +1057,13 @@ class PlaybackManager {
             }
 
             if (data.track) {
-                // Only update track info from server, trust our local position when playing
                 if (!this.currentTrack || data.track.id !== this.currentTrack.id) {
                     this.displayTrack(data.track);
                 }
 
-                // Update button states - but don't override if we're already in a known state
                 const playBtn = document.getElementById('play-btn');
                 const pauseBtn = document.getElementById('pause-btn');
 
-                // Only update from server if we haven't started playing yet (initial load)
                 if (!this.isPlaying && !this.isPaused) {
                     if (data.is_playing) {
                         this.isPlaying = true;
@@ -1063,7 +1081,6 @@ class PlaybackManager {
                     }
                 }
 
-                // Update queue if we got queue data
                 if (data.queue) {
                     try {
                         const queueTracks = typeof data.queue === 'string'
@@ -1079,7 +1096,6 @@ class PlaybackManager {
                     }
                 }
             } else {
-                // No track playing
                 document.getElementById('track-title').textContent = 'No Track Playing';
                 document.getElementById('track-artist').textContent = '-';
                 document.getElementById('track-album').textContent = '-';

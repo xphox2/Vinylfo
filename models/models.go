@@ -53,21 +53,21 @@ type Track struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// PlaybackSession represents the current playback state
+// PlaybackSession represents a playback session for a specific playlist
+// Each playlist can have at most one active session at a time
 type PlaybackSession struct {
-	ID            uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	TrackID       uint      `gorm:"not null;index" json:"track_id"`
-	PlaylistID    string    `json:"playlist_id"`    // Which playlist is playing
-	PlaylistName  string    `json:"playlist_name"`  // Display name of playlist
-	Queue         string    `json:"queue"`          // JSON array of track IDs
-	QueueIndex    int       `json:"queue_index"`    // Current position in queue
-	QueuePosition int       `json:"queue_position"` // Saved position in current track (seconds)
-	StartTime     time.Time `json:"start_time"`
-	EndTime       time.Time `json:"end_time"`
-	Duration      int       `json:"duration"` // Duration in seconds
-	Progress      int       `json:"progress"` // Progress in seconds
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	PlaylistID    string `gorm:"primaryKey;size:255" json:"playlist_id"`
+	PlaylistName  string `json:"playlist_name"`
+	TrackID       uint   `gorm:"not null;index" json:"track_id"`
+	Queue         string `gorm:"type:text" json:"queue"` // JSON array of track IDs
+	QueueIndex    int    `json:"queue_index"`            // Current position in queue
+	QueuePosition int    `json:"queue_position"`         // Saved position in current track (seconds)
+	Status        string `gorm:"size:20;default:'stopped'" json:"status"`
+	// Status values: "playing", "paused", "stopped"
+	StartedAt    time.Time `json:"started_at"`
+	LastPlayedAt time.Time `json:"last_played_at"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // SessionPlaylist represents a playlist within a session

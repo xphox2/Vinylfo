@@ -84,15 +84,25 @@ main {
     font-size: 14px;
 }
 
-#playback-controls button:hover {
-    background-color: #555;
+#playback-dashboard main {
+    max-width: 800px;
+    margin: 0 auto;
+    flex: 1;
 }
 
-footer {
+#playback-dashboard footer {
     text-align: center;
     padding: 1rem;
     color: #666;
     font-size: 14px;
+    margin-top: 2rem;
+    border-top: 1px solid #eee;
+}
+
+#playback-dashboard {
+    min-height: calc(100vh - 60px);
+    display: flex;
+    flex-direction: column;
 }
 
 @media (max-width: 600px) {

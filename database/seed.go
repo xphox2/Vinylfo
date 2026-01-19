@@ -107,18 +107,20 @@ func SeedDatabase(db *gorm.DB) error {
 	// Create some sample playback sessions
 	playbackSessions := []models.PlaybackSession{
 		{
-			TrackID:   1, // First track
-			StartTime: time.Now().Add(-10 * time.Minute),
-			EndTime:   time.Now().Add(-5 * time.Minute),
-			Duration:  300,
-			Progress:  250,
+			PlaylistID:   "classic_rock_playlist",
+			PlaylistName: "Classic Rock Hits",
+			TrackID:      1,
+			Status:       "stopped",
+			StartedAt:    time.Now().Add(-10 * time.Minute),
+			LastPlayedAt: time.Now().Add(-5 * time.Minute),
 		},
 		{
-			TrackID:   2, // Second track
-			StartTime: time.Now().Add(-15 * time.Minute),
-			EndTime:   time.Now().Add(-8 * time.Minute),
-			Duration:  420,
-			Progress:  180,
+			PlaylistID:   "jazz_classics",
+			PlaylistName: "Jazz Classics",
+			TrackID:      5,
+			Status:       "paused",
+			StartedAt:    time.Now().Add(-15 * time.Minute),
+			LastPlayedAt: time.Now().Add(-8 * time.Minute),
 		},
 	}
 
