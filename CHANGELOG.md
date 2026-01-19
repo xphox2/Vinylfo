@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1-alpha] - 2026-01-18
+
+### Fixed
+
+#### Duration Resolution Matching Improvements
+- **Artist Name Normalization**: Fixed matching failures for artists with Discogs disambiguation suffixes
+  - Strips suffixes like `(2)`, `(3)`, `(rapper)`, `(singer)`, `(band)`, `(DJ)`, `(musician)`, `(producer)`, `(artist)`
+  - Example: "Machine Gun Kelly (2)" now correctly matches "Machine Gun Kelly" on MusicBrainz
+  - Applied to both search queries and match score calculations
+
+- **Title/Album Edition Normalization**: Fixed matching failures for remastered/special editions
+  - Strips common edition suffixes that interfere with matching
+  - Handles: `(Remastered)`, `(Digital)`, `(Deluxe Edition)`, `(Bonus Track Version)`, `(Anniversary Edition)`, `(Expanded Edition)`, `(Special Edition)`, `(Collector's Edition)`, `(Limited Edition)`, `(Mono Version)`, `(Stereo Mix)`, `(Original Mix)`, `(Selected Works)`, `(Greatest Hits)`, `(Best Of)`, `(Complete)`, `(Enhanced)`, `(Remix)`
+  - Example: "Nena (Remastered & Selected Works)" now correctly matches "Nena"
+  - Example: "99 Luftballons (Remastered)" now correctly matches "99 Luftballons"
+  - Preserves non-edition suffixes like "(Part 1)", "(Live)" that are part of the actual title
+
+- **Wikipedia Template Parsing**: Fixed track listing not being parsed on some album pages
+  - Now handles both `| title1 = ...` (with space) and `|title1 = ...` (no space) formats
+  - Fixed for both title and length fields
+  - Example: Death Cab For Cutie albums now correctly parsed
+
+- **Resolution Retry Logic**: Fixed rescan not retrying previously failed resolutions
+  - Now retries both `"failed"` AND `"needs_review"` resolutions on rescan
+  - Only skips resolutions with `"resolved"` or `"approved"` status
+  - Deletes old resolution and sources before retry to get fresh results
+
+### Changed
+
+- **Match Score Calculation**: Now normalizes both search query and result before comparing
+  - Artist names normalized on both sides
+  - Track/album titles normalized on both sides
+  - Results in higher match scores for equivalent content with different formatting
+
+- **MusicBrainz Queries**: Search queries now use normalized artist/title/album
+  - Removes disambiguation and edition suffixes before querying API
+  - Improves search result relevance
+
+- **Wikipedia Queries**: Search queries now use normalized artist/album names
+  - Removes edition suffixes before searching for album pages
+  - Improves album page matching accuracy
+
+---
+
 ## [0.2.0-alpha] - 2026-01-18
 
 ### Added
@@ -753,6 +797,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Playback timer functionality
 - Collection management interface
 
+[0.2.1-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.1-alpha
 [0.2.0-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.0-alpha
 [0.1.3-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.3-alpha
 [0.1.2-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.2-alpha

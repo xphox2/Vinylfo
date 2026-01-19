@@ -23,6 +23,17 @@ Vinylfo is a self-hosted web application for managing your vinyl record collecti
 - **Shuffle**: Randomize playlist order
 - **Play Playlists**: Start playback from any playlist
 
+### Duration Resolution
+- **Automatic Duration Lookup**: Resolves missing track durations by querying external databases
+- **MusicBrainz Integration**: Queries MusicBrainz for track durations with rate limiting
+- **Wikipedia Integration**: Parses Wikipedia album pages for track listings
+- **Consensus Algorithm**: Requires 2+ sources to agree before auto-applying durations
+- **Smart Matching**: Normalizes artist names and titles for better matching
+  - Handles Discogs disambiguation suffixes like "(2)", "(rapper)"
+  - Handles edition suffixes like "(Remastered)", "(Deluxe Edition)"
+- **Review Queue**: Manual review for tracks where sources disagree
+- **Bulk Processing**: Background worker processes all tracks with missing durations
+
 ### Discogs Sync Features
 - **Pause/Resume**: Long syncs can be paused and resumed later
 - **Progress Persistence**: Sync progress saved to database (survives restarts)
@@ -38,6 +49,7 @@ The application includes pages for:
 - **Player** (`/player`) - Playback dashboard with queue
 - **Playlist** (`/playlist`) - Manage playlists
 - **Sync** (`/sync`) - Discogs sync dashboard
+- **Duration Review** (`/duration-review`) - Resolve missing track durations
 - **Search** (`/search`) - Search Discogs database
 - **Settings** (`/settings`) - Configure Discogs connection
 
@@ -48,8 +60,9 @@ vinylfo/
 ├── main.go                # Application entry point
 ├── controllers/           # HTTP request handlers
 │   ├── album.go           # Album CRUD operations
-│   ├── discogs.go         # Discogs sync & OAuth (~1,674 lines)
+│   ├── discogs.go         # Discogs sync & OAuth
 │   ├── discogs_helpers.go # Utility functions
+│   ├── duration.go        # Duration resolution API
 │   ├── playback.go        # Playback session management
 │   ├── playlist.go        # Playlist management
 │   ├── settings.go        # Settings API
@@ -57,7 +70,15 @@ vinylfo/
 ├── services/              # Business logic layer
 │   ├── album_import.go    # Album import from Discogs
 │   ├── sync_progress.go   # Sync progress persistence
-│   └── sync_worker.go     # Sync processing engine
+│   ├── sync_worker.go     # Sync processing engine
+│   ├── duration_resolver.go  # Duration resolution service
+│   ├── duration_progress.go  # Resolution progress persistence
+│   └── duration_worker.go    # Bulk resolution worker
+├── duration/              # Duration resolution clients
+│   ├── client.go          # Base client and matching algorithms
+│   ├── rate_limiter.go    # Rate limiting for APIs
+│   ├── musicbrainz_client.go # MusicBrainz API integration
+│   └── wikipedia_client.go   # Wikipedia API integration
 ├── models/                # Database models
 │   ├── models.go          # Album, Track, Playlist, etc.
 │   └── app_config.go      # Application settings
@@ -138,6 +159,23 @@ vinylfo/
 | GET | `/api/discogs/unlinked-albums` | Find removed albums |
 | POST | `/api/discogs/unlinked-albums/delete` | Delete unlinked albums |
 
+### Duration Resolution
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/duration/stats` | Get resolution statistics |
+| GET | `/api/duration/tracks` | Get tracks needing resolution |
+| POST | `/api/duration/resolve/track/:id` | Resolve single track |
+| POST | `/api/duration/resolve/album/:id` | Resolve all tracks in album |
+| POST | `/api/duration/resolve/start` | Start bulk resolution |
+| POST | `/api/duration/resolve/pause` | Pause bulk resolution |
+| POST | `/api/duration/resolve/resume` | Resume bulk resolution |
+| POST | `/api/duration/resolve/cancel` | Cancel bulk resolution |
+| GET | `/api/duration/resolve/progress` | Get bulk resolution progress |
+| GET | `/api/duration/review` | Get review queue |
+| GET | `/api/duration/review/:id` | Get resolution details |
+| POST | `/api/duration/review/:id` | Submit review decision |
+| POST | `/api/duration/review/bulk` | Bulk apply/reject |
+
 ### Settings
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -157,6 +195,9 @@ vinylfo/
 - **SyncProgress**: Discogs sync state for resume capability
 - **SyncHistory**: Completed sync records
 - **SyncLog**: Sync error logs for troubleshooting
+- **DurationResolution**: Track duration resolution attempts and status
+- **DurationSource**: Individual source results (MusicBrainz, Wikipedia)
+- **DurationResolverProgress**: Bulk resolution progress for resume
 - **AppConfig**: Application settings and OAuth credentials
 
 ## License

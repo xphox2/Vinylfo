@@ -160,13 +160,19 @@ func (c *MusicBrainzClient) buildQuery(title, artist, album string) string {
 		return replacer.Replace(s)
 	}
 
+	// Normalize artist name to remove disambiguation suffixes like "(2)" before querying
+	normalizedArtist := NormalizeArtistName(artist)
+	// Normalize title and album to remove edition suffixes like "(Remastered)"
+	normalizedTitle := NormalizeTitle(title)
+	normalizedAlbum := NormalizeTitle(album)
+
 	parts := []string{
-		fmt.Sprintf(`recording:"%s"`, escape(title)),
-		fmt.Sprintf(`artist:"%s"`, escape(artist)),
+		fmt.Sprintf(`recording:"%s"`, escape(normalizedTitle)),
+		fmt.Sprintf(`artist:"%s"`, escape(normalizedArtist)),
 	}
 
-	if album != "" {
-		parts = append(parts, fmt.Sprintf(`release:"%s"`, escape(album)))
+	if normalizedAlbum != "" {
+		parts = append(parts, fmt.Sprintf(`release:"%s"`, escape(normalizedAlbum)))
 	}
 
 	return strings.Join(parts, " AND ")

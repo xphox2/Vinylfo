@@ -3,6 +3,7 @@ package duration
 import (
 	"context"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -71,9 +72,18 @@ func NewBaseClient(userAgent string, requestsPerMinute int) *BaseClient {
 
 // CalculateMatchScore calculates how well a result matches the search query
 // Uses Levenshtein distance normalized to 0.0-1.0
+// Artist names are normalized to remove disambiguation suffixes like "(2)"
+// Titles are normalized to remove edition suffixes like "(Remastered)"
 func CalculateMatchScore(searchTitle, searchArtist, resultTitle, resultArtist string) float64 {
-	titleScore := stringSimilarity(searchTitle, resultTitle)
-	artistScore := stringSimilarity(searchArtist, resultArtist)
+	// Normalize titles to handle edition suffixes like (Remastered), (Deluxe Edition)
+	normalizedSearchTitle := NormalizeTitle(searchTitle)
+	normalizedResultTitle := NormalizeTitle(resultTitle)
+	titleScore := stringSimilarity(normalizedSearchTitle, normalizedResultTitle)
+
+	// Normalize artist names to handle MusicBrainz disambiguation suffixes
+	normalizedSearchArtist := NormalizeArtistName(searchArtist)
+	normalizedResultArtist := NormalizeArtistName(resultArtist)
+	artistScore := stringSimilarity(normalizedSearchArtist, normalizedResultArtist)
 
 	// Weight title slightly higher than artist
 	return (titleScore * 0.6) + (artistScore * 0.4)
@@ -131,4 +141,36 @@ func levenshteinDistance(a, b string) int {
 	}
 
 	return matrix[len(a)][len(b)]
+}
+
+// disambiguationSuffixPattern matches MusicBrainz disambiguation suffixes like "(2)", "(3)", "(rapper)", etc.
+var disambiguationSuffixPattern = regexp.MustCompile(`\s*\(\d+\)\s*$|\s*\([^)]*(?:rapper|singer|artist|band|musician|producer|dj|DJ)\)\s*$`)
+
+// NormalizeArtistName cleans up artist names for better matching
+// Removes MusicBrainz disambiguation suffixes like "(2)", "(rapper)", etc.
+func NormalizeArtistName(name string) string {
+	// Remove disambiguation suffixes
+	normalized := disambiguationSuffixPattern.ReplaceAllString(name, "")
+	return strings.TrimSpace(normalized)
+}
+
+// editionSuffixPattern matches common album/track edition suffixes that can interfere with matching
+// Examples: (Remastered), (Digital), (Deluxe Edition), (Remastered & Selected Works), (The Great Hits)
+var editionSuffixPattern = regexp.MustCompile(`(?i)\s*\((?:[^)]*\s)?(?:remaster(?:ed)?|digital|deluxe|bonus|anniversary|expanded|special|collector|limited|edition|version|mix|remix|mono|stereo|selected works|works|hits|best of|greatest|complete|original|enhanced)(?:\s[^)]*)?\)\s*$`)
+
+// NormalizeTitle cleans up track/album titles for better matching
+// Removes common edition suffixes like (Remastered), (Deluxe Edition), etc.
+// Can be applied multiple times to strip nested suffixes
+func NormalizeTitle(title string) string {
+	normalized := title
+	// Apply up to 3 times to handle multiple suffixes like "Album (Remastered) (Deluxe)"
+	for i := 0; i < 3; i++ {
+		prev := normalized
+		normalized = editionSuffixPattern.ReplaceAllString(normalized, "")
+		normalized = strings.TrimSpace(normalized)
+		if normalized == prev {
+			break
+		}
+	}
+	return normalized
 }

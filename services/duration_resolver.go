@@ -80,8 +80,15 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 	var existing models.DurationResolution
 	err := s.db.Where("track_id = ?", track.ID).First(&existing).Error
 	if err == nil {
-		log.Printf("Found existing resolution for track %d: %s", track.ID, existing.Status)
-		return &existing, nil
+		// Only skip if resolution was successful (resolved, approved) - allow retrying failed/needs_review
+		if existing.Status == "resolved" || existing.Status == "approved" {
+			log.Printf("Found existing successful resolution for track %d: %s", track.ID, existing.Status)
+			return &existing, nil
+		}
+		// Delete the failed/needs_review resolution so we can retry
+		log.Printf("Retrying resolution for track %d (previous status: %s)", track.ID, existing.Status)
+		s.db.Where("resolution_id = ?", existing.ID).Delete(&models.DurationSource{})
+		s.db.Delete(&existing)
 	}
 
 	albumTitle, artist := s.getAlbumInfo(track.AlbumID)

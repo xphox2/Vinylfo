@@ -131,7 +131,11 @@ func (c *WikipediaClient) SearchTrack(ctx context.Context, title, artist, album 
 func (c *WikipediaClient) searchAlbumPage(ctx context.Context, album, artist string) (string, error) {
 	c.RateLimiter.Wait()
 
-	searchQuery := fmt.Sprintf("%s %s", album, artist)
+	// Normalize artist name to remove disambiguation suffixes like "(2)"
+	normalizedArtist := NormalizeArtistName(artist)
+	// Normalize album to remove edition suffixes like "(Remastered)"
+	normalizedAlbum := NormalizeTitle(album)
+	searchQuery := fmt.Sprintf("%s %s", normalizedAlbum, normalizedArtist)
 
 	reqURL := fmt.Sprintf("%s?action=query&list=search&srsearch=%s&format=json&srlimit=10",
 		wikipediaBaseURL,
@@ -160,9 +164,9 @@ func (c *WikipediaClient) searchAlbumPage(ctx context.Context, album, artist str
 		return "", err
 	}
 
-	albumLower := strings.ToLower(album)
+	albumLower := strings.ToLower(normalizedAlbum)
 	albumWords := strings.Fields(albumLower)
-	artistLower := strings.ToLower(artist)
+	artistLower := strings.ToLower(normalizedArtist)
 
 	var bestMatch string
 	var bestScore float64 = 0
@@ -329,73 +333,70 @@ func (c *WikipediaClient) parseTrackListing(content string) []TrackInfo {
 				continue
 			}
 
-			if strings.HasPrefix(line, "| title") {
+			// Normalize: remove leading | and optional space to handle both "| title" and "|title"
+			normalizedLine := line
+			if strings.HasPrefix(normalizedLine, "|") {
+				normalizedLine = strings.TrimPrefix(normalizedLine, "|")
+				normalizedLine = strings.TrimSpace(normalizedLine)
+			}
+
+			if strings.HasPrefix(line, "| title") || strings.HasPrefix(normalizedLine, "title") {
 				log.Printf("WIKI: DEBUG: Found title line: %s", line)
-				line = strings.TrimPrefix(line, "| title")
-				line = strings.TrimPrefix(line, "|")
-				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "=") {
-					line = strings.TrimPrefix(line, "=")
-					line = strings.TrimSpace(line)
-				}
-				parts := strings.SplitN(line, " ", 2)
-				if len(parts) > 0 {
-					titleNumStr := ""
-					for _, c := range parts[0] {
-						if c >= '0' && c <= '9' {
-							titleNumStr += string(c)
-						} else {
-							break
-						}
+				// Use normalizedLine for parsing since it handles both "| title" and "|title" formats
+				parseLine := normalizedLine
+				parseLine = strings.TrimPrefix(parseLine, "title")
+				parseLine = strings.TrimSpace(parseLine)
+				// Extract the track number (e.g., "1" from "title1")
+				titleNumStr := ""
+				for _, c := range parseLine {
+					if c >= '0' && c <= '9' {
+						titleNumStr += string(c)
+					} else {
+						break
 					}
-					if titleNumStr != "" {
-						titleNum, err := strconv.Atoi(titleNumStr)
-						if err == nil {
-							titleValue := line[len(titleNumStr):]
+				}
+				if titleNumStr != "" {
+					titleNum, err := strconv.Atoi(titleNumStr)
+					if err == nil {
+						titleValue := parseLine[len(titleNumStr):]
+						titleValue = strings.TrimSpace(titleValue)
+						// Remove the = sign that separates key from value
+						if strings.HasPrefix(titleValue, "=") {
+							titleValue = strings.TrimPrefix(titleValue, "=")
 							titleValue = strings.TrimSpace(titleValue)
-							// Remove the = sign that separates key from value
-							if strings.HasPrefix(titleValue, "=") {
-								titleValue = strings.TrimPrefix(titleValue, "=")
-								titleValue = strings.TrimSpace(titleValue)
-							}
-							titleValue = regexp.MustCompile(`\{\{[^}]+\}\}`).ReplaceAllString(titleValue, "")
-							titleValue = strings.TrimSpace(titleValue)
-							titles[titleNum] = titleValue
-							log.Printf("WIKI: Found title[%d] = %s", titleNum, titleValue)
 						}
+						titleValue = regexp.MustCompile(`\{\{[^}]+\}\}`).ReplaceAllString(titleValue, "")
+						titleValue = strings.TrimSpace(titleValue)
+						titles[titleNum] = titleValue
+						log.Printf("WIKI: Found title[%d] = %s", titleNum, titleValue)
 					}
 				}
-			} else if strings.HasPrefix(line, "| length") {
-				line = strings.TrimPrefix(line, "| length")
-				line = strings.TrimPrefix(line, "|")
-				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "=") {
-					line = strings.TrimPrefix(line, "=")
-					line = strings.TrimSpace(line)
-				}
-				parts := strings.SplitN(line, " ", 2)
-				if len(parts) > 0 {
-					lengthNumStr := ""
-					for _, c := range parts[0] {
-						if c >= '0' && c <= '9' {
-							lengthNumStr += string(c)
-						} else {
-							break
-						}
+			} else if strings.HasPrefix(line, "| length") || strings.HasPrefix(normalizedLine, "length") {
+				// Use normalizedLine for parsing since it handles both "| length" and "|length" formats
+				parseLine := normalizedLine
+				parseLine = strings.TrimPrefix(parseLine, "length")
+				parseLine = strings.TrimSpace(parseLine)
+				// Extract the track number (e.g., "1" from "length1")
+				lengthNumStr := ""
+				for _, c := range parseLine {
+					if c >= '0' && c <= '9' {
+						lengthNumStr += string(c)
+					} else {
+						break
 					}
-					if lengthNumStr != "" {
-						lengthNum, err := strconv.Atoi(lengthNumStr)
-						if err == nil {
-							lengthValue := line[len(lengthNumStr):]
+				}
+				if lengthNumStr != "" {
+					lengthNum, err := strconv.Atoi(lengthNumStr)
+					if err == nil {
+						lengthValue := parseLine[len(lengthNumStr):]
+						lengthValue = strings.TrimSpace(lengthValue)
+						// Remove the = sign that separates key from value
+						if strings.HasPrefix(lengthValue, "=") {
+							lengthValue = strings.TrimPrefix(lengthValue, "=")
 							lengthValue = strings.TrimSpace(lengthValue)
-							// Remove the = sign that separates key from value
-							if strings.HasPrefix(lengthValue, "=") {
-								lengthValue = strings.TrimPrefix(lengthValue, "=")
-								lengthValue = strings.TrimSpace(lengthValue)
-							}
-							lengths[lengthNum] = lengthValue
-							log.Printf("WIKI: Found length[%d] = %s", lengthNum, lengthValue)
 						}
+						lengths[lengthNum] = lengthValue
+						log.Printf("WIKI: Found length[%d] = %s", lengthNum, lengthValue)
 					}
 				}
 			}
