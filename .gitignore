@@ -39,8 +39,10 @@ tests/
 bin/
 dist/
 
+# Cache
+.youtube_cache/
+
 # AI
-.claud/
 .claude/
 PROMPT.md
 todo.md

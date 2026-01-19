@@ -54,7 +54,10 @@ func (c *DurationController) GetTracksNeedingResolution(ctx *gin.Context) {
 	}
 	offset := (page - 1) * limit
 
-	query := c.db.Model(&models.Track{}).Where("duration = 0 OR duration IS NULL")
+	query := c.db.Model(&models.Track{}).
+		Where("duration = 0 OR duration IS NULL").
+		Where("duration_needs_review = ?", false).
+		Where("id NOT IN (SELECT track_id FROM duration_resolutions WHERE status IN ('resolved', 'approved', 'needs_review'))")
 
 	if albumID > 0 {
 		query = query.Where("album_id = ?", albumID)
@@ -98,12 +101,17 @@ func (c *DurationController) GetTracksNeedingResolution(ctx *gin.Context) {
 }
 
 func (c *DurationController) GetStatistics(ctx *gin.Context) {
-	var totalTracks, missingDuration, resolved, needsReview int64
+	var totalTracks, missingDuration, resolved, needsReview, unprocessed int64
 
 	c.db.Model(&models.Track{}).Count(&totalTracks)
 	c.db.Model(&models.Track{}).Where("duration = 0 OR duration IS NULL").Count(&missingDuration)
 	c.db.Model(&models.Track{}).Where("duration_source = ?", "resolved").Count(&resolved)
 	c.db.Model(&models.DurationResolution{}).Where("status = ?", "needs_review").Count(&needsReview)
+
+	c.db.Model(&models.Track{}).
+		Where("duration = 0 OR duration IS NULL").
+		Where("id NOT IN (SELECT track_id FROM duration_resolutions WHERE status IN ('resolved', 'approved', 'needs_review'))").
+		Count(&unprocessed)
 
 	var recentResolutions []models.DurationResolution
 	c.db.Where("status IN ('resolved', 'needs_review', 'approved')").
@@ -116,6 +124,7 @@ func (c *DurationController) GetStatistics(ctx *gin.Context) {
 		"missing_duration":   missingDuration,
 		"resolved":           resolved,
 		"needs_review":       needsReview,
+		"unprocessed":        unprocessed,
 		"recent_resolutions": recentResolutions,
 	})
 }
@@ -152,6 +161,39 @@ func (c *DurationController) ResolveTrack(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"resolution": resolution,
 		"message":    "Track resolution completed",
+	})
+}
+
+func (c *DurationController) SetManualDuration(ctx *gin.Context) {
+	trackID, err := strconv.Atoi(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid track ID"})
+		return
+	}
+
+	var input struct {
+		Duration int    `json:"duration" binding:"required"`
+		Notes    string `json:"notes"`
+	}
+
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if input.Duration <= 0 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "duration must be positive"})
+		return
+	}
+
+	err = c.resolverService.ManuallySetDuration(uint(trackID), input.Duration, input.Notes)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "Manual duration saved",
 	})
 }
 
@@ -347,11 +389,11 @@ func (c *DurationController) GetResolvedQueue(ctx *gin.Context) {
 	offset := (page - 1) * limit
 
 	var total int64
-	c.db.Model(&models.DurationResolution{}).Where("status = ?", "resolved").Count(&total)
+	c.db.Model(&models.DurationResolution{}).Where("status IN ?", []string{"resolved", "approved"}).Count(&total)
 
 	var resolutions []models.DurationResolution
 	if err := c.db.
-		Where("status = ?", "resolved").
+		Where("status IN ?", []string{"resolved", "approved"}).
 		Order("updated_at DESC").
 		Offset(offset).Limit(limit).
 		Find(&resolutions).Error; err != nil {
@@ -494,6 +536,7 @@ func (c *DurationController) SubmitReview(ctx *gin.Context) {
 		Duration int    `json:"duration"`
 		SourceID uint   `json:"source_id"`
 		Notes    string `json:"notes"`
+		TrackID  int    `json:"track_id"`
 	}
 
 	if err := ctx.ShouldBindJSON(&input); err != nil {
@@ -536,13 +579,21 @@ func (c *DurationController) SubmitReview(ctx *gin.Context) {
 			return
 		}
 
-		var resolution models.DurationResolution
-		c.db.First(&resolution, resolutionID)
+		if input.TrackID > 0 {
+			err := c.resolverService.ManuallySetDuration(uint(input.TrackID), input.Duration, input.Notes)
+			if err != nil {
+				ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		} else {
+			var resolution models.DurationResolution
+			c.db.First(&resolution, resolutionID)
 
-		err := c.resolverService.ManuallySetDuration(resolution.TrackID, input.Duration, input.Notes)
-		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+			err := c.resolverService.ManuallySetDuration(resolution.TrackID, input.Duration, input.Notes)
+			if err != nil {
+				ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 		}
 
 	case "skip":

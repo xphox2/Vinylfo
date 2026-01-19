@@ -250,7 +250,7 @@ type Client struct {
 func NewClient(apiKey string) *Client {
 	return &Client{
 		APIKey:      apiKey,
-		HTTPClient:  &http.Client{Timeout: 30 * time.Second},
+		HTTPClient:  &http.Client{Timeout: 60 * time.Second},
 		RateLimiter: NewRateLimiter(),
 	}
 }
@@ -258,7 +258,7 @@ func NewClient(apiKey string) *Client {
 func NewClientWithOAuth(apiKey string, oauth *OAuthConfig) *Client {
 	client := &Client{
 		APIKey:      apiKey,
-		HTTPClient:  &http.Client{Timeout: 30 * time.Second},
+		HTTPClient:  &http.Client{Timeout: 60 * time.Second},
 		RateLimiter: NewRateLimiter(),
 		OAuth:       oauth,
 	}
@@ -954,6 +954,76 @@ func (c *Client) GetAlbum(id int) (map[string]interface{}, error) {
 	return album, nil
 }
 
+// GetMasterRelease gets the master release for an album
+// Master releases are the main entry point and always public/stable
+func (c *Client) GetMasterRelease(id int) (map[string]interface{}, error) {
+	url := fmt.Sprintf("%s/masters/%d", APIURL, id)
+	resp, err := c.makeAuthenticatedRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	var master struct {
+		ID      int    `json:"id"`
+		Title   string `json:"title"`
+		Year    int    `json:"year"`
+		Artists []struct {
+			Name string `json:"name"`
+		} `json:"artists"`
+		Images []struct {
+			URI  string `json:"uri"`
+			Type string `json:"type"`
+		} `json:"images"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&master); err != nil {
+		return nil, err
+	}
+
+	artistName := ""
+	if len(master.Artists) > 0 {
+		artistName = master.Artists[0].Name
+	}
+
+	return map[string]interface{}{
+		"id":          master.ID,
+		"title":       master.Title,
+		"artist":      artistName,
+		"year":        master.Year,
+		"cover_image": "",
+		"is_master":   true,
+	}, nil
+}
+
+// GetMainReleaseFromMaster gets the most popular release from a master
+// This returns a public release with full tracklist and durations
+func (c *Client) GetMainReleaseFromMaster(masterID int) (int, error) {
+	url := fmt.Sprintf("%s/masters/%d/releases?per_page=1&sort=year&sort_order=desc", APIURL, masterID)
+	resp, err := c.makeAuthenticatedRequest("GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	var respData struct {
+		Releases []struct {
+			ID int `json:"id"`
+		} `json:"releases"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+		return 0, err
+	}
+
+	if len(respData.Releases) > 0 {
+		return respData.Releases[0].ID, nil
+	}
+
+	return 0, fmt.Errorf("no releases found for master %d", masterID)
+}
+
 func parseAlbumResponse(resp *http.Response) (map[string]interface{}, error) {
 	defer resp.Body.Close()
 
@@ -1255,6 +1325,297 @@ func (c *Client) GetTracksForAlbum(id int) ([]map[string]interface{}, error) {
 	}
 
 	return album["tracklist"].([]map[string]interface{}), nil
+}
+
+func (c *Client) CrossReferenceTimestamps(title, artist string, currentTracks []map[string]interface{}) ([]map[string]interface{}, error) {
+	hasDurations := false
+	for _, track := range currentTracks {
+		if dur, ok := track["duration"].(int); ok && dur > 0 {
+			hasDurations = true
+			break
+		}
+	}
+
+	if hasDurations {
+		logToFile("CrossReferenceTimestamps: Skipping - tracks already have durations for %s - %s", artist, title)
+		return currentTracks, nil
+	}
+
+	logToFile("CrossReferenceTimestamps: No durations found for %s - %s, searching for alternative releases", artist, title)
+
+	var allResults []map[string]interface{}
+
+	for page := 1; page <= 3; page++ {
+		searchQuery := fmt.Sprintf("%s %s", artist, title)
+		searchQuery = strings.ReplaceAll(searchQuery, "/", " ")
+		logToFile("CrossReferenceTimestamps: Searching page %d with query: %q", page, searchQuery)
+		searchResults, _, err := c.SearchAlbums(searchQuery, page)
+		if err != nil {
+			logToFile("CrossReferenceTimestamps: Search failed for page %d: %v", page, err)
+			break
+		}
+
+		if len(searchResults) == 0 {
+			break
+		}
+
+		logToFile("CrossReferenceTimestamps: Page %d returned %d results", page, len(searchResults))
+		allResults = append(allResults, searchResults...)
+
+		if len(searchResults) < 12 {
+			break
+		}
+	}
+
+	logToFile("CrossReferenceTimestamps: Total results collected: %d", len(allResults))
+
+	if len(allResults) == 0 {
+		logToFile("CrossReferenceTimestamps: No search results for %s - %s", artist, title)
+		return currentTracks, nil
+	}
+
+	normalizedTitle := normalizeStringForCompare(title)
+	normalizedArtist := normalizeStringForCompare(artist)
+
+	for i, result := range allResults {
+		resultTitle, _ := result["title"].(string)
+		resultArtist, _ := result["artist"].(string)
+		resultID, _ := result["discogs_id"].(int)
+
+		logToFile("CrossReferenceTimestamps: Result %d: id=%d, title=%q, artist=%q", i, resultID, resultTitle, resultArtist)
+
+		if resultArtist == "" && strings.Contains(resultTitle, "-") {
+			cleanTitle := removeZeroWidthChars(resultTitle)
+			if cleanTitle != resultTitle {
+				resultTitle = cleanTitle
+				logToFile("CrossReferenceTimestamps: Cleaned unicode from title: %q", resultTitle)
+			}
+			parts := strings.SplitN(resultTitle, "-", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[0]) != "" && strings.TrimSpace(parts[1]) != "" {
+				resultArtist = strings.TrimSpace(parts[0])
+				resultTitle = strings.TrimSpace(parts[1])
+				logToFile("CrossReferenceTimestamps: Extracted from title format: artist=%q, title=%q", resultArtist, resultTitle)
+			}
+		}
+
+		normalizedResultTitle := normalizeStringForCompare(resultTitle)
+		normalizedResultArtist := normalizeStringForCompare(resultArtist)
+
+		titleScore := stringSimilarity(normalizedResultTitle, normalizedTitle)
+		artistScore := stringSimilarity(normalizedResultArtist, normalizedArtist)
+
+		logToFile("CrossReferenceTimestamps: Similarity scores - title: %.2f (%q vs %q), artist: %.2f (%q vs %q)",
+			titleScore, normalizedResultTitle, normalizedTitle, artistScore, normalizedResultArtist, normalizedArtist)
+
+		isSameTitle := normalizedResultTitle == normalizedTitle
+		isSameArtist := normalizedResultArtist == normalizedArtist ||
+			strings.Contains(normalizedResultArtist, normalizedArtist) ||
+			strings.Contains(normalizedArtist, normalizedResultArtist)
+		hasArtistInResult := normalizedResultArtist != ""
+		hasArtistInSearch := normalizedArtist != ""
+
+		if resultID == 0 {
+			logToFile("CrossReferenceTimestamps: Skipping result %d - no discogs_id", i)
+			continue
+		}
+
+		isExactMatch := isSameTitle && (isSameArtist || (!hasArtistInResult && !hasArtistInSearch))
+		isHighSimilarityMatch := titleScore >= 0.80 && (artistScore >= 0.80 || (!hasArtistInResult && hasArtistInSearch))
+
+		logToFile("CrossReferenceTimestamps: Match evaluation - titleScore=%.2f(>=0.80:%v), artistScore=%.2f(>=0.80:%v), hasArtistInResult=%v, hasArtistInSearch=%v",
+			titleScore, titleScore >= 0.80, artistScore, artistScore >= 0.80, hasArtistInResult, hasArtistInSearch)
+		logToFile("CrossReferenceTimestamps: isExactMatch=%v, isHighSimilarityMatch=%v", isExactMatch, isHighSimilarityMatch)
+
+		if isExactMatch || isHighSimilarityMatch {
+			matchType := "EXACT"
+			if isHighSimilarityMatch && !isExactMatch {
+				matchType = "HIGH SIMILARITY"
+			}
+			logToFile("CrossReferenceTimestamps: Found %s MATCH release %d", matchType, resultID)
+
+			altTracks, err := c.GetTracksForAlbum(resultID)
+			if err != nil {
+				logToFile("CrossReferenceTimestamps: Failed to fetch tracks for release %d: %v", resultID, err)
+				continue
+			}
+
+			logToFile("CrossReferenceTimestamps: Fetched %d tracks from release %d", len(altTracks), resultID)
+
+			altHasDurations := false
+			for j, track := range altTracks {
+				dur, _ := track["duration"].(int)
+				trackTitle, _ := track["title"].(string)
+				if dur > 0 {
+					altHasDurations = true
+					logToFile("CrossReferenceTimestamps: Alt track %d: %q duration=%d (HAS DATA)", j, trackTitle, dur)
+				} else {
+					logToFile("CrossReferenceTimestamps: Alt track %d: %q duration=%d", j, trackTitle, dur)
+				}
+			}
+
+			if !altHasDurations {
+				logToFile("CrossReferenceTimestamps: Alternative release %d also has no durations", resultID)
+				continue
+			}
+
+			logToFile("CrossReferenceTimestamps: Alternative release %d has durations, matching tracks", resultID)
+
+			matchedTracks := matchTracksByName(currentTracks, altTracks)
+
+			matchedWithDurations := 0
+			for j, track := range matchedTracks {
+				dur, _ := track["duration"].(int)
+				trackTitle, _ := track["title"].(string)
+				logToFile("CrossReferenceTimestamps: Matched track %d: %q duration=%d", j, trackTitle, dur)
+				if dur > 0 {
+					matchedWithDurations++
+				}
+			}
+
+			logToFile("CrossReferenceTimestamps: Matched %d/%d tracks with durations from release %d",
+				matchedWithDurations, len(matchedTracks), resultID)
+
+			if matchedWithDurations > 0 {
+				logToFile("CrossReferenceTimestamps: SUCCESS - matched %d tracks from release %d", len(matchedTracks), resultID)
+				return matchedTracks, nil
+			}
+		}
+	}
+
+	logToFile("CrossReferenceTimestamps: No suitable alternative release found for %s - %s after searching %d results", artist, title, len(allResults))
+	return currentTracks, nil
+}
+
+func normalizeStringForCompare(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.ReplaceAll(s, "the ", "")
+	s = strings.ReplaceAll(s, "&", "and")
+	s = strings.ReplaceAll(s, "-", " ")
+	s = strings.ReplaceAll(s, "'", "")
+	s = strings.ReplaceAll(s, "\"", "")
+	s = strings.ReplaceAll(s, "(", "")
+	s = strings.ReplaceAll(s, ")", "")
+	s = strings.ReplaceAll(s, "[", "")
+	s = strings.ReplaceAll(s, "]", "")
+	s = strings.ReplaceAll(s, ":", "")
+	s = strings.ReplaceAll(s, "/", " ")
+	for strings.Contains(s, "  ") {
+		s = strings.ReplaceAll(s, "  ", " ")
+	}
+	return strings.TrimSpace(s)
+}
+
+func matchTracksByName(currentTracks, altTracks []map[string]interface{}) []map[string]interface{} {
+	matched := make([]map[string]interface{}, len(currentTracks))
+
+	for i, currentTrack := range currentTracks {
+		currentTitle, _ := currentTrack["title"].(string)
+		currentTitle = strings.TrimSpace(strings.ToLower(currentTitle))
+
+		bestMatch := -1
+		bestScore := 0.0
+
+		for j, altTrack := range altTracks {
+			altTitle, _ := altTrack["title"].(string)
+			altTitle = strings.TrimSpace(strings.ToLower(altTitle))
+
+			if currentTitle == altTitle {
+				bestMatch = j
+				bestScore = 1.0
+				break
+			}
+
+			score := stringSimilarity(currentTitle, altTitle)
+			if score > bestScore && score >= 0.7 {
+				bestScore = score
+				bestMatch = j
+			}
+		}
+
+		if bestMatch >= 0 {
+			altTrack := altTracks[bestMatch]
+			duration, _ := altTrack["duration"].(int)
+			if duration > 0 {
+				matched[i] = map[string]interface{}{
+					"track_number": currentTrack["track_number"],
+					"disc_number":  currentTrack["disc_number"],
+					"position":     currentTrack["position"],
+					"title":        currentTrack["title"],
+					"duration":     duration,
+				}
+				continue
+			}
+		}
+
+		matched[i] = currentTrack
+	}
+
+	return matched
+}
+
+func removeZeroWidthChars(s string) string {
+	result := make([]rune, 0, len(s))
+	for _, r := range s {
+		if r >= 0x200B && r <= 0x200F {
+			continue
+		}
+		if r == 0xFEFF {
+			continue
+		}
+		result = append(result, r)
+	}
+	return string(result)
+}
+
+func stringSimilarity(a, b string) float64 {
+	a = strings.ToLower(strings.TrimSpace(a))
+	b = strings.ToLower(strings.TrimSpace(b))
+
+	if a == b {
+		return 1.0
+	}
+	if len(a) == 0 || len(b) == 0 {
+		return 0.0
+	}
+
+	distance := levenshteinDistance(a, b)
+	maxLen := max(len(a), len(b))
+
+	return 1.0 - (float64(distance) / float64(maxLen))
+}
+
+func levenshteinDistance(a, b string) int {
+	if len(a) == 0 {
+		return len(b)
+	}
+	if len(b) == 0 {
+		return len(a)
+	}
+
+	matrix := make([][]int, len(a)+1)
+	for i := range matrix {
+		matrix[i] = make([]int, len(b)+1)
+		matrix[i][0] = i
+	}
+	for j := range matrix[0] {
+		matrix[0][j] = j
+	}
+
+	for i := 1; i <= len(a); i++ {
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			matrix[i][j] = min(
+				matrix[i-1][j]+1,
+				matrix[i][j-1]+1,
+				matrix[i-1][j-1]+cost,
+			)
+		}
+	}
+
+	return matrix[len(a)][len(b)]
 }
 
 func percentEncode(s string) string {

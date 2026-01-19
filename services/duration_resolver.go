@@ -115,11 +115,23 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 
 	var successfulQueries int
 	var allDurations []int
+	var skippedExpensiveSources []string
 
 	for _, client := range s.clients {
 		if !client.IsConfigured() {
 			resolution.TotalSourcesQueried--
 			continue
+		}
+
+		// Skip expensive sources (YouTube) if we already have consensus from free sources
+		if client.Name() == "youtube" && len(allDurations) >= s.config.ConsensusThreshold {
+			_, consensusCount := s.findConsensus(allDurations)
+			if consensusCount >= s.config.ConsensusThreshold {
+				log.Printf("Skipping YouTube API - consensus already reached with %d sources", consensusCount)
+				skippedExpensiveSources = append(skippedExpensiveSources, client.Name())
+				resolution.TotalSourcesQueried--
+				continue
+			}
 		}
 
 		result, err := client.SearchTrack(ctx, track.Title, artist, albumTitle)
@@ -161,6 +173,11 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 		}
 
 		s.db.Create(&source)
+	}
+
+	// Log if we saved API calls by skipping expensive sources
+	if len(skippedExpensiveSources) > 0 {
+		log.Printf("Saved API quota by skipping: %v", skippedExpensiveSources)
 	}
 
 	resolution.SuccessfulQueries = successfulQueries
@@ -368,30 +385,49 @@ func (s *DurationResolverService) RejectResolution(resolutionID uint, userID str
 		return err
 	}
 
-	if resolution.Status != "needs_review" {
-		return fmt.Errorf("resolution is not pending review")
+	if resolution.Status == "rejected" {
+		return fmt.Errorf("resolution is already rejected")
 	}
 
 	now := time.Now()
-	resolution.Status = "rejected"
-	resolution.ReviewedAt = &now
-	resolution.ReviewedBy = userID
-	resolution.ReviewNotes = notes
-	resolution.ReviewAction = "reject"
-	resolution.ManuallyReviewed = true
 
-	if err := s.db.Save(&resolution).Error; err != nil {
-		return err
+	if resolution.SuccessfulQueries > 0 {
+		resolution.Status = "needs_review"
+		resolution.ResolvedDuration = nil
+		resolution.ReviewedAt = &now
+		resolution.ReviewedBy = userID
+		resolution.ReviewNotes = notes
+		resolution.ReviewAction = "reject"
+		resolution.ManuallyReviewed = true
+		s.db.Save(&resolution)
+
+		var track models.Track
+		s.db.First(&track, resolution.TrackID)
+		track.Duration = 0
+		track.DurationSource = ""
+		track.DurationResolvedAt = nil
+		track.DurationNeedsReview = true
+		s.db.Save(&track)
+	} else {
+		resolution.Status = "rejected"
+		resolution.ResolvedDuration = nil
+		resolution.ReviewedAt = &now
+		resolution.ReviewedBy = userID
+		resolution.ReviewNotes = notes
+		resolution.ReviewAction = "reject"
+		resolution.ManuallyReviewed = true
+		s.db.Save(&resolution)
+
+		var track models.Track
+		s.db.First(&track, resolution.TrackID)
+		track.Duration = 0
+		track.DurationSource = ""
+		track.DurationResolvedAt = nil
+		track.DurationNeedsReview = false
+		s.db.Save(&track)
 	}
 
-	var track models.Track
-	if err := s.db.First(&track, resolution.TrackID).Error; err != nil {
-		return err
-	}
-
-	track.DurationNeedsReview = false
-
-	return s.db.Save(&track).Error
+	return nil
 }
 
 func (s *DurationResolverService) ApplyResolution(resolutionID uint, duration int, notes string) error {
@@ -454,6 +490,20 @@ func (s *DurationResolverService) ManuallySetDuration(trackID uint, duration int
 		resolution.ManuallyReviewed = true
 		resolution.ReviewNotes = notes
 		s.db.Save(&resolution)
+	} else {
+		resolution = models.DurationResolution{
+			TrackID:             trackID,
+			AlbumID:             track.AlbumID,
+			Status:              "approved",
+			ResolvedDuration:    &duration,
+			ReviewedAt:          &now,
+			ReviewAction:        "manual",
+			ManuallyReviewed:    true,
+			ReviewNotes:         notes,
+			TotalSourcesQueried: 0,
+			SuccessfulQueries:   0,
+		}
+		s.db.Create(&resolution)
 	}
 
 	return nil

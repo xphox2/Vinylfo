@@ -124,6 +124,7 @@ func SetupRoutes(r *gin.Engine) {
 		duration.GET("/tracks", durationController.GetTracksNeedingResolution)
 		duration.GET("/stats", durationController.GetStatistics)
 
+		duration.POST("/track/:id/manual", durationController.SetManualDuration)
 		duration.POST("/resolve/track/:id", durationController.ResolveTrack)
 		duration.POST("/resolve/album/:id", durationController.ResolveAlbum)
 		duration.GET("/resolve/track/:id", durationController.GetResolutionStatus)

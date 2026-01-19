@@ -5,6 +5,100 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4-alpha] - 2026-01-19
+
+### Added
+
+#### Resolution Center UI Improvements
+- **Source Selection on Main Page**: Click any source badge (Wikipedia, Last.fm, etc.) on the Needs Review page to select it with visual highlighting
+- **Minutes:Seconds Input**: Manual duration entry now accepts minutes and seconds separately (e.g., 3:45) instead of just seconds
+- **Rejection Tracking**: Tracks manually applied from Unprocessed and rejected now properly return to Unprocessed; auto-matched tracks rejected return to Needs Review
+
+### Changed
+
+- **Apply Button Behavior**: Apply button now applies the selected source directly without opening the modal; Manual button still opens the modal for manual entry
+- **Resolved Queue Display**: Now shows both auto-resolved and manually-applied tracks (status "resolved" or "approved")
+
+### Fixed
+
+- **Debug Code Cleanup**: Removed all debug alerts, console.log statements, and test buttons from the UI
+- **API Endpoint**: Fixed manual duration submission for unprocessed tracks using proper endpoint `/api/duration/track/:id/manual`
+- **Reject Logic**: Properly handles rejection based on track origin (auto-matched vs manual)
+
+---
+
+## [0.2.3-alpha] - 2026-01-19
+
+### Added
+
+#### Discogs Cross-Reference Timestamp Resolution
+- **Cross-Reference Feature**: New fallback mechanism to find track durations from alternative Discogs releases
+  - When vinyl releases have no durations (common for vinyl), searches for the same album in other formats (digital, CD)
+  - Uses string similarity matching to find matching releases with durations
+  - Falls back to alternative release tracks when vinyl source has no timestamps
+
+- **Levenshtein Distance Similarity**: Implemented fuzzy string matching for release comparison
+  - `stringSimilarity()` calculates similarity score (0.0 to 1.0) between normalized strings
+  - `levenshteinDistance()` computes edit distance between strings
+  - `normalizeStringForCompare()` cleans strings for consistent comparison
+    - Converts to lowercase, trims whitespace
+    - Removes common punctuation: `& - ' " ( ) [ ] : /`
+    - Strips leading "the " articles
+    - Collapses multiple spaces
+
+- **Title Extraction from Discogs Format**: Handles "Artist - Title" title field format
+  - When Discogs search result has empty artist field, extracts artist/title from combined title
+  - Enables accurate similarity scoring when artist is embedded in title field
+
+### Changed
+
+- **Similarity Threshold**: Lowered high-similarity match threshold from 0.85 to 0.80
+  - Allows more flexible matching for close but not exact title/artist matches
+  - Helps match releases with slight title variations (e.g., "Back In Black" vs "Back In Black Tie")
+
+- **Search Query Handling**: Special character sanitization for Discogs searches
+  - Replaces "/" characters with spaces to improve search results
+  - Example: "AC/DC" now searches as "AC DC" for better Discogs API compatibility
+
+### Fixed
+
+- **Debug Logging**: Improved traceability for cross-reference matching
+  - Added match evaluation logging showing title/artist scores and match conditions
+  - Logs extracted artist/title when parsing "Artist - Title" format
+  - Added search query logging to debug search behavior
+
+- **Dead Code Removal**: Removed duplicate else-if block with identical condition to main match check
+
+---
+
+
+
+## [0.2.2-alpha] - 2026-01-18
+
+### Added
+
+#### YouTube API Quota Optimization
+- **Early-Exit Consensus Check**: YouTube API is now skipped when free sources (MusicBrainz, Wikipedia, Last.fm) already reach consensus
+  - Saves 101 quota units per track when 2+ free sources agree on duration
+  - YouTube only called as a fallback when consensus not reached
+  - Logged when YouTube is skipped: "Skipping YouTube API - consensus already reached"
+
+- **YouTube Results Caching**: File-based cache for YouTube API results
+  - Cache persists in `.youtube_cache/` directory (survives database resets)
+  - 30-day TTL on cached entries
+  - Caches both successful results AND "not found" results to avoid repeat lookups
+  - Uses SHA256 hash of (title|artist|album) as cache key
+  - Useful for testing when database is frequently reset
+
+### Changed
+
+- **Duration Resolution Order**: Free sources (MusicBrainz, Wikipedia, Last.fm) are queried first, expensive sources (YouTube) only when needed
+
+### New Files
+- `duration/youtube_cache.go` - File-based YouTube results cache
+
+---
+
 ## [0.2.1-alpha] - 2026-01-18
 
 ### Fixed
@@ -104,7 +198,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `POST /api/duration/review/bulk` - Bulk apply/reject resolutions
 
 #### New Web UI
-- **Duration Resolution Page** (`/duration-review`): New dedicated page for managing duration resolution
+- **Resolution Center Page** (`/resolution-center`): New dedicated page for managing duration resolution
   - Statistics dashboard showing missing, resolved, and needs_review counts
   - Bulk resolution controls (Start, Pause, Resume, Cancel, Refresh)
   - Progress bar with real-time status updates
@@ -123,9 +217,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `services/duration_progress.go` - Progress persistence for resume
 - `services/duration_worker.go` - Background worker for bulk processing
 - `controllers/duration.go` - REST API controller for duration endpoints
-- `templates/duration-review.html` - Review page template
-- `static/css/duration-review.css` - Review page styles
-- `static/js/duration-review.js` - Review page JavaScript
+- `templates/resolution-center.html` - Resolution Center page template
+- `static/css/resolution-center.css` - Resolution Center page styles
+- `static/js/resolution-center.js` - Resolution Center page JavaScript
 
 ### Fixed
 
@@ -172,7 +266,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 #### UI Improvements
-- Added "Duration Resolution" to Sync dropdown navigation
+- Added "Resolution Center" to Sync dropdown navigation
 - Improved source badges with color coding (musicbrainz: blue, wikipedia: purple, error: red, no-result: gray)
 - Added toast notifications for user feedback
 - Action buttons grouped on right side of review page

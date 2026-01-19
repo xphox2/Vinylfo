@@ -21,6 +21,7 @@ const (
 type YouTubeClient struct {
 	*BaseClient
 	apiKey string
+	cache  *YouTubeCache
 }
 
 type youtubeSearchResponse struct {
@@ -87,9 +88,16 @@ type youtubeVideoItem struct {
 func NewYouTubeClient(apiKey string) *YouTubeClient {
 	userAgent := "Vinylfo/1.0 (github.com/xphox2/Vinylfo)"
 
+	cache, err := NewYouTubeCache("")
+	if err != nil {
+		// Log but don't fail - cache is optional
+		cache = nil
+	}
+
 	return &YouTubeClient{
 		BaseClient: NewBaseClient(userAgent, youtubeRateLimit),
 		apiKey:     apiKey,
+		cache:      cache,
 	}
 }
 
@@ -108,6 +116,25 @@ func (c *YouTubeClient) GetRateLimitRemaining() int {
 func (c *YouTubeClient) SearchTrack(ctx context.Context, title, artist, album string) (*TrackSearchResult, error) {
 	if title == "" || artist == "" {
 		return nil, fmt.Errorf("title and artist are required")
+	}
+
+	// Check cache first
+	if c.cache != nil {
+		if entry, found := c.cache.Get(title, artist, album); found {
+			if entry.Duration == -1 {
+				// Cached "not found" result
+				return nil, nil
+			}
+			return &TrackSearchResult{
+				ExternalID:  entry.VideoID,
+				ExternalURL: fmt.Sprintf("https://www.youtube.com/watch?v=%s", entry.VideoID),
+				Title:       entry.VideoTitle,
+				Artist:      artist,
+				Duration:    entry.Duration,
+				MatchScore:  entry.MatchScore,
+				Confidence:  entry.MatchScore * 0.6,
+			}, nil
+		}
 	}
 
 	searchQuery := c.buildSearchQuery(title, artist, album)
@@ -158,6 +185,10 @@ func (c *YouTubeClient) SearchTrack(ctx context.Context, title, artist, album st
 	}
 
 	if len(videoIDs) == 0 {
+		// Cache the "not found" result
+		if c.cache != nil {
+			c.cache.SetNotFound(title, artist, album)
+		}
 		return nil, nil
 	}
 
@@ -169,6 +200,15 @@ func (c *YouTubeClient) SearchTrack(ctx context.Context, title, artist, album st
 	result := c.findBestMatch(searchResp.Items, videoResp.Items, title, artist, album)
 	if result != nil {
 		result.RawResponse = string(body)
+		// Cache the successful result
+		if c.cache != nil {
+			c.cache.Set(title, artist, album, result)
+		}
+	} else {
+		// Cache the "not found" result
+		if c.cache != nil {
+			c.cache.SetNotFound(title, artist, album)
+		}
 	}
 
 	return result, nil

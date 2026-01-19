@@ -23,16 +23,21 @@ Vinylfo is a self-hosted web application for managing your vinyl record collecti
 - **Shuffle**: Randomize playlist order
 - **Play Playlists**: Start playback from any playlist
 
-### Duration Resolution
+### Resolution Center
 - **Automatic Duration Lookup**: Resolves missing track durations by querying external databases
 - **MusicBrainz Integration**: Queries MusicBrainz for track durations with rate limiting
 - **Wikipedia Integration**: Parses Wikipedia album pages for track listings
+- **Last.fm Integration**: Queries Last.fm API for track durations
+- **YouTube Integration**: Searches YouTube for track videos and extracts duration
 - **Consensus Algorithm**: Requires 2+ sources to agree before auto-applying durations
 - **Smart Matching**: Normalizes artist names and titles for better matching
   - Handles Discogs disambiguation suffixes like "(2)", "(rapper)"
   - Handles edition suffixes like "(Remastered)", "(Deluxe Edition)"
 - **Review Queue**: Manual review for tracks where sources disagree
 - **Bulk Processing**: Background worker processes all tracks with missing durations
+- **YouTube Quota Optimization**:
+  - Skips YouTube API when free sources already reach consensus
+  - File-based cache persists results across database resets
 
 ### Discogs Sync Features
 - **Pause/Resume**: Long syncs can be paused and resumed later
@@ -49,7 +54,7 @@ The application includes pages for:
 - **Player** (`/player`) - Playback dashboard with queue
 - **Playlist** (`/playlist`) - Manage playlists
 - **Sync** (`/sync`) - Discogs sync dashboard
-- **Duration Review** (`/duration-review`) - Resolve missing track durations
+- **Duration Review** (`/resolution-center`) - Resolve missing track durations
 - **Search** (`/search`) - Search Discogs database
 - **Settings** (`/settings`) - Configure Discogs connection
 
@@ -78,7 +83,10 @@ vinylfo/
 │   ├── client.go          # Base client and matching algorithms
 │   ├── rate_limiter.go    # Rate limiting for APIs
 │   ├── musicbrainz_client.go # MusicBrainz API integration
-│   └── wikipedia_client.go   # Wikipedia API integration
+│   ├── wikipedia_client.go   # Wikipedia API integration
+│   ├── lastfm_client.go      # Last.fm API integration
+│   ├── youtube_client.go     # YouTube API integration
+│   └── youtube_cache.go      # File-based YouTube results cache
 ├── models/                # Database models
 │   ├── models.go          # Album, Track, Playlist, etc.
 │   └── app_config.go      # Application settings
@@ -159,7 +167,7 @@ vinylfo/
 | GET | `/api/discogs/unlinked-albums` | Find removed albums |
 | POST | `/api/discogs/unlinked-albums/delete` | Delete unlinked albums |
 
-### Duration Resolution
+### Resolution Center
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/duration/stats` | Get resolution statistics |

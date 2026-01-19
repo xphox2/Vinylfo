@@ -24,7 +24,7 @@ type lastfmTrackResponse struct {
 	Track struct {
 		Name   string `json:"name"`
 		Artist struct {
-			Name string `json:"text"`
+			Name string `json:"name"`
 		} `json:"artist"`
 		Duration interface{} `json:"duration"`
 		URL      string      `json:"url"`
@@ -47,7 +47,7 @@ func NewLastFMClient(apiKey string) *LastFMClient {
 }
 
 func (c *LastFMClient) Name() string {
-	return "lastfm"
+	return "Last.fm"
 }
 
 func (c *LastFMClient) IsConfigured() bool {
@@ -169,7 +169,6 @@ func (c *LastFMClient) getTrackInfo(ctx context.Context, title, artist string) (
 
 	bestMatch := searchResults.Results.TrackMatches.Track[0]
 	durationMs := parseLastFMDuration(bestMatch.Duration)
-	durationSeconds := durationMs / 1000
 
 	if durationMs == 0 {
 		return c.getTrackInfoByTitleArtist(ctx, title, artist)
@@ -179,7 +178,7 @@ func (c *LastFMClient) getTrackInfo(ctx context.Context, title, artist string) (
 		Track: struct {
 			Name   string `json:"name"`
 			Artist struct {
-				Name string `json:"text"`
+				Name string `json:"name"`
 			} `json:"artist"`
 			Duration interface{} `json:"duration"`
 			URL      string      `json:"url"`
@@ -189,11 +188,11 @@ func (c *LastFMClient) getTrackInfo(ctx context.Context, title, artist string) (
 		}{
 			Name: bestMatch.Name,
 			Artist: struct {
-				Name string `json:"text"`
+				Name string `json:"name"`
 			}{
 				Name: bestMatch.Artist,
 			},
-			Duration: durationSeconds,
+			Duration: durationMs,
 			URL:      bestMatch.URL,
 			Album: struct {
 				Title string `json:"title"`
@@ -247,7 +246,7 @@ func (c *LastFMClient) getTrackInfoByTitleArtist(ctx context.Context, title, art
 	}
 
 	durationMs := parseLastFMDuration(trackResp.Track.Duration)
-	trackResp.Track.Duration = durationMs / 1000
+	trackResp.Track.Duration = durationMs
 
 	return &trackResp, nil
 }

@@ -154,6 +154,30 @@ func (i *AlbumImporter) CreateAlbumWithTracks(input AlbumInput, tracks []TrackIn
 // FetchAndSaveTracks fetches tracks from Discogs and saves them to the database
 func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID int, albumTitle, artist string) (bool, string) {
 	tracks, err := i.client.GetTracksForAlbum(discogsID)
+
+	// Handle deleted/private releases or server errors - try to get from master release
+	if err != nil && (strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "500") || strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "Internal Server Error")) {
+		log.Printf("FetchAndSaveTracks: Release %d error (%v) for %s - %s, checking master release", discogsID, err, artist, albumTitle)
+
+		// Try to get master release info
+		masterData, masterErr := i.client.GetMasterRelease(discogsID)
+		if masterErr == nil && masterData != nil {
+			if masterID, ok := masterData["id"].(int); ok && masterID > 0 {
+				log.Printf("FetchAndSaveTracks: Found master release %d for %s - %s", masterID, artist, albumTitle)
+
+				// Get the main release from the master
+				mainReleaseID, mainErr := i.client.GetMainReleaseFromMaster(masterID)
+				if mainErr == nil && mainReleaseID > 0 {
+					log.Printf("FetchAndSaveTracks: Fetching tracks from main release %d (from master %d)", mainReleaseID, masterID)
+					tracks, err = i.client.GetTracksForAlbum(mainReleaseID)
+					if err == nil {
+						log.Printf("FetchAndSaveTracks: Successfully fetched tracks from main release %d", mainReleaseID)
+					}
+				}
+			}
+		}
+	}
+
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to fetch tracks: %v", err)
 		db.Create(&models.SyncLog{
@@ -176,6 +200,32 @@ func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID 
 			ErrorMsg:   errMsg,
 		})
 		return false, errMsg
+	}
+
+	hasDurations := false
+	for _, track := range tracks {
+		if dur, ok := track["duration"].(int); ok && dur > 0 {
+			hasDurations = true
+			break
+		}
+	}
+
+	if !hasDurations {
+		log.Printf("FetchAndSaveTracks: No durations found for %s - %s (release %d), attempting cross-reference", artist, albumTitle, discogsID)
+		crossRefTracks, crossErr := i.client.CrossReferenceTimestamps(albumTitle, artist, tracks)
+		if crossErr == nil && len(crossRefTracks) > 0 {
+			hasDurations = false
+			for _, track := range crossRefTracks {
+				if dur, ok := track["duration"].(int); ok && dur > 0 {
+					hasDurations = true
+					break
+				}
+			}
+			if hasDurations {
+				tracks = crossRefTracks
+				log.Printf("FetchAndSaveTracks: Successfully cross-referenced durations for %s - %s", artist, albumTitle)
+			}
+		}
 	}
 
 	// Fetch full album metadata
