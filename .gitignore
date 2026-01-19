@@ -1,5 +1,4 @@
-/.claude
-/.youtube_cache
+/.*
 TODO.md
 *.exe
 *.log
