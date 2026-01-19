@@ -24,6 +24,8 @@ go.work
 *.swp
 *.swo
 *~
+.gitignore
+.gitattributes
 
 # OS
 .DS_Store
