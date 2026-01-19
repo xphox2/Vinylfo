@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -31,6 +32,8 @@ var (
 func NewDurationController(db *gorm.DB) *DurationController {
 	config := services.DefaultDurationResolverConfig()
 	config.ContactEmail = "https://github.com/xphox2/Vinylfo"
+	config.YouTubeAPIKey = os.Getenv("YOUTUBE_API_KEY")
+	config.LastFMAPIKey = os.Getenv("LASTFM_API_KEY")
 
 	return &DurationController{
 		db:              db,
@@ -331,6 +334,96 @@ func (c *DurationController) GetReviewQueue(ctx *gin.Context) {
 	})
 }
 
+func (c *DurationController) GetResolvedQueue(ctx *gin.Context) {
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 50 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	var total int64
+	c.db.Model(&models.DurationResolution{}).Where("status = ?", "resolved").Count(&total)
+
+	var resolutions []models.DurationResolution
+	if err := c.db.
+		Where("status = ?", "resolved").
+		Order("updated_at DESC").
+		Offset(offset).Limit(limit).
+		Find(&resolutions).Error; err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	type SourceDisplay struct {
+		ID            uint    `json:"id"`
+		SourceName    string  `json:"source_name"`
+		DurationValue int     `json:"duration_value"`
+		MatchScore    float64 `json:"match_score"`
+		Confidence    float64 `json:"confidence"`
+		ExternalURL   string  `json:"external_url"`
+		CausedMatch   bool    `json:"caused_match"`
+	}
+
+	type ResolvedItem struct {
+		Resolution models.DurationResolution `json:"resolution"`
+		Sources    []SourceDisplay           `json:"sources"`
+		Track      models.Track              `json:"track"`
+		Album      models.Album              `json:"album"`
+	}
+
+	var items []ResolvedItem
+	for _, res := range resolutions {
+		var track models.Track
+		var album models.Album
+		c.db.First(&track, res.TrackID)
+		c.db.First(&album, res.AlbumID)
+
+		var sourceModels []models.DurationSource
+		c.db.Where("resolution_id = ? AND error_message = ?", res.ID, "").Order("confidence DESC").Find(&sourceModels)
+
+		var sources []SourceDisplay
+		for _, sm := range sourceModels {
+			causedMatch := false
+			if res.ResolvedDuration != nil {
+				diff := sm.DurationValue - *res.ResolvedDuration
+				if diff < 0 {
+					diff = -diff
+				}
+				causedMatch = diff <= 3
+			}
+			sources = append(sources, SourceDisplay{
+				ID:            sm.ID,
+				SourceName:    sm.SourceName,
+				DurationValue: sm.DurationValue,
+				MatchScore:    sm.MatchScore,
+				Confidence:    sm.Confidence,
+				ExternalURL:   sm.ExternalURL,
+				CausedMatch:   causedMatch,
+			})
+		}
+
+		items = append(items, ResolvedItem{
+			Resolution: res,
+			Sources:    sources,
+			Track:      track,
+			Album:      album,
+		})
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"items":       items,
+		"total":       total,
+		"page":        page,
+		"limit":       limit,
+		"total_pages": (total + int64(limit) - 1) / int64(limit),
+	})
+}
+
 func (c *DurationController) GetReviewDetails(ctx *gin.Context) {
 	resolutionID, err := strconv.Atoi(ctx.Param("id"))
 	if err != nil {
@@ -595,7 +688,15 @@ func (c *DurationController) CancelBulkResolution(ctx *gin.Context) {
 	}
 	if bulkStateManager != nil {
 		bulkStateManager.RequestStop()
+		bulkStateManager.Reset()
 	}
+
+	progressService := services.NewDurationProgressService(c.db)
+	progressService.Reset()
+
+	bulkStateManager = nil
+	bulkWorker = nil
+	bulkCancel = nil
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "Bulk resolution cancelled"})
 }
@@ -609,6 +710,22 @@ func (c *DurationController) GetBulkProgress(ctx *gin.Context) {
 				"status":           "idle",
 				"total_tracks":     0,
 				"processed_tracks": 0,
+			})
+			return
+		}
+
+		if saved.Status == "running" {
+			saved.Status = "failed"
+			saved.LastError = "Worker stopped unexpectedly"
+			c.db.Save(saved)
+			ctx.JSON(http.StatusOK, gin.H{
+				"status":             "failed",
+				"total_tracks":       saved.TotalTracks,
+				"processed_tracks":   saved.ProcessedTracks,
+				"resolved_count":     saved.ResolvedCount,
+				"needs_review_count": saved.NeedsReviewCount,
+				"failed_count":       saved.FailedCount,
+				"last_error":         "Worker stopped unexpectedly",
 			})
 			return
 		}

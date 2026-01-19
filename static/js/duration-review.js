@@ -3,10 +3,14 @@ const API_BASE = '/api';
 class DurationReviewManager {
     constructor() {
         this.currentPage = 1;
+        this.resolvedPage = 1;
         this.pageSize = 20;
         this.totalPages = 1;
+        this.resolvedTotalPages = 1;
         this.reviewItems = [];
+        this.resolvedItems = [];
         this.wasRunning = false;
+        this.currentTab = 'review';
         this.init();
     }
 
@@ -20,6 +24,12 @@ class DurationReviewManager {
     bindEvents() {
         document.getElementById('prev-page').addEventListener('click', () => this.changePage(-1));
         document.getElementById('next-page').addEventListener('click', () => this.changePage(1));
+        document.getElementById('resolved-prev-page').addEventListener('click', () => this.changeResolvedPage(-1));
+        document.getElementById('resolved-next-page').addEventListener('click', () => this.changeResolvedPage(1));
+
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
+        });
 
         document.getElementById('start-bulk').addEventListener('click', () => this.startBulkResolution());
         document.getElementById('pause-bulk').addEventListener('click', () => this.pauseBulkResolution());
@@ -36,9 +46,35 @@ class DurationReviewManager {
         });
     }
 
+    switchTab(tab) {
+        this.currentTab = tab;
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+
+        if (tab === 'review') {
+            document.getElementById('review-section').classList.remove('hidden');
+            document.getElementById('resolved-section').classList.add('hidden');
+            document.getElementById('queue-title').textContent = 'Needs Review';
+            document.getElementById('review-pagination').classList.remove('hidden');
+        } else {
+            document.getElementById('review-section').classList.add('hidden');
+            document.getElementById('resolved-section').classList.remove('hidden');
+            document.getElementById('resolved-queue-title').textContent = 'Resolved Queue';
+            document.getElementById('resolved-pagination').classList.remove('hidden');
+            if (this.resolvedItems.length === 0) {
+                this.loadResolvedQueue();
+            }
+        }
+    }
+
     async refreshAll() {
         await this.loadStats();
-        await this.loadReviewQueue();
+        if (this.currentTab === 'review') {
+            await this.loadReviewQueue();
+        } else {
+            await this.loadResolvedQueue();
+        }
         this.showNotification('Refreshed', 'info');
     }
 
@@ -95,19 +131,21 @@ class DurationReviewManager {
         const sources = item.sources || [];
         const sourceBadges = sources.map(src => {
             let className = 'no-result';
-            let text = src.source_name;
 
             if (src.error_message) {
                 className = 'error';
-                text = `${src.source_name} (error)`;
             } else if (src.duration_value > 0) {
                 className = src.source_name.toLowerCase().replace(' ', '-');
-                const mins = Math.floor(src.duration_value / 60);
-                const secs = src.duration_value % 60;
-                text = `${src.source_name}: ${mins}:${secs.toString().padStart(2, '0')}`;
             }
 
-            return `<span class="source-badge ${className}">${text}</span>`;
+            const mins = Math.floor(src.duration_value / 60);
+            const secs = src.duration_value % 60;
+            const timeStr = src.duration_value > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : 'N/A';
+
+            return `<span class="source-badge ${className}">
+                <span class="source-name">${this.escapeHtml(src.source_name)}</span>
+                <span class="duration-time">${src.duration_value > 0 ? timeStr : '--:--'}</span>
+            </span>`;
         }).join('');
 
         return `
@@ -124,7 +162,6 @@ class DurationReviewManager {
                 <div class="review-actions-item">
                     <button class="btn btn-primary btn-small review-btn" data-action="apply">Apply</button>
                     <button class="btn btn-secondary btn-small review-btn" data-action="manual">Manual</button>
-                    <button class="btn btn-warning btn-small review-btn" data-action="reject">Reject</button>
                 </div>
             </div>
         `;
@@ -138,6 +175,124 @@ class DurationReviewManager {
                 this.openReviewModal(resolutionId, action);
             });
         });
+    }
+
+    async loadResolvedQueue() {
+        try {
+            const response = await fetch(
+                `${API_BASE}/duration/review/resolved?page=${this.resolvedPage}&limit=${this.pageSize}`
+            );
+            const data = await response.json();
+
+            this.resolvedTotalPages = data.total_pages || 1;
+            this.resolvedItems = data.items || [];
+
+            this.renderResolvedQueue();
+            this.updateResolvedPagination();
+        } catch (error) {
+            console.error('Failed to load resolved queue:', error);
+            document.getElementById('resolved-list').innerHTML =
+                '<div class="loading">Failed to load resolved queue</div>';
+        }
+    }
+
+    renderResolvedQueue() {
+        const container = document.getElementById('resolved-list');
+
+        if (this.resolvedItems.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>No resolved tracks</h3>
+                    <p>No tracks have been automatically resolved yet.</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = this.resolvedItems.map(item => this.renderResolvedItem(item)).join('');
+        this.bindResolvedItemEvents();
+    }
+
+    renderResolvedItem(item) {
+        const sources = item.sources || [];
+        const sourceBadges = sources.map(src => {
+            const className = src.source_name.toLowerCase().replace(' ', '-');
+            const mins = Math.floor(src.duration_value / 60);
+            const secs = src.duration_value % 60;
+            const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+            const matchClass = src.caused_match ? ' caused-match' : ' not-caused-match';
+
+            return `<span class="source-badge ${className}${matchClass}">
+                <span class="source-name">${this.escapeHtml(src.source_name)}</span>
+                <span class="duration-time">${timeStr}</span>
+            </span>`;
+        }).join('');
+
+        return `
+            <div class="review-item" data-resolution-id="${item.resolution.id}">
+                <div class="track-info">
+                    <div class="track-title">${this.escapeHtml(item.track.title)}</div>
+                    <div class="track-meta">
+                        ${this.escapeHtml(item.album.artist)} - ${this.escapeHtml(item.album.title)}
+                    </div>
+                </div>
+                <div class="sources-summary">
+                    ${sourceBadges}
+                </div>
+                <div class="review-actions-item">
+                    <button class="btn btn-warning btn-small resolved-reject-btn" data-resolution-id="${item.resolution.id}">Reject</button>
+                </div>
+            </div>
+        `;
+    }
+
+    bindResolvedItemEvents() {
+        document.querySelectorAll('.resolved-reject-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const resolutionId = e.target.dataset.resolutionId;
+                this.rejectResolved(resolutionId);
+            });
+        });
+    }
+
+    async rejectResolved(resolutionId) {
+        if (!confirm('Reject this resolved track? It will move back to the needs review queue.')) {
+            return;
+        }
+        try {
+            const response = await fetch(`${API_BASE}/duration/review/${resolutionId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'reject'
+                })
+            });
+
+            if (response.ok) {
+                this.showNotification('Track moved to needs review', 'success');
+                this.loadResolvedQueue();
+            } else {
+                const data = await response.json();
+                this.showNotification(data.error || 'Failed to reject', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to reject resolved track:', error);
+            this.showNotification('Failed to reject', 'error');
+        }
+    }
+
+    updateResolvedPagination() {
+        document.getElementById('resolved-page-info').textContent = `Page ${this.resolvedPage} of ${this.resolvedTotalPages}`;
+        document.getElementById('resolved-prev-page').disabled = this.resolvedPage <= 1;
+        document.getElementById('resolved-next-page').disabled = this.resolvedPage >= this.resolvedTotalPages;
+    }
+
+    changeResolvedPage(delta) {
+        const newPage = this.resolvedPage + delta;
+        if (newPage >= 1 && newPage <= this.resolvedTotalPages) {
+            this.resolvedPage = newPage;
+            this.loadResolvedQueue();
+        }
     }
 
     async openReviewModal(resolutionId, defaultAction) {

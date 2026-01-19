@@ -173,7 +173,7 @@ type DurationSource struct {
 	MatchScore    float64   `json:"match_score"`                         // 0.0-1.0 how well the track matched the search query
 	ExternalID    string    `gorm:"size:255" json:"external_id"`         // ID from external service (e.g., MusicBrainz recording ID)
 	ExternalURL   string    `gorm:"size:512" json:"external_url"`        // URL to the track on external service (for verification)
-	RawResponse   string    `gorm:"type:text" json:"raw_response"`       // Full JSON response for debugging/auditing
+	RawResponse   string    `gorm:"type:longtext" json:"raw_response"`   // Full JSON response for debugging/auditing
 	ErrorMessage  string    `gorm:"size:500" json:"error_message"`       // Error message if query failed
 	QueryDuration int       `json:"query_duration"`                      // How long the API call took in milliseconds
 	QueriedAt     time.Time `json:"queried_at"`

@@ -191,3 +191,53 @@
     font-weight: 600;
     margin-bottom: 1rem;
 }
+
+.api-key-section {
+    padding: 1rem;
+    background-color: #f9f9f9;
+    border-radius: 5px;
+    border: 1px solid #eee;
+}
+
+.api-key-section p {
+    color: #666;
+    margin-bottom: 0.5rem;
+}
+
+.api-key-section .info {
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.api-key-section a {
+    color: #007bff;
+}
+
+.api-key-section .form-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.api-key-section .form-group input {
+    flex: 1;
+    min-width: 300px;
+}
+
+.api-key-section .form-group button {
+    flex-shrink: 0;
+}
+
+.status-message {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.status-message.success {
+    color: #28a745;
+}
+
+.status-message.error {
+    color: #dc3545;
+}

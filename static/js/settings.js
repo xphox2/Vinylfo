@@ -14,11 +14,41 @@ class SettingsManager {
         try {
             const discogsRes = await fetch(`${API_BASE}/discogs/status`);
             const discogsStatus = await discogsRes.json();
-
             this.renderDiscogsStatus(discogsStatus);
+
+            const settingsRes = await fetch(`${API_BASE}/settings`);
+            const settings = await settingsRes.json();
+            this.renderYouTubeAPIKey(settings.youtube_api_key);
+            this.renderLastFMAPIKey(settings.lastfm_api_key);
         } catch (error) {
             console.error('Failed to load settings:', error);
             this.showNotification('Failed to load settings', 'error');
+        }
+    }
+
+    renderYouTubeAPIKey(apiKey) {
+        const input = document.getElementById('youtube-api-key');
+        const status = document.getElementById('youtube-key-status');
+        if (input && apiKey) {
+            input.value = apiKey;
+            status.textContent = 'API key is set';
+            status.className = 'status-message success';
+        } else if (status) {
+            status.textContent = '';
+            status.className = 'status-message';
+        }
+    }
+
+    renderLastFMAPIKey(apiKey) {
+        const input = document.getElementById('lastfm-api-key');
+        const status = document.getElementById('lastfm-key-status');
+        if (input && apiKey) {
+            input.value = apiKey;
+            status.textContent = 'API key is set';
+            status.className = 'status-message success';
+        } else if (status) {
+            status.textContent = '';
+            status.className = 'status-message';
         }
     }
 
@@ -52,6 +82,76 @@ class SettingsManager {
         document.getElementById('disconnect-discogs').addEventListener('click', () => this.disconnectDiscogs());
         document.getElementById('reset-database').addEventListener('click', () => this.resetDatabase());
         document.getElementById('seed-database').addEventListener('click', () => this.seedDatabase());
+        document.getElementById('save-youtube-key').addEventListener('click', () => this.saveYouTubeAPIKey());
+        document.getElementById('save-lastfm-key').addEventListener('click', () => this.saveLastFMAPIKey());
+    }
+
+    async saveYouTubeAPIKey() {
+        const input = document.getElementById('youtube-api-key');
+        const status = document.getElementById('youtube-key-status');
+        const apiKey = input.value.trim();
+
+        if (!apiKey) {
+            status.textContent = 'Please enter an API key';
+            status.className = 'status-message error';
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ youtube_api_key: apiKey })
+            });
+
+            if (response.ok) {
+                status.textContent = 'API key saved successfully';
+                status.className = 'status-message success';
+                this.showNotification('YouTube API key saved', 'success');
+            } else {
+                const data = await response.json();
+                status.textContent = data.error || 'Failed to save API key';
+                status.className = 'status-message error';
+            }
+        } catch (error) {
+            console.error('Failed to save YouTube API key:', error);
+            status.textContent = 'Failed to save API key';
+            status.className = 'status-message error';
+        }
+    }
+
+    async saveLastFMAPIKey() {
+        const input = document.getElementById('lastfm-api-key');
+        const status = document.getElementById('lastfm-key-status');
+        const apiKey = input.value.trim();
+
+        if (!apiKey) {
+            status.textContent = 'Please enter an API key';
+            status.className = 'status-message error';
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lastfm_api_key: apiKey })
+            });
+
+            if (response.ok) {
+                status.textContent = 'API key saved successfully';
+                status.className = 'status-message success';
+                this.showNotification('Last.fm API key saved', 'success');
+            } else {
+                const data = await response.json();
+                status.textContent = data.error || 'Failed to save API key';
+                status.className = 'status-message error';
+            }
+        } catch (error) {
+            console.error('Failed to save Last.fm API key:', error);
+            status.textContent = 'Failed to save API key';
+            status.className = 'status-message error';
+        }
     }
 
     async connectDiscogs() {

@@ -7,6 +7,63 @@
     gap: 16px;
 }
 
+.review-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 0;
+}
+
+.tab-btn {
+    padding: 12px 24px;
+    background: none;
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    color: #666;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+}
+
+.tab-btn:hover {
+    color: #333;
+}
+
+.tab-btn.active {
+    color: #1976d2;
+    border-bottom-color: #1976d2;
+}
+
+.resolved-queue {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    overflow: hidden;
+}
+
+.resolved-queue .review-item {
+    grid-template-columns: 1fr auto;
+}
+
+.resolved-info {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.resolved-duration {
+    font-weight: 600;
+    color: #2e7d32;
+}
+
+.resolved-sources {
+    display: flex;
+    gap: 8px;
+}
+
 .review-header h1 {
     margin: 0;
     font-size: 28px;
@@ -176,15 +233,43 @@
 
 .sources-summary {
     display: flex;
-    gap: 12px;
+    gap: 8px;
     margin-right: 20px;
+    flex-wrap: wrap;
+    align-items: center;
 }
 
 .source-badge {
-    padding: 6px 12px;
+    padding: 6px 10px;
     border-radius: 20px;
     font-size: 12px;
     font-weight: 500;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 80px;
+    line-height: 1.3;
+}
+
+.source-badge .source-name {
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.source-badge .duration-time {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.source-badge.caused-match {
+    border: 2px solid #ffc107;
+    box-shadow: 0 0 4px rgba(255, 193, 7, 0.5);
+}
+
+.source-badge.not-caused-match {
+    border: 2px solid #ef5350;
+    box-shadow: 0 0 4px rgba(239, 83, 80, 0.5);
 }
 
 .source-badge.musicbrainz {
@@ -195,6 +280,16 @@
 .source-badge.wikipedia {
     background: #f3e5f5;
     color: #7b1fa2;
+}
+
+.source-badge.lastfm {
+    background: #e3f2fd;
+    color: #0d47a1;
+}
+
+.source-badge.youtube {
+    background: #e8f5e9;
+    color: #2e7d32;
 }
 
 .source-badge.error {

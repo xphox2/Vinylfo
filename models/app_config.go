@@ -21,6 +21,8 @@ type AppConfig struct {
 	SyncFolderID          int       `gorm:"default:0" json:"sync_folder_id"`        // Specific folder ID when sync_mode is "specific"
 	Theme                 string    `gorm:"size:50;default:'light'" json:"theme"`
 	ItemsPerPage          int       `gorm:"default:25" json:"items_per_page"`
+	YouTubeAPIKey         string    `gorm:"size:255" json:"youtube_api_key"`
+	LastFMAPIKey          string    `gorm:"size:255" json:"lastfm_api_key"`
 	CreatedAt             time.Time `json:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at"`
 }

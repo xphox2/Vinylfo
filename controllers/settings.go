@@ -27,12 +27,14 @@ func (c *SettingsController) Get(ctx *gin.Context) {
 		"discogs_connected": config.IsDiscogsConnected,
 		"discogs_username":  config.DiscogsUsername,
 		"last_sync_at":      config.LastSyncAt,
+		"youtube_api_key":   config.YouTubeAPIKey,
 	})
 }
 
 func (c *SettingsController) Update(ctx *gin.Context) {
 	var input struct {
-		ItemsPerPage *int `json:"items_per_page"`
+		ItemsPerPage  *int    `json:"items_per_page"`
+		YouTubeAPIKey *string `json:"youtube_api_key"`
 	}
 
 	if err := ctx.ShouldBindJSON(&input); err != nil {
@@ -40,17 +42,26 @@ func (c *SettingsController) Update(ctx *gin.Context) {
 		return
 	}
 
-	if input.ItemsPerPage == nil {
+	if input.ItemsPerPage == nil && input.YouTubeAPIKey == nil {
 		ctx.JSON(400, gin.H{"error": "No valid fields to update"})
 		return
 	}
 
-	if *input.ItemsPerPage < 10 || *input.ItemsPerPage > 100 {
-		ctx.JSON(400, gin.H{"error": "Items per page must be between 10 and 100"})
-		return
+	updates := make(map[string]interface{})
+
+	if input.ItemsPerPage != nil {
+		if *input.ItemsPerPage < 10 || *input.ItemsPerPage > 100 {
+			ctx.JSON(400, gin.H{"error": "Items per page must be between 10 and 100"})
+			return
+		}
+		updates["items_per_page"] = *input.ItemsPerPage
 	}
 
-	result := c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Update("items_per_page", *input.ItemsPerPage)
+	if input.YouTubeAPIKey != nil {
+		updates["youtube_api_key"] = *input.YouTubeAPIKey
+	}
+
+	result := c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(updates)
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to update settings"})
 		return

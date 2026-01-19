@@ -135,6 +135,7 @@ func SetupRoutes(r *gin.Engine) {
 		duration.GET("/resolve/progress", durationController.GetBulkProgress)
 
 		duration.GET("/review", durationController.GetReviewQueue)
+		duration.GET("/review/resolved", durationController.GetResolvedQueue)
 		duration.GET("/review/:id", durationController.GetReviewDetails)
 		duration.POST("/review/:id", durationController.SubmitReview)
 		duration.POST("/review/bulk", durationController.BulkReview)

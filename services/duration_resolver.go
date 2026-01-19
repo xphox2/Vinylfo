@@ -19,6 +19,8 @@ type DurationResolverConfig struct {
 	AutoApplyOnConsensus bool
 	MinMatchScore        float64
 	ContactEmail         string
+	YouTubeAPIKey        string
+	LastFMAPIKey         string
 }
 
 func DefaultDurationResolverConfig() DurationResolverConfig {
@@ -41,6 +43,8 @@ func NewDurationResolverService(db *gorm.DB, config DurationResolverConfig) *Dur
 	clients := []duration.MusicAPIClient{
 		duration.NewMusicBrainzClient(config.ContactEmail),
 		duration.NewWikipediaClient(),
+		duration.NewLastFMClient(config.LastFMAPIKey),
+		duration.NewYouTubeClient(config.YouTubeAPIKey),
 	}
 
 	return &DurationResolverService{
@@ -103,29 +107,23 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 	}
 
 	if err := s.db.Create(resolution).Error; err != nil {
-		log.Printf("Failed to create resolution for track %d: %v", track.ID, err)
 		if s.db.Where("track_id = ?", track.ID).First(&existing).Error == nil {
 			return &existing, nil
 		}
 		return nil, fmt.Errorf("failed to create resolution record: %w", err)
 	}
 
-	log.Printf("Resolution created with ID %d for track %d", resolution.ID, track.ID)
-
 	var successfulQueries int
 	var allDurations []int
 
 	for _, client := range s.clients {
 		if !client.IsConfigured() {
-			log.Printf("Client %s not configured, skipping", client.Name())
 			resolution.TotalSourcesQueried--
 			continue
 		}
 
-		log.Printf("Querying %s for track %d: %s - %s (%s)", client.Name(), track.ID, track.Title, albumTitle, artist)
 		result, err := client.SearchTrack(ctx, track.Title, artist, albumTitle)
 		if err != nil {
-			log.Printf("  %s error for track %d: %v", client.Name(), track.ID, err)
 			source := models.DurationSource{
 				ResolutionID: resolution.ID,
 				SourceName:   client.Name(),
@@ -137,7 +135,6 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 		}
 
 		successfulQueries++
-		log.Printf("  %s result for track %d: %+v", client.Name(), track.ID, result)
 
 		// Always create a source record so the UI can show what was queried
 		source := models.DurationSource{
