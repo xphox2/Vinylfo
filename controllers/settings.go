@@ -1,8 +1,12 @@
 package controllers
 
 import (
+	"net/http"
+	"strconv"
+
 	"vinylfo/duration"
 	"vinylfo/models"
+	"vinylfo/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -208,5 +212,79 @@ func (c *SettingsController) SeedDatabase(ctx *gin.Context) {
 	ctx.JSON(200, gin.H{
 		"message": "Sample data seeded successfully",
 		"note":    "Added 4 sample albums with tracks. You can now browse your collection.",
+	})
+}
+
+func (c *SettingsController) GetAuditLogs(ctx *gin.Context) {
+	eventType := ctx.Query("event_type")
+	limitStr := ctx.DefaultQuery("limit", "50")
+	offsetStr := ctx.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+
+	logs, total, err := utils.GetAuditLogs(eventType, limit, offset)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch audit logs"})
+		return
+	}
+
+	result := make([]gin.H, 0, len(logs))
+	for _, log := range logs {
+		result = append(result, gin.H{
+			"id":           log.ID,
+			"event_type":   log.EventType,
+			"event_action": log.EventAction,
+			"user_id":      log.UserID,
+			"ip_address":   log.IPAddress,
+			"resource":     log.Resource,
+			"status":       log.Status,
+			"error_msg":    log.ErrorMsg,
+			"created_at":   log.CreatedAt,
+		})
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"logs":   result,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
+}
+
+func (c *SettingsController) CleanupAuditLogs(ctx *gin.Context) {
+	var input struct {
+		DaysRetained int `json:"days_retained"`
+	}
+
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		input.DaysRetained = 90
+	}
+
+	if input.DaysRetained < 7 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Minimum retention period is 7 days"})
+		return
+	}
+
+	deleted, err := utils.CleanupOldAuditLogs(input.DaysRetained)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cleanup audit logs"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message":       "Audit logs cleaned up successfully",
+		"deleted_count": deleted,
+		"days_retained": input.DaysRetained,
 	})
 }

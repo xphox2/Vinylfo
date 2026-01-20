@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"vinylfo/models"
+	"vinylfo/utils"
 
 	"gorm.io/gorm"
 )
@@ -46,11 +47,16 @@ type YouTubeOAuthClient struct {
 }
 
 type playlistResponse struct {
-	Kind    string          `json:"kind"`
-	ETag    string          `json:"etag"`
-	ID      string          `json:"id"`
-	Snippet playlistSnippet `json:"snippet"`
-	Status  playlistStatus  `json:"status"`
+	Kind           string                 `json:"kind"`
+	ETag           string                 `json:"etag"`
+	ID             string                 `json:"id"`
+	Snippet        playlistSnippet        `json:"snippet"`
+	Status         playlistStatus         `json:"status"`
+	ContentDetails playlistContentDetails `json:"contentDetails"`
+}
+
+type playlistContentDetails struct {
+	ItemCount int `json:"itemCount"`
 }
 
 type playlistSnippet struct {
@@ -161,9 +167,25 @@ func (c *YouTubeOAuthClient) getToken() (*YouTubeOAuthToken, error) {
 		return nil, fmt.Errorf("no OAuth token available")
 	}
 
+	encryptedAccessToken := config.YouTubeAccessToken
+	encryptedRefreshToken := config.YouTubeRefreshToken
+
+	accessToken, err := utils.Decrypt(encryptedAccessToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt access token: %w", err)
+	}
+
+	var refreshToken string
+	if encryptedRefreshToken != "" {
+		refreshToken, err = utils.Decrypt(encryptedRefreshToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt refresh token: %w", err)
+		}
+	}
+
 	token := &YouTubeOAuthToken{
-		AccessToken:  config.YouTubeAccessToken,
-		RefreshToken: config.YouTubeRefreshToken,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 		TokenType:    "Bearer",
 		ExpiresIn:    int(time.Until(config.YouTubeTokenExpiry).Seconds()),
 		CreatedAt:    config.YouTubeTokenExpiry.Add(-time.Duration(tokenExpiryWindow) * time.Second).Unix(),
@@ -177,11 +199,24 @@ func (c *YouTubeOAuthClient) saveToken(token *YouTubeOAuthToken) error {
 		return fmt.Errorf("database not available")
 	}
 
+	encryptedAccessToken, err := utils.Encrypt(token.AccessToken)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt access token: %w", err)
+	}
+
+	var encryptedRefreshToken string
+	if token.RefreshToken != "" {
+		encryptedRefreshToken, err = utils.Encrypt(token.RefreshToken)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt refresh token: %w", err)
+		}
+	}
+
 	expiry := time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
 
 	result := c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(map[string]interface{}{
-		"youtube_access_token":  token.AccessToken,
-		"youtube_refresh_token": token.RefreshToken,
+		"youtube_access_token":  encryptedAccessToken,
+		"youtube_refresh_token": encryptedRefreshToken,
 		"youtube_token_expiry":  expiry,
 		"youtube_connected":     true,
 	})
@@ -229,7 +264,7 @@ func (c *YouTubeOAuthClient) ensureValidToken() error {
 	return nil
 }
 
-func (c *YouTubeOAuthClient) GetAuthURL(state string) (string, error) {
+func (c *YouTubeOAuthClient) GetAuthURL(state, codeChallenge string) (string, error) {
 	if !c.IsConfigured() {
 		return "", fmt.Errorf("OAuth not configured - missing client ID, secret, or redirect URL")
 	}
@@ -242,13 +277,22 @@ func (c *YouTubeOAuthClient) GetAuthURL(state string) (string, error) {
 	params.Set("state", state)
 	params.Set("access_type", "offline")
 	params.Set("prompt", "consent")
+	params.Set("code_challenge", codeChallenge)
+	params.Set("code_challenge_method", "S256")
 
 	return googleAuthURL + "?" + params.Encode(), nil
 }
 
-func (c *YouTubeOAuthClient) ExchangeCode(code string) error {
+func (c *YouTubeOAuthClient) ExchangeCode(code, state, codeVerifier string) error {
 	if !c.IsConfigured() {
 		return fmt.Errorf("OAuth not configured")
+	}
+
+	if codeVerifier != "" {
+		valid, err := utils.ValidatePKCEState(state, codeVerifier)
+		if err != nil || !valid {
+			return fmt.Errorf("PKCE validation failed: %w", err)
+		}
 	}
 
 	data := url.Values{}
@@ -257,6 +301,9 @@ func (c *YouTubeOAuthClient) ExchangeCode(code string) error {
 	data.Set("code", code)
 	data.Set("redirect_uri", c.config.RedirectURL)
 	data.Set("grant_type", "authorization_code")
+	if codeVerifier != "" {
+		data.Set("code_verifier", codeVerifier)
+	}
 
 	req, err := http.NewRequest("POST", googleTokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
@@ -593,6 +640,10 @@ func (c *YouTubeOAuthClient) DeletePlaylist(ctx context.Context, playlistID stri
 }
 
 func (c *YouTubeOAuthClient) SearchVideos(ctx context.Context, query string, maxResults int) (*youtubeSearchResponse, error) {
+	if err := c.ensureValidToken(); err != nil {
+		return nil, err
+	}
+
 	url := fmt.Sprintf("%s/search?part=snippet&type=video&q=%s&maxResults=%d", youtubeAPIBaseURL, url.QueryEscape(query), maxResults)
 
 	c.RateLimiter.Wait()
@@ -601,6 +652,9 @@ func (c *YouTubeOAuthClient) SearchVideos(ctx context.Context, query string, max
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	token, _ := c.getToken()
+	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

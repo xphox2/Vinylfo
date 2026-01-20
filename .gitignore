@@ -4,3 +4,5 @@ TODO.md
 *.log
 .env
 TECHNICAL_DEBT.md
+API_DOCS.md
+DEPLOYMENT.md

@@ -10,6 +10,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func CSPMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com; frame-src https://accounts.google.com")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		c.Next()
+	}
+}
+
 func SetupRoutes(r *gin.Engine) {
 	db := database.GetDB()
 
@@ -22,6 +34,7 @@ func SetupRoutes(r *gin.Engine) {
 	discogsController := controllers.NewDiscogsController(db)
 	settingsController := controllers.NewSettingsController(db)
 
+	r.Use(CSPMiddleware())
 	r.GET("/health", func(c *gin.Context) {
 		sqlDB, err := db.DB()
 		if err != nil {
@@ -141,6 +154,9 @@ func SetupRoutes(r *gin.Engine) {
 	r.PUT("/api/settings", settingsController.Update)
 	r.POST("/api/database/reset", settingsController.ResetDatabase)
 	r.POST("/api/database/seed", settingsController.SeedDatabase)
+
+	r.GET("/api/audit/logs", settingsController.GetAuditLogs)
+	r.POST("/api/audit/cleanup", settingsController.CleanupAuditLogs)
 
 	durationController := controllers.NewDurationController(db)
 

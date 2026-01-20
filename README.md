@@ -40,6 +40,17 @@ Vinylfo is a self-hosted web application for managing your vinyl record collecti
   - File-based cache persists results across database resets
 - **YouTube Playlist Export**: Export vinyl playlists directly to your YouTube account
 
+### YouTube Integration
+- **Connect YouTube Account**: OAuth 2.0 integration to link your YouTube account
+- **YouTube Page** (`/youtube`): Dedicated page for managing YouTube content
+  - View your channel information
+  - Browse and manage your YouTube playlists
+  - Search and view music videos
+  - Create new playlists directly from the UI
+- **Playlist Export**: Export vinyl playlists to your YouTube account
+- **Secure Token Storage**: OAuth tokens encrypted and stored in database with automatic refresh
+- **Smart API Usage**: 10,000 daily quota units per connected user
+
 ### Discogs Sync Features
 - **Pause/Resume**: Long syncs can be paused and resumed later
 - **Progress Persistence**: Sync progress saved to database (survives restarts)
@@ -55,9 +66,10 @@ The application includes pages for:
 - **Player** (`/player`) - Playback dashboard with queue
 - **Playlist** (`/playlist`) - Manage playlists
 - **Sync** (`/sync`) - Discogs sync dashboard
+- **YouTube** (`/youtube`) - YouTube integration and playlist management
 - **Duration Review** (`/resolution-center`) - Resolve missing track durations
 - **Search** (`/search`) - Search Discogs database
-- **Settings** (`/settings`) - Configure Discogs connection
+- **Settings** (`/settings`) - Configure Discogs and YouTube connections
 
 ## Project Structure
 
@@ -106,6 +118,11 @@ vinylfo/
 ├── routes/                # Route definitions
 │   └── routes.go          # All API routes
 ├── templates/             # HTML templates
+│   ├── header.html        # Shared header template
+│   ├── index.html         # Home page
+│   ├── youtube.html       # YouTube integration page
+│   ├── resolution-center.html  # Duration resolution page
+│   └── ...                # Other page templates
 └── static/                # Static assets (JS, CSS)
 ```
 

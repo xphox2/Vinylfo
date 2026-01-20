@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add and remove videos from playlists
   - Search YouTube for videos to add to playlists
   - Export session tracks as YouTube playlists
+- **New YouTube Integration Page** (`/youtube`): Dedicated page for YouTube management
+  - View your YouTube channel information
+  - Browse your YouTube playlists with video count
+  - View recent uploads (music search results)
+  - Create new YouTube playlists from the UI
+  - Tabbed interface for uploads and playlists
+  - Click playlists to view their videos
 - **New API Endpoints**:
   - `GET /api/youtube/oauth/url` - Get YouTube authorization URL
   - `GET /api/youtube/oauth/callback` - Handle OAuth callback
@@ -24,21 +31,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `POST /api/youtube/playlists` - Create YouTube playlist
   - `PUT /api/youtube/playlists/:id` - Update playlist
   - `GET /api/youtube/playlists` - List your YouTube playlists
+  - `GET /api/youtube/playlists/:id` - Get playlist items
   - `DELETE /api/youtube/playlists/:id` - Delete playlist
   - `POST /api/youtube/playlists/:id/videos` - Add video to playlist
   - `DELETE /api/youtube/playlists/:id/videos/:item_id` - Remove video
   - `POST /api/youtube/search` - Search YouTube videos
   - `POST /api/youtube/export-playlist` - Export session to YouTube playlist
 - **Token Management**: OAuth tokens stored securely in database with automatic refresh
+- **Navigation**: Added YouTube link to Sync dropdown menu
+
+#### New Files
+- `templates/youtube.html` - YouTube integration page template
+- `duration/youtube_oauth_client.go` - YouTube OAuth client with token management and playlist operations
+- `controllers/youtube.go` - YouTube API controller with all OAuth and playlist endpoints
 
 #### Resolution Center UI Improvements
 - **Toggle Source Selection**: Click a source badge to select it (green highlight), click again to unselect
 - **Last.fm Display Fix**: Corrected capitalization from "Last.Fm" to "Last.fm" with proper lowercase 'fm'
 - **CSS Class Fix**: Fixed source badge class generation to remove dots (was `last.fm`, now `lastfm`)
 
-### New Files
-- `duration/youtube_oauth_client.go` - YouTube OAuth client with token management and playlist operations
-- `controllers/youtube.go` - YouTube API controller with all OAuth and playlist endpoints
+### Security
+
+#### ENCRYPTION_KEY Moved to Environment Variables
+- **Moved from codebase to .env**: The encryption key is no longer hardcoded in the application
+- **Required on startup**: Application will now fail to start if ENCRYPTION_KEY is not set
+- **Added to .env**: Default 32-byte key added to .env file for development
+- **Generate your own key**: Users should replace the default key with a secure key for production
+  - Generate with: `openssl rand -hex 32`
+  - Key must be exactly 32 bytes (256 bits)
 
 ### Changed
 - **Settings Page**: Added YouTube connection status and connect/disconnect buttons

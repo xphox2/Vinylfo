@@ -65,7 +65,7 @@ func InitDB() (*gorm.DB, error) {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// Run migrations for all models
-	err = db.AutoMigrate(&models.Album{}, &models.Track{}, &models.PlaybackSession{}, &models.SessionPlaylist{}, &models.SessionSharing{}, &models.SessionNote{}, &models.AppConfig{}, &models.TrackHistory{}, &models.SyncLog{}, &models.SyncProgress{}, &models.SyncHistory{}, &models.DurationSource{}, &models.DurationResolution{}, &models.DurationResolverProgress{})
+	err = db.AutoMigrate(&models.Album{}, &models.Track{}, &models.PlaybackSession{}, &models.SessionPlaylist{}, &models.SessionSharing{}, &models.SessionNote{}, &models.AppConfig{}, &models.TrackHistory{}, &models.SyncLog{}, &models.SyncProgress{}, &models.SyncHistory{}, &models.DurationSource{}, &models.DurationResolution{}, &models.DurationResolverProgress{}, &models.PKCEState{}, &models.AuditLog{})
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)
 		return nil, err
@@ -99,15 +99,24 @@ func InitDB() (*gorm.DB, error) {
 	if columnCount == 0 {
 		log.Println("Adding YouTube OAuth columns to app_configs table...")
 		if err := db.Exec(`
-			ALTER TABLE app_configs 
-			ADD COLUMN youtube_access_token VARCHAR(500) DEFAULT NULL,
-			ADD COLUMN youtube_refresh_token VARCHAR(500) DEFAULT NULL,
+			ALTER TABLE app_configs
+			ADD COLUMN youtube_access_token TEXT DEFAULT NULL,
+			ADD COLUMN youtube_refresh_token TEXT DEFAULT NULL,
 			ADD COLUMN youtube_token_expiry DATETIME(3) DEFAULT NULL,
 			ADD COLUMN youtube_connected TINYINT(1) DEFAULT 0
 		`).Error; err != nil {
 			log.Printf("Warning: Failed to add YouTube OAuth columns: %v", err)
 		} else {
 			log.Println("YouTube OAuth columns added successfully")
+		}
+	} else {
+		// Ensure columns are large enough for encrypted tokens
+		var existingSize int64
+		db.Raw("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_name = 'app_configs' AND column_name = 'youtube_access_token'").Scan(&existingSize)
+		if existingSize > 0 && existingSize < 1000 {
+			log.Println("Expanding YouTube OAuth columns to support encrypted tokens...")
+			db.Exec(`ALTER TABLE app_configs MODIFY COLUMN youtube_access_token TEXT DEFAULT NULL`)
+			db.Exec(`ALTER TABLE app_configs MODIFY COLUMN youtube_refresh_token TEXT DEFAULT NULL`)
 		}
 	}
 
@@ -116,6 +125,15 @@ func InitDB() (*gorm.DB, error) {
 	if err := db.First(&config).Error; err == nil {
 		if config.YouTubeConnected && (config.YouTubeAccessToken == "" || config.YouTubeRefreshToken == "") {
 			log.Println("Warning: YouTubeConnected is true but tokens are missing - tokens may not have been saved properly")
+		}
+	}
+
+	// Create TTL index for audit logs (automatically delete logs older than 90 days)
+	if !migrator.HasIndex(&models.AuditLog{}, "idx_audit_logs_created_at") {
+		if err := db.Exec(`
+			CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at)
+		`).Error; err != nil {
+			log.Printf("Note: Could not create audit_logs index: %v", err)
 		}
 	}
 

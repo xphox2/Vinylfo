@@ -8,6 +8,7 @@ import (
 
 	"vinylfo/duration"
 	"vinylfo/models"
+	"vinylfo/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -26,14 +27,26 @@ func NewYouTubeController(db *gorm.DB) *YouTubeController {
 }
 
 func (c *YouTubeController) GetOAuthURL(ctx *gin.Context) {
-	state := generateSecureState()
-	ctx.SetCookie("youtube_oauth_state", state, 300, "/", "", false, true)
-
-	authURL, err := c.oauth.GetAuthURL(state)
+	state, codeVerifier, codeChallenge, err := utils.CreatePKCEState()
 	if err != nil {
+		utils.LogSecurityEvent("pkce_error", ctx.ClientIP(), ctx.GetHeader("User-Agent"), "oauth", err.Error())
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	ctx.SetCookie("youtube_oauth_state", state, 300, "/", "", false, true)
+	ctx.SetCookie("youtube_oauth_code_verifier", codeVerifier, 300, "/", "", false, true)
+
+	authURL, err := c.oauth.GetAuthURL(state, codeChallenge)
+	if err != nil {
+		utils.LogSecurityEvent("oauth_config_error", ctx.ClientIP(), ctx.GetHeader("User-Agent"), "oauth", err.Error())
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	utils.LogOAuthEvent(models.AuditActionConnect, 0, ctx.ClientIP(), ctx.GetHeader("User-Agent"), true, map[string]interface{}{
+		"action": "initiate_oauth",
+	})
 
 	ctx.JSON(http.StatusOK, gin.H{"auth_url": authURL})
 }
@@ -44,12 +57,17 @@ func (c *YouTubeController) OAuthCallback(ctx *gin.Context) {
 	errorParam := ctx.Query("error")
 
 	if errorParam != "" {
+		utils.LogOAuthEvent(models.AuditActionConnect, 0, ctx.ClientIP(), ctx.GetHeader("User-Agent"), false, map[string]interface{}{
+			"action": "oauth_callback",
+			"error":  errorParam,
+		})
 		ctx.Header("Content-Type", "text/html")
 		ctx.String(http.StatusOK, oauthErrorHTML("Authorization denied: "+errorParam))
 		return
 	}
 
 	if code == "" {
+		utils.LogSecurityEvent("missing_code", ctx.ClientIP(), ctx.GetHeader("User-Agent"), "oauth", "No authorization code received")
 		ctx.Header("Content-Type", "text/html")
 		ctx.String(http.StatusBadRequest, oauthErrorHTML("No authorization code received"))
 		return
@@ -57,24 +75,37 @@ func (c *YouTubeController) OAuthCallback(ctx *gin.Context) {
 
 	storedState, err := ctx.Cookie("youtube_oauth_state")
 	if err != nil || storedState == "" {
+		utils.LogSecurityEvent("missing_state", ctx.ClientIP(), ctx.GetHeader("User-Agent"), "oauth", "No state cookie found")
 		ctx.Header("Content-Type", "text/html")
 		ctx.String(http.StatusBadRequest, oauthErrorHTML("No state cookie found. Please try again."))
 		return
 	}
 
 	if state != storedState {
+		utils.LogSecurityEvent("state_mismatch", ctx.ClientIP(), ctx.GetHeader("User-Agent"), "oauth", "State mismatch")
 		ctx.Header("Content-Type", "text/html")
 		ctx.String(http.StatusBadRequest, oauthErrorHTML("State mismatch. Please try again."))
 		return
 	}
 
-	if err := c.oauth.ExchangeCode(code); err != nil {
+	codeVerifier, _ := ctx.Cookie("youtube_oauth_code_verifier")
+
+	if err := c.oauth.ExchangeCode(code, state, codeVerifier); err != nil {
+		utils.LogOAuthEvent(models.AuditActionConnect, 0, ctx.ClientIP(), ctx.GetHeader("User-Agent"), false, map[string]interface{}{
+			"action": "exchange_code",
+			"error":  err.Error(),
+		})
 		ctx.Header("Content-Type", "text/html")
 		ctx.String(http.StatusInternalServerError, oauthErrorHTML("Failed to exchange code: "+err.Error()))
 		return
 	}
 
+	utils.LogOAuthEvent(models.AuditActionConnect, 1, ctx.ClientIP(), ctx.GetHeader("User-Agent"), true, map[string]interface{}{
+		"action": "oauth_success",
+	})
+
 	ctx.SetCookie("youtube_oauth_state", "", -1, "/", "", false, true)
+	ctx.SetCookie("youtube_oauth_code_verifier", "", -1, "/", "", false, true)
 
 	ctx.Header("Content-Type", "text/html")
 	ctx.String(http.StatusOK, oauthSuccessHTML)
@@ -82,9 +113,17 @@ func (c *YouTubeController) OAuthCallback(ctx *gin.Context) {
 
 func (c *YouTubeController) Disconnect(ctx *gin.Context) {
 	if err := c.oauth.RevokeToken(); err != nil {
+		utils.LogOAuthEvent(models.AuditActionDisconnect, 1, ctx.ClientIP(), ctx.GetHeader("User-Agent"), false, map[string]interface{}{
+			"action": "revoke_token",
+			"error":  err.Error(),
+		})
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to disconnect: " + err.Error()})
 		return
 	}
+
+	utils.LogOAuthEvent(models.AuditActionDisconnect, 1, ctx.ClientIP(), ctx.GetHeader("User-Agent"), true, map[string]interface{}{
+		"action": "disconnect",
+	})
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"message":   "Successfully disconnected from YouTube",
@@ -176,19 +215,13 @@ func (c *YouTubeController) UpdatePlaylist(ctx *gin.Context) {
 }
 
 func (c *YouTubeController) GetPlaylists(ctx *gin.Context) {
-	var input struct {
-		MaxResults int `json:"max_results"`
+	maxResults := ctx.DefaultQuery("max_results", "50")
+	maxResultsInt := 50
+	if _, err := fmt.Sscanf(maxResults, "%d", &maxResultsInt); err != nil || maxResultsInt <= 0 || maxResultsInt > 50 {
+		maxResultsInt = 50
 	}
 
-	if err := ctx.ShouldBindJSON(&input); err != nil {
-		input.MaxResults = 50
-	}
-
-	if input.MaxResults <= 0 || input.MaxResults > 50 {
-		input.MaxResults = 50
-	}
-
-	playlists, err := c.oauth.GetPlaylists(ctx.Request.Context(), input.MaxResults)
+	playlists, err := c.oauth.GetPlaylists(ctx.Request.Context(), maxResultsInt)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -202,12 +235,15 @@ func (c *YouTubeController) GetPlaylists(ctx *gin.Context) {
 			"description":    item.Snippet.Description,
 			"privacy_status": item.Status.PrivacyStatus,
 			"channel_id":     item.Snippet.ChannelID,
+			"content_details": gin.H{
+				"item_count": item.ContentDetails.ItemCount,
+			},
 		})
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"playlists":     result,
-		"total_results": playlists.PageInfo.TotalResults,
+		"items":       result,
+		"total_count": playlists.PageInfo.TotalResults,
 	})
 }
 
@@ -356,11 +392,22 @@ func (c *YouTubeController) SearchVideos(ctx *gin.Context) {
 
 	videos := make([]gin.H, 0, len(results.Items))
 	for _, item := range results.Items {
+		thumbnails := item.Snippet.Thumbnails
+		thumbnailURL := ""
+		if thumbnails != nil {
+			if thumb, ok := thumbnails["default"]; ok {
+				thumbnailURL = thumb.URL
+			} else if thumb, ok := thumbnails["medium"]; ok {
+				thumbnailURL = thumb.URL
+			} else if thumb, ok := thumbnails["high"]; ok {
+				thumbnailURL = thumb.URL
+			}
+		}
 		videos = append(videos, gin.H{
 			"video_id":  item.ID.VideoID,
 			"title":     item.Snippet.Title,
 			"channel":   item.Snippet.ChannelTitle,
-			"thumbnail": item.Snippet.Thumbnails["default"].URL,
+			"thumbnail": thumbnailURL,
 		})
 	}
 

@@ -19,6 +19,7 @@ import (
 	"vinylfo/database"
 	"vinylfo/discogs"
 	"vinylfo/routes"
+	"vinylfo/utils"
 )
 
 var db *gorm.DB
@@ -44,6 +45,9 @@ func main() {
 
 	playbackController = controllers.NewPlaybackController(db)
 
+	utils.InitPKCE(db)
+	utils.InitAuditLog(db)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -66,6 +70,7 @@ func main() {
 		"templates/track-detail.html",
 		"templates/album-detail.html",
 		"templates/resolution-center.html",
+		"templates/youtube.html",
 	))
 	r.SetHTMLTemplate(tmpl)
 
@@ -103,6 +108,10 @@ func main() {
 
 	r.GET("/resolution-center", func(c *gin.Context) {
 		c.HTML(200, "resolution-center-page", nil)
+	})
+
+	r.GET("/youtube", func(c *gin.Context) {
+		c.HTML(200, "youtube-page", nil)
 	})
 
 	routes.SetupRoutes(r)
