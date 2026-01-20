@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5-alpha] - 2026-01-20
+
+### Added
+
+#### YouTube OAuth Integration
+- **YouTube Account Connection**: New OAuth 2.0 integration for connecting your YouTube account
+  - Write vinyl playlists directly to YouTube
+  - Create, update, and delete playlists on your YouTube channel
+  - Add and remove videos from playlists
+  - Search YouTube for videos to add to playlists
+  - Export session tracks as YouTube playlists
+- **New API Endpoints**:
+  - `GET /api/youtube/oauth/url` - Get YouTube authorization URL
+  - `GET /api/youtube/oauth/callback` - Handle OAuth callback
+  - `POST /api/youtube/disconnect` - Revoke YouTube connection
+  - `GET /api/youtube/status` - Check connection status
+  - `POST /api/youtube/playlists` - Create YouTube playlist
+  - `PUT /api/youtube/playlists/:id` - Update playlist
+  - `GET /api/youtube/playlists` - List your YouTube playlists
+  - `DELETE /api/youtube/playlists/:id` - Delete playlist
+  - `POST /api/youtube/playlists/:id/videos` - Add video to playlist
+  - `DELETE /api/youtube/playlists/:id/videos/:item_id` - Remove video
+  - `POST /api/youtube/search` - Search YouTube videos
+  - `POST /api/youtube/export-playlist` - Export session to YouTube playlist
+- **Token Management**: OAuth tokens stored securely in database with automatic refresh
+
+#### Resolution Center UI Improvements
+- **Toggle Source Selection**: Click a source badge to select it (green highlight), click again to unselect
+- **Last.fm Display Fix**: Corrected capitalization from "Last.Fm" to "Last.fm" with proper lowercase 'fm'
+- **CSS Class Fix**: Fixed source badge class generation to remove dots (was `last.fm`, now `lastfm`)
+
+### New Files
+- `duration/youtube_oauth_client.go` - YouTube OAuth client with token management and playlist operations
+- `controllers/youtube.go` - YouTube API controller with all OAuth and playlist endpoints
+
+### Changed
+- **Settings Page**: Added YouTube connection status and connect/disconnect buttons
+- **Database Migration**: Added `youtube_access_token`, `youtube_refresh_token`, `youtube_token_expiry`, `youtube_connected` columns to `app_configs` table
+
+---
+
 ## [0.2.4-alpha] - 2026-01-19
 
 ### Added

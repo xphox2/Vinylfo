@@ -177,7 +177,7 @@ class ResolutionCenterManager {
             if (src.error_message) {
                 className = 'error';
             } else if (src.duration_value > 0) {
-                className = src.source_name.toLowerCase().replace(' ', '-');
+                className = src.source_name.toLowerCase().replace(/[.\s]/g, '');
             }
 
             const isSelected = selectedSourceId === src.id;
@@ -399,7 +399,7 @@ class ResolutionCenterManager {
     renderResolvedItem(item) {
         const sources = item.sources || [];
         const sourceBadges = sources.map(src => {
-            const className = src.source_name.toLowerCase().replace(' ', '-');
+            const className = src.source_name.toLowerCase().replace(/[.\s]/g, '');
             const mins = Math.floor(src.duration_value / 60);
             const secs = src.duration_value % 60;
             const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -575,7 +575,12 @@ class ResolutionCenterManager {
     }
 
     selectSource(resolutionId, sourceId) {
-        this.selectedSources[resolutionId] = sourceId;
+        // Toggle: if clicking the same source, unselect it
+        if (this.selectedSources[resolutionId] === sourceId) {
+            delete this.selectedSources[resolutionId];
+        } else {
+            this.selectedSources[resolutionId] = sourceId;
+        }
         this.renderReviewQueue();
     }
 

@@ -10,7 +10,6 @@ import (
 	"vinylfo/models"
 	"vinylfo/services"
 	"vinylfo/sync"
-	"vinylfo/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -109,8 +108,6 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 
 	log.Printf("StartSync: config loaded, IsDiscogsConnected=%v, DiscogsUsername=%s",
 		config.IsDiscogsConnected, config.DiscogsUsername)
-	log.Printf("StartSync: ConsumerKey=%s, AccessToken=%s",
-		utils.MaskValue(config.DiscogsConsumerKey), utils.MaskValue(config.DiscogsAccessToken))
 	log.Printf("StartSync: sync_mode=%s, folder_id=%d",
 		input.SyncMode, input.FolderID)
 
@@ -122,14 +119,8 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 
 	if config.DiscogsUsername == "" {
 		log.Printf("StartSync: Username is empty, fetching from Discogs...")
-		consumerKey := config.DiscogsConsumerKey
-		if consumerKey == "" {
-			consumerKey = os.Getenv("DISCOGS_CONSUMER_KEY")
-		}
-		consumerSecret := config.DiscogsConsumerSecret
-		if consumerSecret == "" {
-			consumerSecret = os.Getenv("DISCOGS_CONSUMER_SECRET")
-		}
+		consumerKey := os.Getenv("DISCOGS_CONSUMER_KEY")
+		consumerSecret := os.Getenv("DISCOGS_CONSUMER_SECRET")
 		oauth := &discogs.OAuthConfig{
 			ConsumerKey:    consumerKey,
 			ConsumerSecret: consumerSecret,

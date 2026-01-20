@@ -17,17 +17,11 @@ func (c *DiscogsController) GetOAuthURL(ctx *gin.Context) {
 		c.db.FirstOrCreate(&config, models.AppConfig{ID: 1})
 	}
 
-	consumerKey := config.DiscogsConsumerKey
-	if consumerKey == "" {
-		consumerKey = os.Getenv("DISCOGS_CONSUMER_KEY")
-	}
-	consumerSecret := config.DiscogsConsumerSecret
-	if consumerSecret == "" {
-		consumerSecret = os.Getenv("DISCOGS_CONSUMER_SECRET")
-	}
+	consumerKey := os.Getenv("DISCOGS_CONSUMER_KEY")
+	consumerSecret := os.Getenv("DISCOGS_CONSUMER_SECRET")
 
 	if consumerKey == "" || consumerSecret == "" {
-		ctx.JSON(500, gin.H{"error": "DISCOGS_CONSUMER_KEY or DISCOGS_CONSUMER_SECRET not set"})
+		ctx.JSON(500, gin.H{"error": "DISCOGS_CONSUMER_KEY or DISCOGS_CONSUMER_SECRET not set in .env file"})
 		return
 	}
 
@@ -44,10 +38,8 @@ func (c *DiscogsController) GetOAuthURL(ctx *gin.Context) {
 	}
 
 	c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(map[string]interface{}{
-		"discogs_access_token":    token,
-		"discogs_access_secret":   secret,
-		"discogs_consumer_key":    consumerKey,
-		"discogs_consumer_secret": consumerSecret,
+		"discogs_access_token":  token,
+		"discogs_access_secret": secret,
 	})
 
 	ctx.JSON(200, gin.H{
@@ -69,14 +61,8 @@ func (c *DiscogsController) OAuthCallback(ctx *gin.Context) {
 		return
 	}
 
-	consumerKey := config.DiscogsConsumerKey
-	if consumerKey == "" {
-		consumerKey = os.Getenv("DISCOGS_CONSUMER_KEY")
-	}
-	consumerSecret := config.DiscogsConsumerSecret
-	if consumerSecret == "" {
-		consumerSecret = os.Getenv("DISCOGS_CONSUMER_SECRET")
-	}
+	consumerKey := os.Getenv("DISCOGS_CONSUMER_KEY")
+	consumerSecret := os.Getenv("DISCOGS_CONSUMER_SECRET")
 
 	oauth := &discogs.OAuthConfig{
 		ConsumerKey:    consumerKey,
@@ -101,12 +87,10 @@ func (c *DiscogsController) OAuthCallback(ctx *gin.Context) {
 	}
 
 	c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(map[string]interface{}{
-		"discogs_access_token":    accessToken,
-		"discogs_access_secret":   accessSecret,
-		"discogs_username":        username,
-		"discogs_consumer_key":    consumerKey,
-		"discogs_consumer_secret": consumerSecret,
-		"is_discogs_connected":    true,
+		"discogs_access_token":  accessToken,
+		"discogs_access_secret": accessSecret,
+		"discogs_username":      username,
+		"is_discogs_connected":  true,
 	})
 
 	ctx.Redirect(302, "/settings?discogs_connected=true")

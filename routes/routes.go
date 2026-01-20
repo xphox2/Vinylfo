@@ -166,4 +166,26 @@ func SetupRoutes(r *gin.Engine) {
 		duration.POST("/review/:id", durationController.SubmitReview)
 		duration.POST("/review/bulk", durationController.BulkReview)
 	}
+
+	youtubeController := controllers.NewYouTubeController(db)
+
+	youtube := r.Group("/api/youtube")
+	{
+		youtube.GET("/oauth/url", youtubeController.GetOAuthURL)
+		youtube.GET("/oauth/callback", youtubeController.OAuthCallback)
+		youtube.POST("/disconnect", youtubeController.Disconnect)
+		youtube.GET("/status", youtubeController.GetStatus)
+
+		youtube.POST("/playlists", youtubeController.CreatePlaylist)
+		youtube.PUT("/playlists/:id", youtubeController.UpdatePlaylist)
+		youtube.GET("/playlists", youtubeController.GetPlaylists)
+		youtube.GET("/playlists/:id", youtubeController.GetPlaylistItems)
+		youtube.DELETE("/playlists/:id", youtubeController.DeletePlaylist)
+
+		youtube.POST("/playlists/:id/videos", youtubeController.AddTrackToPlaylist)
+		youtube.DELETE("/playlists/:id/videos/:item_id", youtubeController.RemoveTrackFromPlaylist)
+
+		youtube.POST("/search", youtubeController.SearchVideos)
+		youtube.POST("/export-playlist", youtubeController.ExportPlaylist)
+	}
 }

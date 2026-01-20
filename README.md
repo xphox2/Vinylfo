@@ -28,7 +28,7 @@ Vinylfo is a self-hosted web application for managing your vinyl record collecti
 - **MusicBrainz Integration**: Queries MusicBrainz for track durations with rate limiting
 - **Wikipedia Integration**: Parses Wikipedia album pages for track listings
 - **Last.fm Integration**: Queries Last.fm API for track durations
-- **YouTube Integration**: Searches YouTube for track videos and extracts duration
+- **YouTube Integration**: Searches YouTube for track videos and extracts duration (optional)
 - **Consensus Algorithm**: Requires 2+ sources to agree before auto-applying durations
 - **Smart Matching**: Normalizes artist names and titles for better matching
   - Handles Discogs disambiguation suffixes like "(2)", "(rapper)"
@@ -38,6 +38,7 @@ Vinylfo is a self-hosted web application for managing your vinyl record collecti
 - **YouTube Quota Optimization**:
   - Skips YouTube API when free sources already reach consensus
   - File-based cache persists results across database resets
+- **YouTube Playlist Export**: Export vinyl playlists directly to your YouTube account
 
 ### Discogs Sync Features
 - **Pause/Resume**: Long syncs can be paused and resumed later
@@ -71,7 +72,8 @@ vinylfo/
 │   ├── playback.go        # Playback session management
 │   ├── playlist.go        # Playlist management
 │   ├── settings.go        # Settings API
-│   └── track.go           # Track CRUD operations
+│   ├── track.go           # Track CRUD operations
+│   └── youtube.go         # YouTube OAuth and playlist API
 ├── services/              # Business logic layer
 │   ├── album_import.go    # Album import from Discogs
 │   ├── sync_progress.go   # Sync progress persistence
@@ -86,7 +88,8 @@ vinylfo/
 │   ├── wikipedia_client.go   # Wikipedia API integration
 │   ├── lastfm_client.go      # Last.fm API integration
 │   ├── youtube_client.go     # YouTube API integration
-│   └── youtube_cache.go      # File-based YouTube results cache
+│   ├── youtube_cache.go      # File-based YouTube results cache
+│   └── youtube_oauth_client.go # YouTube OAuth and playlist management
 ├── models/                # Database models
 │   ├── models.go          # Album, Track, Playlist, etc.
 │   └── app_config.go      # Application settings
@@ -184,6 +187,22 @@ vinylfo/
 | POST | `/api/duration/review/:id` | Submit review decision |
 | POST | `/api/duration/review/bulk` | Bulk apply/reject |
 
+### YouTube Integration
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/youtube/oauth/url` | Get YouTube authorization URL |
+| GET | `/api/youtube/oauth/callback` | OAuth callback handler |
+| POST | `/api/youtube/disconnect` | Disconnect YouTube account |
+| GET | `/api/youtube/status` | Get connection status |
+| POST | `/api/youtube/playlists` | Create YouTube playlist |
+| PUT | `/api/youtube/playlists/:id` | Update playlist |
+| GET | `/api/youtube/playlists` | List your YouTube playlists |
+| DELETE | `/api/youtube/playlists/:id` | Delete playlist |
+| POST | `/api/youtube/playlists/:id/videos` | Add video to playlist |
+| DELETE | `/api/youtube/playlists/:id/videos/:item_id` | Remove video |
+| POST | `/api/youtube/search` | Search YouTube videos |
+| POST | `/api/youtube/export-playlist` | Export session to YouTube playlist |
+
 ### Settings
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -206,7 +225,7 @@ vinylfo/
 - **DurationResolution**: Track duration resolution attempts and status
 - **DurationSource**: Individual source results (MusicBrainz, Wikipedia)
 - **DurationResolverProgress**: Bulk resolution progress for resume
-- **AppConfig**: Application settings and OAuth credentials
+- **AppConfig**: Application settings and OAuth credentials (Discogs, YouTube)
 
 ## License
 

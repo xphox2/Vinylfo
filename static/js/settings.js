@@ -16,6 +16,10 @@ class SettingsManager {
             const discogsStatus = await discogsRes.json();
             this.renderDiscogsStatus(discogsStatus);
 
+            const youtubeRes = await fetch(`${API_BASE}/youtube/status`);
+            const youtubeStatus = await youtubeRes.json();
+            this.renderYouTubeStatus(youtubeStatus);
+
             const settingsRes = await fetch(`${API_BASE}/settings`);
             const settings = await settingsRes.json();
             this.renderYouTubeAPIKey(settings.youtube_api_key);
@@ -23,6 +27,38 @@ class SettingsManager {
         } catch (error) {
             console.error('Failed to load settings:', error);
             this.showNotification('Failed to load settings', 'error');
+        }
+    }
+
+    renderYouTubeStatus(status) {
+        const statusCard = document.getElementById('youtube-status');
+        const indicator = statusCard.querySelector('.status-indicator');
+        const text = statusCard.querySelector('.status-text');
+        const description = statusCard.querySelector('.status-description');
+        const connectBtn = document.getElementById('connect-youtube');
+        const disconnectBtn = document.getElementById('disconnect-youtube');
+
+        if (!status.is_configured) {
+            indicator.classList.remove('connected');
+            indicator.classList.add('disconnected');
+            text.textContent = 'Not Configured';
+            description.textContent = 'YouTube OAuth credentials not set in .env file';
+            connectBtn.classList.add('hidden');
+            disconnectBtn.classList.add('hidden');
+        } else if (status.connected) {
+            indicator.classList.remove('disconnected');
+            indicator.classList.add('connected');
+            text.textContent = 'Connected to YouTube';
+            description.textContent = 'You can create and manage playlists';
+            connectBtn.classList.add('hidden');
+            disconnectBtn.classList.remove('hidden');
+        } else {
+            indicator.classList.remove('connected');
+            indicator.classList.add('disconnected');
+            text.textContent = 'Not Connected';
+            description.textContent = 'Connect to create and manage YouTube playlists';
+            connectBtn.classList.remove('hidden');
+            disconnectBtn.classList.add('hidden');
         }
     }
 
@@ -78,12 +114,23 @@ class SettingsManager {
     }
 
     bindEvents() {
-        document.getElementById('connect-discogs').addEventListener('click', () => this.connectDiscogs());
-        document.getElementById('disconnect-discogs').addEventListener('click', () => this.disconnectDiscogs());
-        document.getElementById('reset-database').addEventListener('click', () => this.resetDatabase());
-        document.getElementById('seed-database').addEventListener('click', () => this.seedDatabase());
-        document.getElementById('save-youtube-key').addEventListener('click', () => this.saveYouTubeAPIKey());
-        document.getElementById('save-lastfm-key').addEventListener('click', () => this.saveLastFMAPIKey());
+        const connectDiscogs = document.getElementById('connect-discogs');
+        const disconnectDiscogs = document.getElementById('disconnect-discogs');
+        const connectYouTube = document.getElementById('connect-youtube');
+        const disconnectYouTube = document.getElementById('disconnect-youtube');
+        const resetDatabase = document.getElementById('reset-database');
+        const seedDatabase = document.getElementById('seed-database');
+        const saveYouTubeKey = document.getElementById('save-youtube-key');
+        const saveLastFMKey = document.getElementById('save-lastfm-key');
+
+        if (connectDiscogs) connectDiscogs.addEventListener('click', () => this.connectDiscogs());
+        if (disconnectDiscogs) disconnectDiscogs.addEventListener('click', () => this.disconnectDiscogs());
+        if (connectYouTube) connectYouTube.addEventListener('click', () => this.connectYouTube());
+        if (disconnectYouTube) disconnectYouTube.addEventListener('click', () => this.disconnectYouTube());
+        if (resetDatabase) resetDatabase.addEventListener('click', () => this.resetDatabase());
+        if (seedDatabase) seedDatabase.addEventListener('click', () => this.seedDatabase());
+        if (saveYouTubeKey) saveYouTubeKey.addEventListener('click', () => this.saveYouTubeAPIKey());
+        if (saveLastFMKey) saveLastFMKey.addEventListener('click', () => this.saveLastFMAPIKey());
     }
 
     async saveYouTubeAPIKey() {
@@ -186,6 +233,41 @@ class SettingsManager {
         } catch (error) {
             console.error('Failed to disconnect Discogs:', error);
             this.showNotification('Failed to disconnect from Discogs', 'error');
+        }
+    }
+
+    async connectYouTube() {
+        try {
+            const response = await fetch(`${API_BASE}/youtube/oauth/url`);
+            const data = await response.json();
+
+            if (data.auth_url) {
+                window.location.href = data.auth_url;
+            } else {
+                this.showNotification(data.error || 'Failed to get authorization URL', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to connect YouTube:', error);
+            this.showNotification('Failed to connect to YouTube', 'error');
+        }
+    }
+
+    async disconnectYouTube() {
+        if (!confirm('Are you sure you want to disconnect your YouTube account?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/youtube/disconnect`, { method: 'POST' });
+            if (response.ok) {
+                this.showNotification('Disconnected from YouTube', 'success');
+                this.loadSettings();
+            } else {
+                this.showNotification('Failed to disconnect', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to disconnect YouTube:', error);
+            this.showNotification('Failed to disconnect from YouTube', 'error');
         }
     }
 

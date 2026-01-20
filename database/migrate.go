@@ -72,27 +72,51 @@ func InitDB() (*gorm.DB, error) {
 	}
 
 	// Migration: Fix album unique constraint from title-only to title+artist composite
-	// This allows different artists to have albums with the same title (e.g., "Greatest Hits")
 	migrator := db.Migrator()
 	if migrator.HasIndex(&models.Album{}, "title") {
-		// Old index exists on title only - drop it
 		if err := migrator.DropIndex(&models.Album{}, "title"); err != nil {
 			log.Printf("Note: Could not drop old title index (may not exist): %v", err)
 		} else {
 			log.Println("Dropped old title-only unique index")
 		}
 	}
-	// The new composite index idx_title_artist will be created by AutoMigrate from the struct tags
 
 	// Ensure exactly one AppConfig row exists
 	var count int64
 	db.Model(&models.AppConfig{}).Count(&count)
 	if count == 0 {
+		log.Println("Creating default AppConfig row...")
 		if err := db.Create(&models.AppConfig{}).Error; err != nil {
-			log.Fatal("Failed to create default AppConfig:", err)
-			return nil, err
+			log.Printf("Warning: Failed to create default AppConfig: %v", err)
+		} else {
+			log.Println("Default AppConfig row created")
 		}
-		log.Println("Created default AppConfig row")
+	}
+
+	// Migration: Add YouTube OAuth columns if they don't exist
+	var columnCount int64
+	db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'app_configs' AND column_name = 'youtube_access_token'").Scan(&columnCount)
+	if columnCount == 0 {
+		log.Println("Adding YouTube OAuth columns to app_configs table...")
+		if err := db.Exec(`
+			ALTER TABLE app_configs 
+			ADD COLUMN youtube_access_token VARCHAR(500) DEFAULT NULL,
+			ADD COLUMN youtube_refresh_token VARCHAR(500) DEFAULT NULL,
+			ADD COLUMN youtube_token_expiry DATETIME(3) DEFAULT NULL,
+			ADD COLUMN youtube_connected TINYINT(1) DEFAULT 0
+		`).Error; err != nil {
+			log.Printf("Warning: Failed to add YouTube OAuth columns: %v", err)
+		} else {
+			log.Println("YouTube OAuth columns added successfully")
+		}
+	}
+
+	// Verify default row exists
+	var config models.AppConfig
+	if err := db.First(&config).Error; err == nil {
+		if config.YouTubeConnected && (config.YouTubeAccessToken == "" || config.YouTubeRefreshToken == "") {
+			log.Println("Warning: YouTubeConnected is true but tokens are missing - tokens may not have been saved properly")
+		}
 	}
 
 	DB = db

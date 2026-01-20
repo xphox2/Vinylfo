@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"vinylfo/duration"
 	"vinylfo/models"
 
 	"github.com/gin-gonic/gin"
@@ -8,11 +9,15 @@ import (
 )
 
 type SettingsController struct {
-	db *gorm.DB
+	db      *gorm.DB
+	youtube *duration.YouTubeOAuthClient
 }
 
 func NewSettingsController(db *gorm.DB) *SettingsController {
-	return &SettingsController{db: db}
+	return &SettingsController{
+		db:      db,
+		youtube: duration.NewYouTubeOAuthClient(db),
+	}
 }
 
 func (c *SettingsController) Get(ctx *gin.Context) {
@@ -24,17 +29,20 @@ func (c *SettingsController) Get(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, gin.H{
-		"discogs_connected": config.IsDiscogsConnected,
-		"discogs_username":  config.DiscogsUsername,
-		"last_sync_at":      config.LastSyncAt,
-		"youtube_api_key":   config.YouTubeAPIKey,
+		"discogs_connected":     config.IsDiscogsConnected,
+		"discogs_username":      config.DiscogsUsername,
+		"last_sync_at":          config.LastSyncAt,
+		"items_per_page":        config.ItemsPerPage,
+		"sync_mode":             config.SyncMode,
+		"sync_folder_id":        config.SyncFolderID,
+		"youtube_connected":     c.youtube.IsAuthenticated(),
+		"youtube_is_configured": c.youtube.IsConfigured(),
 	})
 }
 
 func (c *SettingsController) Update(ctx *gin.Context) {
 	var input struct {
-		ItemsPerPage  *int    `json:"items_per_page"`
-		YouTubeAPIKey *string `json:"youtube_api_key"`
+		ItemsPerPage *int `json:"items_per_page"`
 	}
 
 	if err := ctx.ShouldBindJSON(&input); err != nil {
@@ -42,7 +50,7 @@ func (c *SettingsController) Update(ctx *gin.Context) {
 		return
 	}
 
-	if input.ItemsPerPage == nil && input.YouTubeAPIKey == nil {
+	if input.ItemsPerPage == nil {
 		ctx.JSON(400, gin.H{"error": "No valid fields to update"})
 		return
 	}
@@ -55,10 +63,6 @@ func (c *SettingsController) Update(ctx *gin.Context) {
 			return
 		}
 		updates["items_per_page"] = *input.ItemsPerPage
-	}
-
-	if input.YouTubeAPIKey != nil {
-		updates["youtube_api_key"] = *input.YouTubeAPIKey
 	}
 
 	result := c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(updates)

@@ -41,21 +41,8 @@ func (c *DiscogsController) getDiscogsClientWithOAuth() *discogs.Client {
 		return nil
 	}
 
-	log.Printf("OAUTH: DB config - ID=%d, ConsumerKey=%s, AccessToken=%s, Username=%s, IsConnected=%v",
-		config.ID, utils.MaskValue(config.DiscogsConsumerKey), utils.MaskValue(config.DiscogsAccessToken), config.DiscogsUsername, config.IsDiscogsConnected)
-
-	consumerKey := config.DiscogsConsumerKey
-	if consumerKey == "" {
-		consumerKey = os.Getenv("DISCOGS_CONSUMER_KEY")
-		log.Printf("OAUTH: Using ConsumerKey from env var: %s", utils.MaskValue(consumerKey))
-	}
-	consumerSecret := config.DiscogsConsumerSecret
-	if consumerSecret == "" {
-		consumerSecret = os.Getenv("DISCOGS_CONSUMER_SECRET")
-		log.Printf("OAUTH: Using ConsumerSecret from env var")
-	}
-
-	log.Printf("OAUTH: Final ConsumerKey=%s, AccessToken=%s", utils.MaskValue(consumerKey), utils.MaskValue(config.DiscogsAccessToken))
+	consumerKey := os.Getenv("DISCOGS_CONSUMER_KEY")
+	consumerSecret := os.Getenv("DISCOGS_CONSUMER_SECRET")
 
 	oauth := &discogs.OAuthConfig{
 		ConsumerKey:    consumerKey,
@@ -118,21 +105,13 @@ func (c *DiscogsController) GetStatus(ctx *gin.Context) {
 		return
 	}
 
-	log.Printf("GetStatus: IsConnected=%v, Username=%s, HasAccessToken=%v, HasAccessSecret=%v, HasConsumerKey=%v",
-		config.IsDiscogsConnected, config.DiscogsUsername,
-		config.DiscogsAccessToken != "", config.DiscogsAccessSecret != "",
-		config.DiscogsConsumerKey != "")
-
 	ctx.JSON(200, gin.H{
-		"is_connected":    config.IsDiscogsConnected,
-		"username":        config.DiscogsUsername,
-		"sync_confirm":    config.SyncConfirmBatches,
-		"batch_size":      config.SyncBatchSize,
-		"auto_apply_safe": config.AutoApplySafeUpdates,
-		"auto_sync_new":   config.AutoSyncNewAlbums,
-		"last_sync_at":    config.LastSyncAt,
-		"sync_mode":       config.SyncMode,
-		"sync_folder_id":  config.SyncFolderID,
+		"is_connected":   config.IsDiscogsConnected,
+		"username":       config.DiscogsUsername,
+		"batch_size":     config.SyncBatchSize,
+		"last_sync_at":   config.LastSyncAt,
+		"sync_mode":      config.SyncMode,
+		"sync_folder_id": config.SyncFolderID,
 	})
 }
 
