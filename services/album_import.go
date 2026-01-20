@@ -7,10 +7,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
+	"vinylfo/config"
 	"vinylfo/discogs"
 	"vinylfo/models"
+	"vinylfo/utils"
 
 	"gorm.io/gorm"
 )
@@ -60,9 +61,7 @@ func (i *AlbumImporter) DownloadCoverImage(imageURL string) ([]byte, string, err
 		return nil, "", nil
 	}
 
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	client := config.DefaultClient()
 
 	req, err := http.NewRequest("GET", imageURL, nil)
 	if err != nil {
@@ -110,7 +109,7 @@ func (i *AlbumImporter) CreateAlbumWithTracks(input AlbumInput, tracks []TrackIn
 		ReleaseDate:     input.ReleaseDate,
 		Style:           input.Style,
 		CoverImageURL:   input.CoverImage,
-		DiscogsID:       intPtr(input.DiscogsID),
+		DiscogsID:       utils.IntPtr(input.DiscogsID),
 		DiscogsFolderID: input.FolderID,
 	}
 
@@ -133,7 +132,6 @@ func (i *AlbumImporter) CreateAlbumWithTracks(input AlbumInput, tracks []TrackIn
 	for _, trackInput := range tracks {
 		track := models.Track{
 			AlbumID:     album.ID,
-			AlbumTitle:  album.Title,
 			Title:       trackInput.Title,
 			Duration:    trackInput.Duration,
 			TrackNumber: trackInput.TrackNumber,
@@ -311,7 +309,6 @@ func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID 
 
 		newTrack := models.Track{
 			AlbumID:     albumID,
-			AlbumTitle:  albumTitle,
 			Title:       title,
 			Duration:    duration,
 			TrackNumber: trackNumber,
@@ -441,12 +438,4 @@ func parseDuration(v interface{}) int {
 		}
 	}
 	return 0
-}
-
-// intPtr returns a pointer to the given int, or nil if the value is 0
-func intPtr(i int) *int {
-	if i == 0 {
-		return nil
-	}
-	return &i
 }

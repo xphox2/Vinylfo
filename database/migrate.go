@@ -1,8 +1,11 @@
 package database
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"strings"
+	"time"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -14,15 +17,34 @@ var DB *gorm.DB
 
 // InitDB initializes the database connection
 func InitDB() (*gorm.DB, error) {
-	// Load environment variables
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		// Fallback to individual environment variables if DATABASE_URL is not set
+		missingVars := []string{}
 		dbUser := os.Getenv("DB_USER")
 		dbPass := os.Getenv("DB_PASS")
 		dbHost := os.Getenv("DB_HOST")
 		dbPort := os.Getenv("DB_PORT")
 		dbName := os.Getenv("DB_NAME")
+
+		if dbUser == "" {
+			missingVars = append(missingVars, "DB_USER")
+		}
+		if dbPass == "" {
+			missingVars = append(missingVars, "DB_PASS")
+		}
+		if dbHost == "" {
+			missingVars = append(missingVars, "DB_HOST")
+		}
+		if dbPort == "" {
+			missingVars = append(missingVars, "DB_PORT")
+		}
+		if dbName == "" {
+			missingVars = append(missingVars, "DB_NAME")
+		}
+
+		if len(missingVars) > 0 {
+			return nil, fmt.Errorf("missing required environment variables: %s. Either set DATABASE_URL or all of: DB_USER, DB_PASS, DB_HOST, DB_PORT, DB_NAME", strings.Join(missingVars, ", "))
+		}
 
 		dsn = dbUser + ":" + dbPass + "@tcp(" + dbHost + ":" + dbPort + ")/" + dbName + "?parseTime=true"
 	}
@@ -32,6 +54,15 @@ func InitDB() (*gorm.DB, error) {
 		log.Fatal("Failed to connect to database:", err)
 		return nil, err
 	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal("Failed to get underlying sql.DB:", err)
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// Run migrations for all models
 	err = db.AutoMigrate(&models.Album{}, &models.Track{}, &models.PlaybackSession{}, &models.SessionPlaylist{}, &models.SessionSharing{}, &models.SessionNote{}, &models.AppConfig{}, &models.TrackHistory{}, &models.SyncLog{}, &models.SyncProgress{}, &models.SyncHistory{}, &models.DurationSource{}, &models.DurationResolution{}, &models.DurationResolverProgress{})

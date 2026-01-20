@@ -5,7 +5,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
+
+	"vinylfo/config"
 )
 
 // TrackSearchResult represents a track duration found by an external API
@@ -62,9 +63,7 @@ type BaseClient struct {
 // NewBaseClient creates a base client with sensible defaults
 func NewBaseClient(userAgent string, requestsPerMinute int) *BaseClient {
 	return &BaseClient{
-		HTTPClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		HTTPClient:  config.DurationClient(),
 		RateLimiter: NewRateLimiter(requestsPerMinute),
 		UserAgent:   userAgent,
 	}

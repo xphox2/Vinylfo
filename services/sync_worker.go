@@ -10,6 +10,7 @@ import (
 	"vinylfo/discogs"
 	"vinylfo/models"
 	"vinylfo/sync"
+	"vinylfo/utils"
 
 	"gorm.io/gorm"
 )
@@ -439,7 +440,7 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 			DiscogsCoverImage:     imageData,
 			DiscogsCoverImageType: imageType,
 			CoverImageFailed:      imageFailed,
-			DiscogsID:             intPtr(discogsID),
+			DiscogsID:             utils.IntPtr(discogsID),
 			DiscogsFolderID:       albumFolderID,
 		}
 		tx = w.db.Begin()

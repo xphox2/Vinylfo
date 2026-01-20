@@ -1,3 +1,6 @@
+import { api, durationAPI } from './modules/api.js';
+import { escapeHtml, formatDuration, showNotification } from './modules/utils.js';
+
 const API_BASE = '/api';
 
 class ResolutionCenterManager {
@@ -50,6 +53,26 @@ class ResolutionCenterManager {
         document.getElementById('review-modal').addEventListener('click', (e) => {
             if (e.target.id === 'review-modal') this.closeModal();
         });
+
+        document.addEventListener('click', (e) => this.handleDelegatedClick(e));
+    }
+
+    handleDelegatedClick(e) {
+        const sourceBadge = e.target.closest('.source-badge[data-resolution-id][data-source-id]');
+        if (sourceBadge) {
+            const resolutionId = parseInt(sourceBadge.dataset.resolutionId, 10);
+            const sourceId = parseInt(sourceBadge.dataset.sourceId, 10);
+            this.selectSource(resolutionId, sourceId);
+            return;
+        }
+
+        const sourceDetail = e.target.closest('.source-detail[data-source-id]');
+        if (sourceDetail) {
+            const resolutionId = this.currentReviewId;
+            const sourceId = parseInt(sourceDetail.dataset.sourceId, 10);
+            this.selectSource(resolutionId, sourceId);
+            return;
+        }
     }
 
     switchTab(tab) {
@@ -94,13 +117,12 @@ class ResolutionCenterManager {
         } else {
             await this.loadResolvedQueue();
         }
-        this.showNotification('Refreshed', 'info');
+        showNotification('Refreshed', 'info');
     }
 
     async loadStats() {
         try {
-            const response = await fetch(`${API_BASE}/duration/stats`);
-            const stats = await response.json();
+            const stats = await durationAPI.getStats();
 
             document.getElementById('total-count').textContent = stats.missing_duration || 0;
             document.getElementById('unprocessed-count').textContent = stats.unprocessed || 0;
@@ -113,10 +135,7 @@ class ResolutionCenterManager {
 
     async loadReviewQueue() {
         try {
-            const response = await fetch(
-                `${API_BASE}/duration/review?page=${this.currentPage}&limit=${this.pageSize}`
-            );
-            const data = await response.json();
+            const data = await durationAPI.getReviewQueue(this.currentPage, this.pageSize);
 
             this.totalPages = data.total_pages || 1;
             this.reviewItems = data.items || [];
@@ -171,10 +190,10 @@ class ResolutionCenterManager {
             const timeStr = src.duration_value > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : 'N/A';
 
             const clickable = src.duration_value > 0 && !src.error_message;
-            const clickAttr = clickable ? `onclick="reviewManager.selectSource(${resolutionId}, ${src.id})"` : '';
+            const dataAttrs = clickable ? `data-resolution-id="${resolutionId}" data-source-id="${src.id}"` : '';
 
-            return `<span class="source-badge ${className}" ${clickAttr}>
-                <span class="source-name">${this.escapeHtml(src.source_name)}</span>
+            return `<span class="source-badge ${className}" ${dataAttrs}>
+                <span class="source-name">${escapeHtml(src.source_name)}</span>
                 <span class="duration-time">${src.duration_value > 0 ? timeStr : '--:--'}</span>
             </span>`;
         }).join('');
@@ -182,9 +201,9 @@ class ResolutionCenterManager {
         return `
             <div class="review-item" data-resolution-id="${resolutionId}">
                 <div class="track-info">
-                    <div class="track-title">${this.escapeHtml(item.track.title)}</div>
+                    <div class="track-title">${escapeHtml(item.track.title)}</div>
                     <div class="track-meta">
-                        ${this.escapeHtml(item.album.artist)} - ${this.escapeHtml(item.album.title)}
+                        ${escapeHtml(item.album.artist)} - ${escapeHtml(item.album.title)}
                     </div>
                 </div>
                 <div class="sources-summary" id="sources-${resolutionId}">
@@ -212,10 +231,7 @@ class ResolutionCenterManager {
 
     async loadUnprocessedQueue() {
         try {
-            const response = await fetch(
-                `${API_BASE}/duration/tracks?page=${this.unprocessedPage}&limit=${this.pageSize}`
-            );
-            const data = await response.json();
+            const data = await durationAPI.getUnprocessed(this.unprocessedPage, this.pageSize);
 
             this.unprocessedTotalPages = data.total_pages || 1;
             this.unprocessedItems = data.tracks || [];
@@ -250,13 +266,13 @@ class ResolutionCenterManager {
         return `
             <div class="unprocessed-item" data-track-id="${item.id}">
                 <div class="unprocessed-track-info">
-                    <div class="unprocessed-track-title">${this.escapeHtml(item.title)}</div>
+                    <div class="unprocessed-track-title">${escapeHtml(item.title)}</div>
                     <div class="unprocessed-track-meta">
-                        ${this.escapeHtml(item.artist)} - ${this.escapeHtml(item.album_title)}
+                        ${escapeHtml(item.artist)} - ${escapeHtml(item.album_title)}
                     </div>
                 </div>
                 <div>
-                    <button class="btn btn-secondary btn-small unprocessed-manual-btn" data-track-id="${item.id}" data-title="${this.escapeHtml(item.title)}">Manual</button>
+                    <button class="btn btn-secondary btn-small unprocessed-manual-btn" data-track-id="${item.id}" data-title="${escapeHtml(item.title)}">Manual</button>
                 </div>
             </div>
         `;
@@ -274,7 +290,7 @@ class ResolutionCenterManager {
 
     openUnprocessedManualModal(trackId, title) {
         this.currentReviewId = null;
-        document.getElementById('modal-title').textContent = `Manual Duration: ${this.escapeHtml(title)}`;
+        document.getElementById('modal-title').textContent = `Manual Duration: ${escapeHtml(title)}`;
         document.getElementById('modal-body').innerHTML = `
             <div class="manual-input">
                 <label>Enter Duration:</label>
@@ -303,7 +319,7 @@ class ResolutionCenterManager {
 
         const totalSeconds = (minutes * 60) + seconds;
         if (totalSeconds <= 0) {
-            this.showNotification('Please enter a valid duration', 'error');
+            showNotification('Please enter a valid duration', 'error');
             return;
         }
 
@@ -320,15 +336,15 @@ class ResolutionCenterManager {
             const data = await response.json();
             if (response.ok) {
                 this.closeModal();
-                this.showNotification('Duration saved', 'success');
+                showNotification('Duration saved', 'success');
                 this.loadStats();
                 this.loadUnprocessedQueue();
             } else {
-                this.showNotification(data.error || 'Failed to save duration', 'error');
+                showNotification(data.error || 'Failed to save duration', 'error');
             }
         } catch (error) {
             console.error('Failed to save manual duration:', error);
-            this.showNotification('Failed to save duration', 'error');
+            showNotification('Failed to save duration', 'error');
         }
     }
 
@@ -349,10 +365,7 @@ class ResolutionCenterManager {
 
     async loadResolvedQueue() {
         try {
-            const response = await fetch(
-                `${API_BASE}/duration/review/resolved?page=${this.resolvedPage}&limit=${this.pageSize}`
-            );
-            const data = await response.json();
+            const data = await durationAPI.getResolved(this.resolvedPage, this.pageSize);
 
             this.resolvedTotalPages = data.total_pages || 1;
             this.resolvedItems = data.items || [];
@@ -393,7 +406,7 @@ class ResolutionCenterManager {
             const matchClass = src.caused_match ? ' caused-match' : ' not-caused-match';
 
             return `<span class="source-badge ${className}${matchClass}">
-                <span class="source-name">${this.escapeHtml(src.source_name)}</span>
+                <span class="source-name">${escapeHtml(src.source_name)}</span>
                 <span class="duration-time">${timeStr}</span>
             </span>`;
         }).join('');
@@ -401,9 +414,9 @@ class ResolutionCenterManager {
         return `
             <div class="review-item" data-resolution-id="${item.resolution.id}">
                 <div class="track-info">
-                    <div class="track-title">${this.escapeHtml(item.track.title)}</div>
+                    <div class="track-title">${escapeHtml(item.track.title)}</div>
                     <div class="track-meta">
-                        ${this.escapeHtml(item.album.artist)} - ${this.escapeHtml(item.album.title)}
+                        ${escapeHtml(item.album.artist)} - ${escapeHtml(item.album.title)}
                     </div>
                 </div>
                 <div class="sources-summary">
@@ -439,15 +452,15 @@ class ResolutionCenterManager {
             });
 
             if (response.ok) {
-                this.showNotification('Track moved to needs review', 'success');
+                showNotification('Track moved to needs review', 'success');
                 this.loadResolvedQueue();
             } else {
                 const data = await response.json();
-                this.showNotification(data.error || 'Failed to reject', 'error');
+                showNotification(data.error || 'Failed to reject', 'error');
             }
         } catch (error) {
             console.error('Failed to reject resolved track:', error);
-            this.showNotification('Failed to reject', 'error');
+            showNotification('Failed to reject', 'error');
         }
     }
 
@@ -469,11 +482,10 @@ class ResolutionCenterManager {
         this.currentReviewId = resolutionId;
 
         try {
-            const response = await fetch(`${API_BASE}/duration/review/${resolutionId}`);
-            const data = await response.json();
+            const data = await durationAPI.getReviewDetails(resolutionId);
 
             if (!data.resolution) {
-                this.showNotification('Resolution not found', 'error');
+                showNotification('Resolution not found', 'error');
                 return;
             }
 
@@ -483,18 +495,18 @@ class ResolutionCenterManager {
             const album = data.album;
             const selectedSourceId = this.selectedSources[resolutionId];
 
-            document.getElementById('modal-title').textContent = `Review: ${this.escapeHtml(track.title)}`;
+            document.getElementById('modal-title').textContent = `Review: ${escapeHtml(track.title)}`;
 
             let selectedSourceInfo = '';
             if (selectedSourceId) {
                 const selectedSource = sources.find(s => s.id === selectedSourceId);
                 if (selectedSource) {
-                    const formatted = this.formatDuration(selectedSource.duration_value);
+                    const formatted = formatDuration(selectedSource.duration_value);
                     selectedSourceInfo = `
                         <div class="selected-source-info">
                             <span class="selected-label">Selected:</span>
                             <span class="source-badge ${selectedSource.source_name.toLowerCase().replace(' ', '-')} selected">
-                                ${this.escapeHtml(selectedSource.source_name)} - ${formatted}
+                                ${escapeHtml(selectedSource.source_name)} - ${formatted}
                             </span>
                         </div>
                     `;
@@ -502,28 +514,28 @@ class ResolutionCenterManager {
             }
 
             let sourcesHtml = sources.map(src => {
-                const formatted = this.formatDuration(src.duration);
+                const formatted = formatDuration(src.duration);
                 const errorDisplay = src.error_message
-                    ? `<div style="color: #c62828; font-size: 13px;">Error: ${this.escapeHtml(src.error_message)}</div>`
+                    ? `<div style="color: #c62828; font-size: 13px;">Error: ${escapeHtml(src.error_message)}</div>`
                     : `<div class="source-scores">
                         <span>Match: ${(src.match_score * 100).toFixed(0)}%</span>
                         <span>Confidence: ${(src.confidence * 100).toFixed(0)}%</span>
                        </div>`;
 
                 const isSelected = selectedSourceId === src.id;
-                const clickHandler = src.duration_value > 0
-                    ? `onclick="reviewManager.selectSource(${resolutionId}, ${src.id})" style="cursor: pointer;"`
+                const dataAttrs = src.duration_value > 0
+                    ? `data-source-id="${src.id}"`
                     : '';
 
                 return `
-                    <div class="source-detail ${isSelected ? 'selected' : ''}" id="source-${src.id}" data-source-id="${src.id}" data-duration="${src.duration_value}" ${clickHandler}>
+                    <div class="source-detail ${isSelected ? 'selected' : ''}" id="source-${src.id}" data-source-id="${src.id}" data-duration="${src.duration_value}" ${dataAttrs}>
                         <div class="source-header">
-                            <span class="source-name">${this.escapeHtml(src.source_name)}</span>
+                            <span class="source-name">${escapeHtml(src.source_name)}</span>
                             <span class="source-duration">${src.duration_value > 0 ? formatted : 'N/A'}</span>
                         </div>
                         ${errorDisplay}
                         ${src.external_url && !src.error_message
-                            ? `<div style="margin-top: 8px;"><a href="${this.escapeHtml(src.external_url)}" target="_blank" rel="noopener">View on ${this.escapeHtml(src.source_name)}</a></div>`
+                            ? `<div style="margin-top: 8px;"><a href="${escapeHtml(src.external_url)}" target="_blank" rel="noopener">View on ${escapeHtml(src.source_name)}</a></div>`
                             : ''
                         }
                     </div>
@@ -533,7 +545,7 @@ class ResolutionCenterManager {
             document.getElementById('modal-body').innerHTML = `
                 ${selectedSourceInfo}
                 <div style="margin-bottom: 16px;">
-                    <strong>${this.escapeHtml(album.artist)}</strong> - ${this.escapeHtml(album.title)}
+                    <strong>${escapeHtml(album.artist)}</strong> - ${escapeHtml(album.title)}
                 </div>
                 ${sourcesHtml}
                 <div class="manual-input">
@@ -558,7 +570,7 @@ class ResolutionCenterManager {
             document.getElementById('review-modal').classList.remove('hidden');
         } catch (error) {
             console.error('Failed to load review details:', error);
-            this.showNotification('Failed to load review details', 'error');
+            showNotification('Failed to load review details', 'error');
         }
     }
 
@@ -570,45 +582,32 @@ class ResolutionCenterManager {
     async applySelected(resolutionId) {
         const selectedSourceId = this.selectedSources[resolutionId];
         if (!selectedSourceId) {
-            this.showNotification('Please select a source first', 'error');
+            showNotification('Please select a source first', 'error');
             return;
         }
 
         const reviewItem = this.reviewItems.find(item => item.resolution.id === resolutionId);
         if (!reviewItem) {
-            this.showNotification('Review item not found', 'error');
+            showNotification('Review item not found', 'error');
             return;
         }
 
         const source = reviewItem.sources.find(s => s.id === selectedSourceId);
         if (!source) {
-            this.showNotification('Source not found', 'error');
+            showNotification('Source not found', 'error');
             return;
         }
 
         try {
-            const response = await fetch(`${API_BASE}/duration/review/${resolutionId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'apply',
-                    duration: source.duration_value,
-                    notes: ''
-                })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to apply');
-            }
+            await durationAPI.submitReview(resolutionId, 'apply', source.duration_value, '');
 
             delete this.selectedSources[resolutionId];
             await this.loadStats();
             await this.loadReviewQueue();
-            this.showNotification('Duration applied successfully', 'success');
+            showNotification('Duration applied successfully', 'success');
         } catch (error) {
             console.error('Failed to apply:', error);
-            this.showNotification(error.message, 'error');
+            showNotification(error.message, 'error');
         }
     }
 
@@ -632,7 +631,7 @@ class ResolutionCenterManager {
         } else if (manualDuration > 0) {
             await this.submitManual(resolutionId, manualDuration, notes);
         } else {
-            this.showNotification('Please select a source or enter a valid duration', 'error');
+            showNotification('Please select a source or enter a valid duration', 'error');
         }
     }
 
@@ -643,34 +642,43 @@ class ResolutionCenterManager {
 
     async submitReview(resolutionId, action, duration, notes) {
         try {
-            const response = await fetch(`${API_BASE}/duration/review/${resolutionId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: action,
-                    duration: duration,
-                    notes: notes
-                })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to submit review');
-            }
+            await durationAPI.submitReview(resolutionId, action, duration, notes);
 
             this.closeModal();
             await this.loadStats();
             await this.loadReviewQueue();
-            this.showNotification('Review submitted successfully', 'success');
+            showNotification('Review submitted successfully', 'success');
         } catch (error) {
             console.error('Failed to submit review:', error);
-            this.showNotification(error.message, 'error');
+            showNotification(error.message, 'error');
         }
     }
 
     async submitManual(resolutionId, duration, notes) {
         if (!duration || duration <= 0) {
-            this.showNotification('Please enter a valid duration', 'error');
+            showNotification('Please enter a valid duration', 'error');
+            return;
+        }
+        await this.submitReview(resolutionId, 'manual', parseInt(duration), notes);
+    }
+
+    async submitReview(resolutionId, action, duration, notes) {
+        try {
+            await durationAPI.submitReview(resolutionId, action, duration, notes);
+
+            this.closeModal();
+            await this.loadStats();
+            await this.loadReviewQueue();
+            showNotification('Review submitted successfully', 'success');
+        } catch (error) {
+            console.error('Failed to submit review:', error);
+            showNotification(error.message, 'error');
+        }
+    }
+
+    async submitManual(resolutionId, duration, notes) {
+        if (!duration || duration <= 0) {
+            showNotification('Please enter a valid duration', 'error');
             return;
         }
         await this.submitReview(resolutionId, 'manual', parseInt(duration), notes);
@@ -678,49 +686,37 @@ class ResolutionCenterManager {
 
     async startBulkResolution() {
         try {
-            const response = await fetch(`${API_BASE}/duration/resolve/start`, { method: 'POST' });
-
-            if (!response.ok) {
-                throw new Error('Failed to start bulk resolution');
-            }
+            await durationAPI.startBulkResolution();
 
             this.updateBulkButtons('running');
-            this.showNotification('Bulk resolution started', 'success');
+            showNotification('Bulk resolution started', 'success');
         } catch (error) {
             console.error('Failed to start bulk resolution:', error);
-            this.showNotification(error.message, 'error');
+            showNotification(error.message, 'error');
         }
     }
 
     async pauseBulkResolution() {
         try {
-            const response = await fetch(`${API_BASE}/duration/resolve/pause`, { method: 'POST' });
-
-            if (!response.ok) {
-                throw new Error('Failed to pause bulk resolution');
-            }
+            await durationAPI.pauseBulkResolution();
 
             this.updateBulkButtons('paused');
-            this.showNotification('Bulk resolution paused', 'success');
+            showNotification('Bulk resolution paused', 'success');
         } catch (error) {
             console.error('Failed to pause bulk resolution:', error);
-            this.showNotification(error.message, 'error');
+            showNotification(error.message, 'error');
         }
     }
 
     async resumeBulkResolution() {
         try {
-            const response = await fetch(`${API_BASE}/duration/resolve/resume`, { method: 'POST' });
-
-            if (!response.ok) {
-                throw new Error('Failed to resume bulk resolution');
-            }
+            await durationAPI.resumeBulkResolution();
 
             this.updateBulkButtons('running');
-            this.showNotification('Bulk resolution resumed', 'success');
+            showNotification('Bulk resolution resumed', 'success');
         } catch (error) {
             console.error('Failed to resume bulk resolution:', error);
-            this.showNotification(error.message, 'error');
+            showNotification(error.message, 'error');
         }
     }
 
@@ -730,17 +726,13 @@ class ResolutionCenterManager {
         }
 
         try {
-            const response = await fetch(`${API_BASE}/duration/resolve/cancel`, { method: 'POST' });
-
-            if (!response.ok) {
-                throw new Error('Failed to cancel bulk resolution');
-            }
+            await durationAPI.cancelBulkResolution();
 
             this.updateBulkButtons('idle');
-            this.showNotification('Bulk resolution cancelled', 'success');
+            showNotification('Bulk resolution cancelled', 'success');
         } catch (error) {
             console.error('Failed to cancel bulk resolution:', error);
-            this.showNotification(error.message, 'error');
+            showNotification(error.message, 'error');
         }
     }
 
@@ -773,12 +765,11 @@ class ResolutionCenterManager {
 
     async updateProgress() {
         try {
-            const response = await fetch(`${API_BASE}/duration/resolve/progress`);
-            const progress = await response.json();
+            const progress = await durationAPI.getProgress();
 
             const container = document.getElementById('progress-container');
             const isRunning = progress.status === 'running' || progress.status === 'paused';
-            
+
             // Track if resolution was running to detect completion
             if (isRunning) {
                 this.wasRunning = true;
@@ -787,13 +778,13 @@ class ResolutionCenterManager {
             if (progress.status === 'idle' || progress.status === 'completed') {
                 container.classList.add('hidden');
                 this.updateBulkButtons('idle');
-                
+
                 // Reload stats and review queue when resolution completes
                 if (this.wasRunning && progress.processed_tracks > 0) {
                     await this.loadStats();
                     await this.loadReviewQueue();
-                    this.showNotification(
-                        `Resolution complete: ${progress.resolved_count} resolved, ${progress.needs_review_count} need review, ${progress.failed_count} failed`, 
+                    showNotification(
+                        `Resolution complete: ${progress.resolved_count} resolved, ${progress.needs_review_count} need review, ${progress.failed_count} failed`,
                         'success'
                     );
                     this.wasRunning = false;
@@ -824,36 +815,27 @@ class ResolutionCenterManager {
         }
 
         try {
-            const response = await fetch(`${API_BASE}/duration/review`, { method: 'GET' });
-            const data = await response.json();
+            const data = await durationAPI.getReviewQueue(1, 1000);
 
             const items = data.items || [];
             const resolutionIds = items.map(item => item.resolution.id);
 
             if (resolutionIds.length === 0) {
-                this.showNotification('No items to apply', 'info');
+                showNotification('No items to apply', 'info');
                 return;
             }
 
-            const applyResponse = await fetch(`${API_BASE}/duration/review/bulk`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'apply_all',
-                    resolution_ids: resolutionIds
-                })
+            await api.post('/duration/review/bulk', {
+                action: 'apply_all',
+                resolution_ids: resolutionIds
             });
-
-            if (!applyResponse.ok) {
-                throw new Error('Failed to apply all');
-            }
 
             await this.loadStats();
             await this.loadReviewQueue();
-            this.showNotification('Applied all reviews successfully', 'success');
+            showNotification('Applied all reviews successfully', 'success');
         } catch (error) {
             console.error('Failed to apply all:', error);
-            this.showNotification(error.message, 'error');
+            showNotification(error.message, 'error');
         }
     }
 
@@ -863,36 +845,27 @@ class ResolutionCenterManager {
         }
 
         try {
-            const response = await fetch(`${API_BASE}/duration/review`, { method: 'GET' });
-            const data = await response.json();
+            const data = await durationAPI.getReviewQueue(1, 1000);
 
             const items = data.items || [];
             const resolutionIds = items.map(item => item.resolution.id);
 
             if (resolutionIds.length === 0) {
-                this.showNotification('No items to reject', 'info');
+                showNotification('No items to reject', 'info');
                 return;
             }
 
-            const rejectResponse = await fetch(`${API_BASE}/duration/review/bulk`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'reject_all',
-                    resolution_ids: resolutionIds
-                })
+            await api.post('/duration/review/bulk', {
+                action: 'reject_all',
+                resolution_ids: resolutionIds
             });
-
-            if (!rejectResponse.ok) {
-                throw new Error('Failed to reject all');
-            }
 
             await this.loadStats();
             await this.loadReviewQueue();
-            this.showNotification('Rejected all reviews', 'success');
+            showNotification('Rejected all reviews', 'success');
         } catch (error) {
             console.error('Failed to reject all:', error);
-            this.showNotification(error.message, 'error');
+            showNotification(error.message, 'error');
         }
     }
 
@@ -916,29 +889,11 @@ class ResolutionCenterManager {
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
-
-    escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification ${type}`;
-        notification.textContent = message;
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.style.animation = 'slideOut 0.3s ease';
-            setTimeout(() => notification.remove(), 300);
-        }, 4000);
-    }
 }
 
 let reviewManager;
 
 document.addEventListener('DOMContentLoaded', () => {
     reviewManager = new ResolutionCenterManager();
+    window.reviewManager = reviewManager; // Make available globally for inline onclick handlers
 });

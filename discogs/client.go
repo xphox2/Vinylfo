@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"vinylfo/config"
 )
 
 func logToFile(format string, args ...interface{}) {
@@ -57,16 +59,8 @@ func (rl *RateLimiter) Wait(isAuth bool) {
 	rl.Lock()
 	defer rl.Unlock()
 
-	isAuthStr := "auth"
-	if !isAuth {
-		isAuthStr = "anon"
-	}
-
 	now := time.Now()
 	elapsed := now.Sub(rl.windowStart)
-
-	logToFile("RATELIMIT [%s]: Check at %s, elapsed=%v, window_start=%s",
-		isAuthStr, now.Format("15:04:05.000"), elapsed, rl.windowStart.Format("15:04:05"))
 
 	if elapsed >= RateLimitWindow {
 		rl.windowStart = time.Now()
@@ -80,8 +74,6 @@ func (rl *RateLimiter) Wait(isAuth bool) {
 		} else {
 			rl.anonRemaining = AnonRequests
 		}
-		logToFile("RATELIMIT [%s]: Window RESET, auth=%d, anon=%d",
-			isAuthStr, rl.authRemaining, rl.anonRemaining)
 	}
 
 	remaining := rl.authRemaining
@@ -90,19 +82,10 @@ func (rl *RateLimiter) Wait(isAuth bool) {
 	}
 
 	remainingThreshold := 5
-	waitCount := 0
 	for remaining <= remainingThreshold {
-		waitCount++
 		now := time.Now()
 		sleepTime := rl.windowStart.Add(RateLimitWindow).Sub(now)
 		if sleepTime > 0 {
-			if rl.anonRemaining <= remainingThreshold && remaining > remainingThreshold {
-				logToFile("RATELIMIT [%s]: Anonymous limit approaching (anon_rem=%d), sleeping %v until window reset (wait #%d)",
-					isAuthStr, rl.anonRemaining, sleepTime, waitCount)
-			} else {
-				logToFile("RATELIMIT [%s]: Rate limit approaching (%s_rem=%d), sleeping %v until window reset (wait #%d)",
-					isAuthStr, isAuthStr, remaining, sleepTime, waitCount)
-			}
 			time.Sleep(sleepTime)
 		}
 		rl.windowStart = time.Now()
@@ -121,12 +104,7 @@ func (rl *RateLimiter) Wait(isAuth bool) {
 		if !isAuth {
 			remaining = rl.anonRemaining
 		}
-		logToFile("RATELIMIT [%s]: After wake - auth_rem=%d, anon_rem=%d",
-			isAuthStr, rl.authRemaining, rl.anonRemaining)
 	}
-
-	logToFile("RATELIMIT [%s]: Proceeding with request, auth_rem=%d, anon_rem=%d",
-		isAuthStr, rl.authRemaining, rl.anonRemaining)
 }
 
 func (rl *RateLimiter) GetDebugInfo() string {
@@ -170,11 +148,9 @@ func (rl *RateLimiter) UpdateFromHeaders(resp *http.Response) {
 			if rlAuthRem != "" {
 				if rem, err := strconv.Atoi(rlAuthRem); err == nil {
 					rl.authRemaining = rem
-					logToFile("RATELIMIT HEADERS: Updated auth_remaining=%d from header", rl.authRemaining)
 				}
 			} else {
 				rl.authRemaining = limit
-				logToFile("RATELIMIT HEADERS: No remaining header, set to limit=%d", rl.authRemaining)
 			}
 		}
 	}
@@ -214,7 +190,6 @@ func (rl *RateLimiter) WaitForReset(retryAfter int) {
 	if sleepTime <= 0 {
 		sleepTime = RateLimitWindow
 	}
-	logToFile("RATELIMIT: Waiting %v for rate limit reset (Retry-After: %ds)", sleepTime, retryAfter)
 	time.Sleep(sleepTime)
 	rl.windowStart = time.Now()
 	rl.authRemaining = rl.lastAuthLimit
@@ -250,7 +225,7 @@ type Client struct {
 func NewClient(apiKey string) *Client {
 	return &Client{
 		APIKey:      apiKey,
-		HTTPClient:  &http.Client{Timeout: 60 * time.Second},
+		HTTPClient:  config.DiscogsClient(),
 		RateLimiter: NewRateLimiter(),
 	}
 }
@@ -258,7 +233,7 @@ func NewClient(apiKey string) *Client {
 func NewClientWithOAuth(apiKey string, oauth *OAuthConfig) *Client {
 	client := &Client{
 		APIKey:      apiKey,
-		HTTPClient:  &http.Client{Timeout: 60 * time.Second},
+		HTTPClient:  config.DiscogsClient(),
 		RateLimiter: NewRateLimiter(),
 		OAuth:       oauth,
 	}

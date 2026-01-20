@@ -179,17 +179,78 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Back to tracks button handler
-    document.getElementById('back-to-tracks').addEventListener('click', function() {
-        document.querySelectorAll('.view').forEach(view => {
-            view.style.display = 'none';
+    const backToTracksBtn = document.getElementById('back-to-tracks');
+    if (backToTracksBtn) {
+        backToTracksBtn.addEventListener('click', function() {
+            document.querySelectorAll('.view').forEach(view => {
+                view.style.display = 'none';
+            });
+            document.getElementById('tracks-view').style.display = 'block';
+            loadTracks();
         });
-        document.getElementById('tracks-view').style.display = 'block';
-        loadTracks();
-    });
+    }
+
+    // Search handlers
+    const albumSearchInput = document.getElementById('album-search');
+    if (albumSearchInput) {
+        albumSearchInput.addEventListener('input', function(e) {
+            clearTimeout(albumSearchTimeout);
+            const query = e.target.value.trim();
+            albumSearchTimeout = setTimeout(() => {
+                window.albumPagination.page = 1;
+                if (query) {
+                    searchAlbums(query);
+                } else {
+                    loadAlbums();
+                }
+            }, 300);
+        });
+    }
+
+    const albumSearchClear = document.querySelector('#albums-view .search-clear');
+    if (albumSearchClear) {
+        albumSearchClear.addEventListener('click', function() {
+            const searchInput = document.getElementById('album-search');
+            searchInput.value = '';
+            window.albumPagination.page = 1;
+            loadAlbums();
+            searchInput.focus();
+        });
+    }
+
+    const trackSearchInput = document.getElementById('track-search');
+    if (trackSearchInput) {
+        trackSearchInput.addEventListener('input', function(e) {
+            clearTimeout(trackSearchTimeout);
+            const query = e.target.value.trim();
+            trackSearchTimeout = setTimeout(() => {
+                window.trackPagination.page = 1;
+                if (query) {
+                    searchTracks(query);
+                } else {
+                    loadTracks();
+                }
+            }, 300);
+        });
+    }
+
+    const trackSearchClear = document.querySelector('#tracks-view .search-clear');
+    if (trackSearchClear) {
+        trackSearchClear.addEventListener('click', function() {
+            const searchInput = document.getElementById('track-search');
+            searchInput.value = '';
+            window.trackPagination.page = 1;
+            loadTracks();
+            searchInput.focus();
+        });
+    }
 
     // Load initial data
     loadAlbums();
 });
+
+let albumSearchTimeout;
+let trackSearchTimeout;
 
 // Helper function to format duration
 function formatDuration(seconds) {
@@ -314,50 +375,6 @@ function renderTracks(tracks) {
         list.appendChild(item);
     });
 }
-
-let albumSearchTimeout;
-document.getElementById('album-search').addEventListener('input', function(e) {
-    clearTimeout(albumSearchTimeout);
-    const query = e.target.value.trim();
-    albumSearchTimeout = setTimeout(() => {
-        window.albumPagination.page = 1;
-        if (query) {
-            searchAlbums(query);
-        } else {
-            loadAlbums();
-        }
-    }, 300);
-});
-
-document.querySelector('#albums-view .search-clear').addEventListener('click', function() {
-    const searchInput = document.getElementById('album-search');
-    searchInput.value = '';
-    window.albumPagination.page = 1;
-    loadAlbums();
-    searchInput.focus();
-});
-
-let trackSearchTimeout;
-document.getElementById('track-search').addEventListener('input', function(e) {
-    clearTimeout(trackSearchTimeout);
-    const query = e.target.value.trim();
-    trackSearchTimeout = setTimeout(() => {
-        window.trackPagination.page = 1;
-        if (query) {
-            searchTracks(query);
-        } else {
-            loadTracks();
-        }
-    }, 300);
-});
-
-document.querySelector('#tracks-view .search-clear').addEventListener('click', function() {
-    const searchInput = document.getElementById('track-search');
-    searchInput.value = '';
-    window.trackPagination.page = 1;
-    loadTracks();
-    searchInput.focus();
-});
 
 function searchAlbums(query) {
     window.albumPagination.query = query;

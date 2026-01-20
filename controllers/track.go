@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"vinylfo/models"
+	"vinylfo/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -37,9 +38,18 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 		UpdatedAt    string `json:"updated_at"`
 	}
 
-	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "25"))
+	pageStr := ctx.DefaultQuery("page", "1")
+	limitStr := ctx.DefaultQuery("limit", "25")
 	excludeIDs := ctx.Query("exclude_track_ids")
+
+	if !utils.ValidateRequest(ctx,
+		utils.ValidatePageParams(pageStr, limitStr),
+	) {
+		return
+	}
+
+	page, _ := strconv.Atoi(pageStr)
+	limit, _ := strconv.Atoi(limitStr)
 
 	if page < 1 {
 		page = 1
@@ -79,7 +89,7 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 	result := baseQuery.Offset(offset).Limit(limit).Find(&tracks)
 
 	if result.Error != nil {
-		ctx.JSON(500, gin.H{"error": "Failed to fetch tracks"})
+		utils.InternalError(ctx, "Failed to fetch tracks")
 		return
 	}
 
@@ -88,7 +98,7 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 		totalPages++
 	}
 
-	ctx.JSON(200, gin.H{
+	utils.Success(ctx, 200, gin.H{
 		"data":       tracks,
 		"page":       page,
 		"limit":      limit,
@@ -186,6 +196,11 @@ func (c *TrackController) SearchTracks(ctx *gin.Context) {
 
 func (c *TrackController) GetTrackByID(ctx *gin.Context) {
 	id := ctx.Param("id")
+	trackID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		utils.BadRequest(ctx, "Invalid track ID")
+		return
+	}
 
 	var trackData struct {
 		ID           uint   `json:"id"`
@@ -204,67 +219,94 @@ func (c *TrackController) GetTrackByID(ctx *gin.Context) {
 
 	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist, albums.release_year as release_year, albums.genre as album_genre").
 		Joins("left join albums on tracks.album_id = albums.id").
-		Where("tracks.id = ?", id).
+		Where("tracks.id = ?", trackID).
 		First(&trackData)
 
 	if result.Error != nil {
-		ctx.JSON(404, gin.H{"error": "Track not found"})
+		utils.NotFound(ctx, "Track not found")
 		return
 	}
 
-	ctx.JSON(200, trackData)
+	utils.Success(ctx, 200, trackData)
 }
 
 func (c *TrackController) CreateTrack(ctx *gin.Context) {
 	var track models.Track
 	if err := ctx.ShouldBindJSON(&track); err != nil {
-		ctx.JSON(400, gin.H{"error": err.Error()})
+		utils.BadRequest(ctx, err.Error())
+		return
+	}
+
+	if !utils.ValidateRequest(ctx,
+		utils.ValidateRequired(track.AlbumID, "album_id"),
+		utils.ValidateRequired(track.Title, "title"),
+		utils.ValidateStringNotEmpty(track.Title, "title"),
+	) {
 		return
 	}
 
 	result := c.db.Create(&track)
 	if result.Error != nil {
-		ctx.JSON(500, gin.H{"error": "Failed to create track"})
+		utils.InternalError(ctx, "Failed to create track")
 		return
 	}
-	ctx.JSON(201, track)
+	utils.Created(ctx, track)
 }
 
 func (c *TrackController) UpdateTrack(ctx *gin.Context) {
 	id := ctx.Param("id")
+	trackID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		utils.BadRequest(ctx, "Invalid track ID")
+		return
+	}
+
 	var track models.Track
-	result := c.db.First(&track, id)
+	result := c.db.First(&track, trackID)
 	if result.Error != nil {
-		ctx.JSON(404, gin.H{"error": "Track not found"})
+		utils.NotFound(ctx, "Track not found")
 		return
 	}
 
 	if err := ctx.ShouldBindJSON(&track); err != nil {
-		ctx.JSON(400, gin.H{"error": err.Error()})
+		utils.BadRequest(ctx, err.Error())
+		return
+	}
+
+	if !utils.ValidateRequest(ctx,
+		utils.ValidateRequired(track.Title, "title"),
+		utils.ValidateStringNotEmpty(track.Title, "title"),
+	) {
 		return
 	}
 
 	result = c.db.Save(&track)
 	if result.Error != nil {
-		ctx.JSON(500, gin.H{"error": "Failed to update track"})
+		utils.InternalError(ctx, "Failed to update track")
 		return
 	}
-	ctx.JSON(200, track)
+	utils.Success(ctx, 200, track)
 }
 
 func (c *TrackController) DeleteTrack(ctx *gin.Context) {
 	id := ctx.Param("id")
+	trackID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		utils.BadRequest(ctx, "Invalid track ID")
+		return
+	}
+
 	var track models.Track
-	result := c.db.First(&track, id)
+	result := c.db.First(&track, trackID)
 	if result.Error != nil {
-		ctx.JSON(404, gin.H{"error": "Track not found"})
+		utils.NotFound(ctx, "Track not found")
 		return
 	}
 
 	result = c.db.Delete(&track)
 	if result.Error != nil {
-		ctx.JSON(500, gin.H{"error": "Failed to delete track"})
+		utils.InternalError(ctx, "Failed to delete track")
 		return
 	}
-	ctx.JSON(200, gin.H{"message": "Track deleted successfully"})
+	utils.Success(ctx, 200, gin.H{"message": "Track deleted successfully"})
 }

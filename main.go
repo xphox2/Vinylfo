@@ -1,14 +1,20 @@
 package main
 
 import (
+	"context"
 	"html/template"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
+	"vinylfo/config"
 	"vinylfo/controllers"
 	"vinylfo/database"
 	"vinylfo/discogs"
@@ -28,6 +34,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
+	db.Logger.LogMode(logger.Info)
 
 	validationResult := discogs.ValidateOAuthConfig()
 	if !validationResult.IsValid {
@@ -37,7 +44,10 @@ func main() {
 
 	playbackController = controllers.NewPlaybackController(db)
 
-	go playbackController.SimulateTimer()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go playbackController.SimulateTimer(ctx)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -102,8 +112,40 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("Server starting on port %s", port)
-	if err := r.Run(":" + port); err != nil {
-		log.Fatal("Failed to start server:", err)
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: r,
 	}
+
+	go func() {
+		log.Printf("Server starting on port %s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal("Failed to start server:", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), config.HTTP.ShutdownTimeout)
+	defer shutdownCancel()
+
+	cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Printf("Error getting database connection: %v", err)
+	} else {
+		if err := sqlDB.Close(); err != nil {
+			log.Printf("Error closing database connection: %v", err)
+		}
+	}
+
+	log.Println("Server exited")
 }

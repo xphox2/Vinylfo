@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"time"
 
 	"vinylfo/controllers"
@@ -22,8 +23,31 @@ func SetupRoutes(r *gin.Engine) {
 	settingsController := controllers.NewSettingsController(db)
 
 	r.GET("/health", func(c *gin.Context) {
+		sqlDB, err := db.DB()
+		if err != nil {
+			c.JSON(503, gin.H{
+				"status":    "unhealthy",
+				"error":     "database connection error",
+				"timestamp": time.Now().Unix(),
+			})
+			return
+		}
+
+		pingCtx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		if err := sqlDB.PingContext(pingCtx); err != nil {
+			c.JSON(503, gin.H{
+				"status":    "unhealthy",
+				"error":     "database ping failed",
+				"timestamp": time.Now().Unix(),
+			})
+			return
+		}
+
 		c.JSON(200, gin.H{
 			"status":    "healthy",
+			"database":  "connected",
 			"timestamp": time.Now().Unix(),
 		})
 	})

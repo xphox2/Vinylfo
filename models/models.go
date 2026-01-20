@@ -29,18 +29,15 @@ type Album struct {
 type Track struct {
 	ID           uint   `gorm:"primaryKey;autoIncrement" json:"id"`
 	AlbumID      uint   `gorm:"not null;index" json:"album_id"`
-	AlbumTitle   string `json:"album_title"`
 	Title        string `gorm:"not null" json:"title"`
-	Duration     int    `json:"duration"`     // Duration in seconds
-	TrackNumber  int    `json:"track_number"` // Track number on album
-	DiscNumber   int    `json:"disc_number"`  // Which disc (1, 2, 3...)
-	Side         string `json:"side"`         // Side position (A1, B2, C1, etc.)
-	Position     string `json:"position"`     // Full position code
+	Duration     int    `gorm:"index" json:"duration"` // Duration in seconds
+	TrackNumber  int    `json:"track_number"`          // Track number on album
+	DiscNumber   int    `json:"disc_number"`           // Which disc (1, 2, 3...)
+	Side         string `json:"side"`                  // Side position (A1, B2, C1, etc.)
+	Position     string `json:"position"`              // Full position code
 	AudioFileURL string `json:"audio_file_url"`
-	ReleaseYear  int    `json:"release_year"` // From album
-	AlbumGenre   string `json:"album_genre"`  // From album
 
-	DurationSource string `gorm:"size:50;default:'discogs'" json:"duration_source"`
+	DurationSource string `gorm:"size:50;default:'discogs';index" json:"duration_source"`
 	// Values: "discogs" (original), "resolved" (from API consensus), "manual" (user entered)
 
 	DurationNeedsReview bool `gorm:"default:false;index" json:"duration_needs_review"`
@@ -105,10 +102,10 @@ type SessionNote struct {
 type TrackHistory struct {
 	ID          uint      `gorm:"primaryKey;autoIncrement" json:"id"`
 	TrackID     uint      `gorm:"not null;index" json:"track_id"`
-	PlaylistID  string    `json:"playlist_id"` // Which playlist played from
+	PlaylistID  string    `gorm:"index" json:"playlist_id"` // Which playlist played from
 	ListenCount int       `gorm:"default:0" json:"listen_count"`
-	LastPlayed  time.Time `json:"last_played"` // When last played
-	Progress    int       `json:"progress"`    // Last saved position
+	LastPlayed  time.Time `gorm:"index" json:"last_played"` // When last played
+	Progress    int       `json:"progress"`                 // Last saved position
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -119,9 +116,9 @@ type SyncLog struct {
 	DiscogsID  int       `gorm:"index" json:"discogs_id"`
 	AlbumTitle string    `gorm:"size:255" json:"album_title"`
 	Artist     string    `gorm:"size:255" json:"artist"`
-	ErrorType  string    `gorm:"size:50" json:"error_type"` // "album" or "tracks"
+	ErrorType  string    `gorm:"size:50;index" json:"error_type"` // "album" or "tracks"
 	ErrorMsg   string    `gorm:"type:text" json:"error_msg"`
-	CreatedAt  time.Time `json:"created_at"`
+	CreatedAt  time.Time `gorm:"index" json:"created_at"`
 }
 
 // SyncProgress tracks the sync progress for resume capability
@@ -135,7 +132,7 @@ type SyncProgress struct {
 	CurrentPage    int       `json:"current_page"`                     // Current page in folder
 	Processed      int       `json:"processed"`                        // Total albums processed
 	TotalAlbums    int       `json:"total_albums"`                     // Total albums to process
-	Status         string    `gorm:"size:20" json:"status"`            // "running", "paused", "completed", "cancelled"
+	Status         string    `gorm:"size:20;index" json:"status"`      // "running", "paused", "completed", "cancelled"
 	LastBatchJSON  string    `gorm:"type:text" json:"last_batch_json"` // JSON serialized LastBatch for resume
 	LastActivityAt time.Time `json:"last_activity_at"`                 // Last time sync made progress
 	CreatedAt      time.Time `json:"created_at"`
@@ -188,7 +185,7 @@ type DurationResolution struct {
 	AlbumID uint `gorm:"not null;index" json:"album_id"`       // Denormalized for faster album-based queries
 
 	// Resolution status
-	Status string `gorm:"size:20;not null;default:'pending'" json:"status"`
+	Status string `gorm:"size:20;not null;default:'pending';index" json:"status"`
 	// Status values:
 	//   "pending"      - Not yet processed
 	//   "in_progress"  - Currently being resolved
@@ -232,7 +229,7 @@ type DurationResolverProgress struct {
 	ID uint `gorm:"primaryKey;autoIncrement" json:"id"`
 
 	// Current status
-	Status string `gorm:"size:20;not null;default:'idle'" json:"status"`
+	Status string `gorm:"size:20;not null;default:'idle';index" json:"status"`
 	// Status values: "idle", "running", "paused", "completed", "failed", "cancelled"
 
 	// Progress counters
