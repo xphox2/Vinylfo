@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
+	"strings"
 
 	"vinylfo/duration"
 	"vinylfo/models"
@@ -499,18 +499,8 @@ func (c *YouTubeController) ExportPlaylist(ctx *gin.Context) {
 func (c *YouTubeController) updateTrackYouTubeInfo(trackID uint, videoID string) {
 }
 
-func generateSecureState() string {
-	return fmt.Sprintf("%d_%d_%s", time.Now().UnixNano(), time.Now().Unix(), randomString(16))
-}
-
-func randomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, length)
-	for i := range b {
-		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
-	}
-	return string(b)
-}
+// Note: generateSecureState and randomString are deprecated in favor of PKCE.
+// State is now generated securely via utils.CreatePKCEState() using crypto/rand.
 
 const oauthSuccessHTML = `<!DOCTYPE html>
 <html lang="en">
@@ -539,6 +529,8 @@ const oauthSuccessHTML = `<!DOCTYPE html>
 </html>`
 
 func oauthErrorHTML(message string) string {
+	// HTML-escape the message to prevent XSS
+	escapedMessage := htmlEscapeString(message)
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -546,10 +538,10 @@ func oauthErrorHTML(message string) string {
     <meta http-equiv="refresh" content="5;url=/settings">
     <title>Error - Vinylfo</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;
                background-color: #f5f5f5; }
-        .container { text-align: center; padding: 2rem; background: white; border-radius: 8px; 
+        .container { text-align: center; padding: 2rem; background: white; border-radius: 8px;
                      box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         .error { color: #dc3545; font-size: 48px; margin-bottom: 1rem; }
         h1 { color: #333; margin-bottom: 0.5rem; }
@@ -560,9 +552,21 @@ func oauthErrorHTML(message string) string {
     <div class="container">
         <div class="error">&#10006;</div>
         <h1>Connection Failed</h1>
-        <p>` + message + `</p>
+        <p>` + escapedMessage + `</p>
         <p>Redirecting to settings...</p>
     </div>
 </body>
 </html>`
+}
+
+// htmlEscapeString escapes special HTML characters to prevent XSS
+func htmlEscapeString(s string) string {
+	replacer := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		`"`, "&quot;",
+		"'", "&#39;",
+	)
+	return replacer.Replace(s)
 }

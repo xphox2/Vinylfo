@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6-alpha] - 2026-01-20
+
+### Changed
+
+#### YouTube Playlist Manager Page Redesign
+- **Simplified Page Layout**: Streamlined `/youtube` page to focus on playlist management
+  - Renamed page from "YouTube Integration" to "YouTube Playlist Manager"
+  - Removed "Connect Your YouTube Account" section (connection now handled via Settings page)
+  - Removed "Recent Uploads" tab - page now only shows user's playlists
+  - Removed "Your Channel" section to reduce clutter
+  - Cleaner, more focused interface for playlist management
+- **Added Delete Functionality**: Each playlist now has a Delete button
+  - Click Delete to remove playlist from YouTube (with confirmation prompt)
+  - Confirmation dialog shows playlist name before deletion
+- **Improved User Experience**:
+  - Added loading indicator when refreshing playlists
+  - Added retry logic with polling for slow YouTube API responses
+  - Shows progress message: "Refreshing playlists (this may take a moment)..."
+  - Retries up to 3 times with 1.5 second delays between attempts
+  - Graceful fallback with info notification if playlist doesn't appear
+
+### Fixed
+
+#### Security Fixes
+- **XSS Vulnerability in OAuth Error Page**: Fixed potential cross-site scripting vulnerability in `oauthErrorHTML()` where error messages were not HTML-escaped
+  - Added `htmlEscapeString()` helper function to escape special HTML characters (`&`, `<`, `>`, `"`, `'`)
+  - Error messages from OAuth flow (including user-controlled `error` query parameter) are now properly escaped
+  - File: `controllers/youtube.go`
+
+#### Bug Fixes
+- **Request Body Not Re-readable on API Retry**: Fixed issue where retry after 401 Unauthorized would fail because the request body (an `io.Reader`) had already been consumed
+  - Added `makeAuthenticatedRequestWithBytes()` helper that reads body upfront and recreates the reader on retry
+  - Ensures POST/PUT requests to YouTube API can be properly retried after token refresh
+  - File: `duration/youtube_oauth_client.go`
+
+- **Rate Limiter Test Timeout**: Fixed rate limiter tests that were timing out because they expected `Wait()` to complete quickly when remaining requests were low
+  - Tests now set `windowStart` to the past so the rate limit window is already expired
+  - Added separate test cases for no-wait and wait scenarios
+  - Added threshold boundary testing
+  - File: `discogs/rate_limiter_test.go`
+
+---
+
 ## [0.2.5-alpha] - 2026-01-20
 
 ### Added

@@ -405,6 +405,20 @@ func (c *YouTubeOAuthClient) RevokeToken() error {
 }
 
 func (c *YouTubeOAuthClient) makeAuthenticatedRequest(ctx context.Context, method, url string, body io.Reader) (*http.Response, error) {
+	// Read body content upfront so we can retry if needed
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read request body: %w", err)
+		}
+	}
+
+	return c.makeAuthenticatedRequestWithBytes(ctx, method, url, bodyBytes)
+}
+
+func (c *YouTubeOAuthClient) makeAuthenticatedRequestWithBytes(ctx context.Context, method, url string, bodyBytes []byte) (*http.Response, error) {
 	if err := c.ensureValidToken(); err != nil {
 		return nil, err
 	}
@@ -413,7 +427,12 @@ func (c *YouTubeOAuthClient) makeAuthenticatedRequest(ctx context.Context, metho
 
 	c.RateLimiter.Wait()
 
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	var bodyReader io.Reader
+	if bodyBytes != nil {
+		bodyReader = strings.NewReader(string(bodyBytes))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -431,7 +450,8 @@ func (c *YouTubeOAuthClient) makeAuthenticatedRequest(ctx context.Context, metho
 		if err := c.RefreshToken(); err != nil {
 			return nil, fmt.Errorf("token refresh failed: %w", err)
 		}
-		return c.makeAuthenticatedRequest(ctx, method, url, body)
+		// Retry with same body bytes (can be re-read)
+		return c.makeAuthenticatedRequestWithBytes(ctx, method, url, bodyBytes)
 	}
 
 	return resp, nil
