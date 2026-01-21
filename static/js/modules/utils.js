@@ -261,6 +261,26 @@ export function cleanAlbumTitle(albumTitle, trackTitle) {
     return albumTitle;
 }
 
+// Normalize artist name - removes disambiguation suffixes like "(2)", "(3)", "(rapper)", etc.
+export function normalizeArtistName(name) {
+    if (!name) return '';
+    return name.replace(/\s*\(\d+\)\s*$/, '').replace(/\s*\([^)]*(?:rapper|singer|artist|band|musician|producer|dj|DJ)\)\s*$/i, '').trim();
+}
+
+// Normalize title - removes edition suffixes like "(Remastered)", "(Deluxe)", etc.
+export function normalizeTitle(title) {
+    if (!title) return '';
+    let normalized = title;
+    // Apply up to 3 times to handle multiple suffixes
+    for (let i = 0; i < 3; i++) {
+        const prev = normalized;
+        // Only match content inside parentheses at the end, like "(Remastered)" or "(Deluxe Edition)"
+        normalized = normalized.replace(/\s*\((?:[^)]*\s)?(?:remaster(?:ed)?|digital|deluxe|bonus|anniversary|expanded|special|collector|limited|edition|version|mix|remix|mono|stereo|selected works|works|hits|best of|greatest|complete|original|enhanced)(?:\s[^)]*)?\)\s*$/gi, '').trim();
+        if (normalized === prev) break;
+    }
+    return normalized;
+}
+
 // Make utility functions globally available for backward compatibility
 window.escapeHtml = escapeHtml;
 window.formatDuration = formatDuration;
@@ -284,3 +304,5 @@ window.session = session;
 window.copyToClipboard = copyToClipboard;
 window.showNotification = showNotification;
 window.cleanAlbumTitle = cleanAlbumTitle;
+window.normalizeArtistName = normalizeArtistName;
+window.normalizeTitle = normalizeTitle;

@@ -599,11 +599,16 @@ function loadSessions() {
                 const playlistName = session.playlist_name || playlistId;
                 
                 let queueInfo = '';
-                try {
-                    const queue = JSON.parse(session.queue || '[]');
-                    queueInfo = `<p>Tracks in queue: ${queue.length}</p>`;
-                } catch (e) {
-                    queueInfo = '';
+                if (session.queue_count !== undefined) {
+                    queueInfo = `<p>Tracks in queue: ${session.queue_count}</p>`;
+                } else {
+                    // Fallback for old sessions
+                    try {
+                        const queue = JSON.parse(session.queue || '[]');
+                        queueInfo = `<p>Tracks in queue: ${queue.length}</p>`;
+                    } catch (e) {
+                        queueInfo = '';
+                    }
                 }
                 
                 item.innerHTML = `
@@ -628,21 +633,46 @@ function loadSessions() {
 }
 
 function restoreSession(playlistId) {
-    console.log('Restoring session for playlist:', playlistId);
+    console.log('Restoring session for playlist:', playlistId, typeof playlistId);
+    const body = { playlist_id: playlistId };
+    console.log('Sending request body:', JSON.stringify(body));
+    console.log('Content-Type:', 'application/json');
     fetch('/playback/restore', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playlist_id: playlistId })
+        headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify(body)
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Restore response status:', response.status);
+        if (!response.ok) {
+            return response.text().then(text => {
+                console.error('Error response body:', text);
+                throw new Error(`HTTP ${response.status}: ${text}`);
+            });
+        }
+        return response.json();
+    })
     .then(data => {
         console.log('Session restored:', data);
         if (data.track) {
+            // Save the queue position and queue for restoration
+            if (data.queue_position !== undefined) {
+                localStorage.setItem('vinylfo_queuePosition', data.queue_position.toString());
+                console.log('Saved queue position:', data.queue_position);
+            }
+            if (data.queue && data.queue.length > 0) {
+                localStorage.setItem('vinylfo_queue', JSON.stringify(data.queue));
+                localStorage.setItem('vinylfo_queueIndex', data.queue_index.toString());
+                console.log('Saved queue with', data.queue.length, 'tracks');
+            }
             window.location.href = '/player';
         }
     })
     .catch(error => {
         console.error('Error restoring session:', error);
-        alert('Failed to restore session');
+        alert('Failed to restore session: ' + error.message);
     });
 }

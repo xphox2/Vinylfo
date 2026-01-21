@@ -80,6 +80,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### New API Endpoints
 - `POST /api/youtube/clear-cache` - Clear web search cache
 
+### Fixed
+
+#### Playback Queue Not Displaying
+- **Fixed queue showing null when playing playlists**: The `order` column in `SessionPlaylist` table is a MySQL reserved keyword causing SQL syntax errors
+  - Added backtick escaping to all `ORDER BY` clauses using `order` column
+  - Fixed in `controllers/playback.go`, `controllers/playlist.go`, `controllers/youtube_sync.go`, `services/youtube_sync_service.go`
+  - Queue now properly displays all tracks in playlist
+
+#### Playback Session Restore Failing
+- **Fixed 400 Bad Request on session restore**: `io.ReadAll(ctx.Request.Body)` was consuming the request body before `ShouldBindJSON` could parse it
+  - Replaced with manual JSON parsing using `json.Unmarshal`
+  - Added debug logging to trace request body parsing
+  - Session restore now works correctly
+
+#### Playback Dashboard Queue Position Not Restored
+- **Fixed queue position not being restored when resuming session**: Frontend was ignoring `queue_position` field in restore response
+  - Added `vinylfo_queuePosition`, `vinylfo_queue`, and `vinylfo_queueIndex` to localStorage on restore
+  - `loadCurrentPlayback()` now restores queue and position from localStorage if saved
+  - Added `queue_position` to `GET /playback/current` response
+
+#### Sessions Page Shows Zero Tracks in Queue
+- **Fixed queue count showing 0 for sessions**: Frontend was parsing deprecated `session.queue` JSON field instead of querying `SessionPlaylist` table
+  - Updated `GET /sessions` endpoint to return `queue_count` from `SessionPlaylist` table
+  - Frontend now displays correct track count from backend
+
+#### Playback Session Not Loading on Player Page
+- **Fixed player page not restoring playback state**: `playback-dashboard.js` wasn't using saved playlist ID from localStorage
+  - Added code to read `vinylfo_currentPlaylistId` on page load
+  - `loadCurrentPlayback()` now includes `playlist_id` query parameter
+  - Playback state now restores correctly when navigating to `/player`
+
+#### Resolution Center Display Showing Unnormalized Names
+- **Fixed junk like "(2)" and "(Remastered)" showing in resolution center**: UI was displaying raw database values instead of normalized names
+  - Added `normalizeArtistName()` and `normalizeTitle()` functions to `static/js/modules/utils.js`
+  - Updated resolution-center.js to normalize display of track titles, album titles, and artist names
+  - Matches backend normalization logic for consistent display
+
+#### Wikipedia Client Not Using Normalized Names
+- **Fixed Wikipedia searches not finding matches due to disambiguation suffixes**: Wikipedia client was searching with raw artist/album names instead of normalized ones
+  - Updated `SearchTrack()` to use `NormalizeArtistName()` and `NormalizeTitle()` for album page search
+  - Updated `findMatchingTrack()` to normalize both search title and track titles before matching
+  - Wikipedia now finds more matches for artists like "Sublime (2)"
+
 ---
 
 ## [0.2.6-alpha] - 2026-01-20

@@ -98,7 +98,7 @@ func (c *YouTubeSyncController) GetMatches(ctx *gin.Context) {
 
 	// Get all tracks in the playlist
 	var playlistTracks []models.SessionPlaylist
-	if err := c.db.Where("session_id = ?", playlistID).Order("\"order\"").Find(&playlistTracks).Error; err != nil {
+	if err := c.db.Where("session_id = ?", playlistID).Order("`order` ASC").Find(&playlistTracks).Error; err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get playlist tracks"})
 		return
 	}

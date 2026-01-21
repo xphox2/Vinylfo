@@ -1,5 +1,5 @@
 import { api, durationAPI } from './modules/api.js';
-import { escapeHtml, formatDuration, showNotification } from './modules/utils.js';
+import { escapeHtml, formatDuration, showNotification, normalizeArtistName, normalizeTitle } from './modules/utils.js';
 
 const API_BASE = '/api';
 
@@ -172,12 +172,12 @@ class ResolutionCenterManager {
         const selectedSourceId = this.selectedSources[resolutionId];
 
         const sourceBadges = sources.map(src => {
-            let className = 'no-result';
+            let className;
 
-            if (src.error_message) {
-                className = 'error';
-            } else if (src.duration_value > 0) {
+            if (src.duration_value > 0) {
                 className = src.source_name.toLowerCase().replace(/[.\s]/g, '');
+            } else {
+                className = 'error';
             }
 
             const isSelected = selectedSourceId === src.id;
@@ -201,9 +201,9 @@ class ResolutionCenterManager {
         return `
             <div class="review-item" data-resolution-id="${resolutionId}">
                 <div class="track-info">
-                    <div class="track-title">${escapeHtml(item.track.title)}</div>
+                    <div class="track-title">${escapeHtml(normalizeTitle(item.track.title))}</div>
                     <div class="track-meta">
-                        ${escapeHtml(item.album.artist)} - ${escapeHtml(item.album.title)}
+                        ${escapeHtml(normalizeArtistName(item.album.artist))} - ${escapeHtml(normalizeTitle(item.album.title))}
                     </div>
                 </div>
                 <div class="sources-summary" id="sources-${resolutionId}">
@@ -414,9 +414,9 @@ class ResolutionCenterManager {
         return `
             <div class="review-item" data-resolution-id="${item.resolution.id}">
                 <div class="track-info">
-                    <div class="track-title">${escapeHtml(item.track.title)}</div>
+                    <div class="track-title">${escapeHtml(normalizeTitle(item.track.title))}</div>
                     <div class="track-meta">
-                        ${escapeHtml(item.album.artist)} - ${escapeHtml(item.album.title)}
+                        ${escapeHtml(normalizeArtistName(item.album.artist))} - ${escapeHtml(normalizeTitle(item.album.title))}
                     </div>
                 </div>
                 <div class="sources-summary">
@@ -495,7 +495,7 @@ class ResolutionCenterManager {
             const album = data.album;
             const selectedSourceId = this.selectedSources[resolutionId];
 
-            document.getElementById('modal-title').textContent = `Review: ${escapeHtml(track.title)}`;
+            document.getElementById('modal-title').textContent = `Review: ${escapeHtml(normalizeTitle(track.title))}`;
 
             let selectedSourceInfo = '';
             if (selectedSourceId) {
@@ -545,7 +545,7 @@ class ResolutionCenterManager {
             document.getElementById('modal-body').innerHTML = `
                 ${selectedSourceInfo}
                 <div style="margin-bottom: 16px;">
-                    <strong>${escapeHtml(album.artist)}</strong> - ${escapeHtml(album.title)}
+                    <strong>${escapeHtml(normalizeArtistName(album.artist))}</strong> - ${escapeHtml(normalizeTitle(album.title))}
                 </div>
                 ${sourcesHtml}
                 <div class="manual-input">
@@ -643,28 +643,6 @@ class ResolutionCenterManager {
     closeModal() {
         this.currentReviewId = null;
         document.getElementById('review-modal').classList.add('hidden');
-    }
-
-    async submitReview(resolutionId, action, duration, notes) {
-        try {
-            await durationAPI.submitReview(resolutionId, action, duration, notes);
-
-            this.closeModal();
-            await this.loadStats();
-            await this.loadReviewQueue();
-            showNotification('Review submitted successfully', 'success');
-        } catch (error) {
-            console.error('Failed to submit review:', error);
-            showNotification(error.message, 'error');
-        }
-    }
-
-    async submitManual(resolutionId, duration, notes) {
-        if (!duration || duration <= 0) {
-            showNotification('Please enter a valid duration', 'error');
-            return;
-        }
-        await this.submitReview(resolutionId, 'manual', parseInt(duration), notes);
     }
 
     async submitReview(resolutionId, action, duration, notes) {
@@ -886,13 +864,6 @@ class ResolutionCenterManager {
         document.getElementById('page-info').textContent = `Page ${this.currentPage} of ${this.totalPages}`;
         document.getElementById('prev-page').disabled = this.currentPage <= 1;
         document.getElementById('next-page').disabled = this.currentPage >= this.totalPages;
-    }
-
-    formatDuration(seconds) {
-        if (!seconds || seconds <= 0) return 'N/A';
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 }
 

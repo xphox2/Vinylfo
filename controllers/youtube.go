@@ -320,10 +320,6 @@ func (c *YouTubeController) AddTrackToPlaylist(ctx *gin.Context) {
 		return
 	}
 
-	if input.TrackID > 0 {
-		c.updateTrackYouTubeInfo(input.TrackID, input.VideoID)
-	}
-
 	ctx.JSON(http.StatusCreated, gin.H{
 		"message":     "Video added to playlist successfully",
 		"playlist_id": playlistID,
@@ -497,8 +493,6 @@ func (c *YouTubeController) ExportPlaylist(ctx *gin.Context) {
 	})
 }
 
-func (c *YouTubeController) updateTrackYouTubeInfo(trackID uint, videoID string) {
-}
 
 // Note: generateSecureState and randomString are deprecated in favor of PKCE.
 // State is now generated securely via utils.CreatePKCEState() using crypto/rand.

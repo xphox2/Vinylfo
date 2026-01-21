@@ -477,7 +477,7 @@ type MatchPlaylistResult struct {
 func (s *YouTubeSyncService) MatchPlaylist(ctx context.Context, playlistID string, force bool, useApiFallback bool) (*MatchPlaylistResult, error) {
 	// Get all tracks in the playlist
 	var playlistTracks []models.SessionPlaylist
-	if err := s.db.Where("session_id = ?", playlistID).Order("\"order\"").Find(&playlistTracks).Error; err != nil {
+	if err := s.db.Where("session_id = ?", playlistID).Order("`order` ASC").Find(&playlistTracks).Error; err != nil {
 		return nil, fmt.Errorf("failed to get playlist tracks: %w", err)
 	}
 
@@ -562,7 +562,7 @@ func (s *YouTubeSyncService) SyncPlaylistToYouTube(ctx context.Context, req Sync
 
 	// Get all tracks in the playlist with their matches
 	var playlistTracks []models.SessionPlaylist
-	if err := s.db.Where("session_id = ?", req.PlaylistID).Order("\"order\"").Find(&playlistTracks).Error; err != nil {
+	if err := s.db.Where("session_id = ?", req.PlaylistID).Order("`order` ASC").Find(&playlistTracks).Error; err != nil {
 		return nil, fmt.Errorf("failed to get playlist tracks: %w", err)
 	}
 

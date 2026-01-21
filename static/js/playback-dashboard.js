@@ -2,6 +2,11 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Playback dashboard loaded');
 
+    const savedPlaylistId = localStorage.getItem('vinylfo_currentPlaylistId');
+    if (savedPlaylistId) {
+        console.log('[PlaybackManager] Found saved playlist ID:', savedPlaylistId);
+    }
+
     window.playbackManager = new PlaybackManager();
     window.playbackManager.init();
 });
@@ -17,115 +22,7 @@ function cleanAlbumTitle(albumTitle, trackTitle) {
     return albumTitle;
 }
 
-class TabSyncManager {
-    constructor() {
-        this.channel = new BroadcastChannel('vinylfo_playback_channel');
-        this.tabId = this.generateTabId();
-        this.setupListeners();
-        console.log('[TabSync] Channel initialized, tabId:', this.tabId);
-    }
-
-    generateTabId() {
-        return 'tab_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
-    }
-
-    setupListeners() {
-        this.channel.onmessage = (event) => {
-            const { type, data, sourceTabId, timestamp } = event.data;
-            if (sourceTabId === this.tabId) {
-                console.log('[TabSync] Ignoring own message:', type);
-                return;
-            }
-            console.log('[TabSync] Received:', type, 'from', sourceTabId);
-
-            switch (type) {
-                case 'state_update':
-                    this.handleStateUpdate(data);
-                    break;
-                case 'play':
-                    this.handlePlay(data);
-                    break;
-                case 'pause':
-                    this.handlePause();
-                    break;
-                case 'stop':
-                    this.handleStop();
-                    break;
-                case 'skip':
-                    this.handleSkip(data);
-                    break;
-                case 'seek':
-                    this.handleSeek(data);
-                    break;
-            }
-        };
-    }
-
-    broadcast(type, data = {}) {
-        const message = {
-            type,
-            data,
-            sourceTabId: this.tabId,
-            timestamp: Date.now()
-        };
-        console.log('[TabSync] Broadcasting:', type, 'with data:', data);
-        this.channel.postMessage(message);
-    }
-
-    handleStateUpdate(data) {
-        console.log('[TabSync] Dispatching state_update event');
-        window.dispatchEvent(new CustomEvent('vinylfo_state_update', { detail: data }));
-    }
-
-    handlePlay(data) {
-        console.log('[TabSync] Dispatching play event');
-        window.dispatchEvent(new CustomEvent('vinylfo_play', { detail: data }));
-    }
-
-    handlePause() {
-        console.log('[TabSync] Dispatching pause event');
-        window.dispatchEvent(new CustomEvent('vinylfo_pause'));
-    }
-
-    handleStop() {
-        console.log('[TabSync] Dispatching stop event');
-        window.dispatchEvent(new CustomEvent('vinylfo_stop'));
-    }
-
-    handleSkip(data) {
-        console.log('[TabSync] Dispatching skip event');
-        window.dispatchEvent(new CustomEvent('vinylfo_skip', { detail: data }));
-    }
-
-    handleSeek(data) {
-        console.log('[TabSync] Dispatching seek event');
-        window.dispatchEvent(new CustomEvent('vinylfo_seek', { detail: data }));
-    }
-
-    broadcastStateUpdate(state) {
-        this.broadcast('state_update', state);
-    }
-
-    broadcastPlay(track, position) {
-        this.broadcast('play', { track, position });
-    }
-
-    broadcastPause() {
-        this.broadcast('pause');
-    }
-
-    broadcastStop() {
-        this.broadcast('stop');
-    }
-
-    broadcastSkip(track, queueIndex, queue) {
-        this.broadcast('skip', { track, queueIndex, queue });
-    }
-
-    broadcastSeek(position) {
-        this.broadcast('seek', { position });
-    }
-}
+// TabSyncManager is loaded from tab-sync-manager.js
 
 class PlaybackManager {
     constructor() {
@@ -167,7 +64,14 @@ class PlaybackManager {
 
     async loadCurrentPlayback() {
         try {
-            const response = await fetch('/playback/current');
+            let url = '/playback/current';
+            const savedPlaylistId = localStorage.getItem('vinylfo_currentPlaylistId');
+            if (savedPlaylistId) {
+                url = `/playback/current?playlist_id=${encodeURIComponent(savedPlaylistId)}`;
+                console.log('[PlaybackManager] Loading playback for saved playlist:', savedPlaylistId);
+            }
+
+            const response = await fetch(url);
             const data = await response.json();
             
             console.log('[PlaybackManager] loadCurrentPlayback response:', JSON.stringify(data, null, 2));
@@ -202,9 +106,41 @@ class PlaybackManager {
                 }
                 
                 if (data.queue && data.queue.length > 0) {
+                    console.log('[PlaybackManager] Queue received, count:', data.queue.length);
                     this.queue = data.queue;
                     this.queueIndex = data.queue_index || 0;
+                    console.log('[PlaybackManager] Queue first 3:', this.queue.slice(0, 3).map(t => t.title));
                     this.renderQueue();
+                } else {
+                    console.log('[PlaybackManager] No queue in response');
+                    // Check for saved queue from restore
+                    const savedQueue = localStorage.getItem('vinylfo_queue');
+                    const savedQueueIndex = localStorage.getItem('vinylfo_queueIndex');
+                    if (savedQueue) {
+                        try {
+                            this.queue = JSON.parse(savedQueue);
+                            this.queueIndex = parseInt(savedQueueIndex) || 0;
+                            console.log('[PlaybackManager] Restored queue from localStorage, count:', this.queue.length);
+                            this.renderQueue();
+                            // Clear saved queue
+                            localStorage.removeItem('vinylfo_queue');
+                            localStorage.removeItem('vinylfo_queueIndex');
+                        } catch (e) {
+                            console.error('[PlaybackManager] Error parsing saved queue:', e);
+                        }
+                    }
+                }
+
+                // Restore queue position
+                const savedPosition = localStorage.getItem('vinylfo_queuePosition');
+                if (savedPosition) {
+                    this.currentPosition = parseInt(savedPosition) || 0;
+                    console.log('[PlaybackManager] Restored queue position:', this.currentPosition);
+                    this.updatePositionDisplay();
+                    localStorage.removeItem('vinylfo_queuePosition');
+                } else if (data.queue_position !== undefined) {
+                    this.currentPosition = data.queue_position;
+                    this.updatePositionDisplay();
                 }
 
                 const playlistInfo = document.getElementById('playlist-info');

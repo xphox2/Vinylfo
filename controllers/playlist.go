@@ -24,7 +24,43 @@ func (c *PlaylistController) GetSessions(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch playback sessions"})
 		return
 	}
-	ctx.JSON(200, sessions)
+
+	// Build response with queue counts
+	type SessionResponse struct {
+		PlaylistID    string    `json:"playlist_id"`
+		PlaylistName  string    `json:"playlist_name"`
+		TrackID       uint      `json:"track_id"`
+		QueueIndex    int       `json:"queue_index"`
+		QueuePosition int       `json:"queue_position"`
+		Status        string    `json:"status"`
+		QueueCount    int       `json:"queue_count"`
+		StartedAt     time.Time `json:"started_at"`
+		LastPlayedAt  time.Time `json:"last_played_at"`
+		CreatedAt     time.Time `json:"created_at"`
+		UpdatedAt     time.Time `json:"updated_at"`
+	}
+
+	var response []SessionResponse
+	for _, s := range sessions {
+		var queueCount int64
+		c.db.Model(&models.SessionPlaylist{}).Where("session_id = ?", s.PlaylistID).Count(&queueCount)
+
+		response = append(response, SessionResponse{
+			PlaylistID:    s.PlaylistID,
+			PlaylistName:  s.PlaylistName,
+			TrackID:       s.TrackID,
+			QueueIndex:    s.QueueIndex,
+			QueuePosition: s.QueuePosition,
+			Status:        s.Status,
+			QueueCount:    int(queueCount),
+			StartedAt:     s.StartedAt,
+			LastPlayedAt:  s.LastPlayedAt,
+			CreatedAt:     s.CreatedAt,
+			UpdatedAt:     s.UpdatedAt,
+		})
+	}
+
+	ctx.JSON(200, response)
 }
 
 func (c *PlaylistController) GetSessionByID(ctx *gin.Context) {
@@ -158,7 +194,7 @@ func (c *PlaylistController) GetSessionPlaylistTracks(ctx *gin.Context) {
 	sessionID := ctx.Param("id")
 
 	var playlistEntries []models.SessionPlaylist
-	result := c.db.Where("session_id = ?", sessionID).Order("order ASC").Find(&playlistEntries)
+	result := c.db.Where("session_id = ?", sessionID).Order("`order` ASC").Find(&playlistEntries)
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch playlist entries"})
 		return
@@ -484,36 +520,4 @@ func (c *PlaylistController) ShufflePlaylist(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, gin.H{"message": "Playlist shuffled"})
-}
-
-func (c *PlaylistController) PlayPlaylist(ctx *gin.Context, playbackManager *PlaybackManager) {
-	playlistID := ctx.Param("id")
-
-	var entries []models.SessionPlaylist
-	result := c.db.Where("session_id = ?", playlistID).Order("`order` ASC").Find(&entries)
-	if result.Error != nil || len(entries) == 0 {
-		ctx.JSON(404, gin.H{"error": "Playlist not found or empty"})
-		return
-	}
-
-	firstTrackEntry := entries[0]
-	var track models.Track
-	result = c.db.First(&track, firstTrackEntry.TrackID)
-	if result.Error != nil {
-		ctx.JSON(404, gin.H{"error": "Track not found"})
-		return
-	}
-
-	var session models.PlaybackSession
-	c.db.FirstOrCreate(&session, models.PlaybackSession{PlaylistID: playlistID})
-
-	playbackManager.SetCurrentTrack(playlistID, &track)
-	playbackManager.UpdatePosition(playlistID, 0)
-
-	ctx.JSON(200, gin.H{
-		"message":     "Playlist playback started",
-		"track_id":    track.ID,
-		"title":       track.Title,
-		"playlist_id": playlistID,
-	})
 }

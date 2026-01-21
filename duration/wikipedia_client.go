@@ -77,18 +77,23 @@ func (c *WikipediaClient) SearchTrack(ctx context.Context, title, artist, album 
 		return nil, nil
 	}
 
-	log.Printf("WIKI: Searching for album '%s' by '%s'", album, artist)
+	// Normalize for searching
+	normalizedAlbum := NormalizeTitle(album)
+	normalizedArtist := NormalizeArtistName(artist)
+	normalizedTitle := NormalizeTitle(title)
 
-	pageTitle, err := c.searchAlbumPage(ctx, album, artist)
+	log.Printf("WIKI: Searching for album '%s' (normalized: '%s') by '%s' (normalized: '%s')", album, normalizedAlbum, artist, normalizedArtist)
+
+	pageTitle, err := c.searchAlbumPage(ctx, normalizedAlbum, normalizedArtist)
 	if err != nil {
 		return nil, fmt.Errorf("album search failed: %w", err)
 	}
 	if pageTitle == "" {
-		log.Printf("WIKI: No page found for album '%s'", album)
+		log.Printf("WIKI: No page found for album '%s'", normalizedAlbum)
 		return nil, nil
 	}
 
-	log.Printf("WIKI: Found page '%s' for album '%s'", pageTitle, album)
+	log.Printf("WIKI: Found page '%s' for album '%s'", pageTitle, normalizedAlbum)
 
 	content, err := c.getPageContent(ctx, pageTitle)
 	if err != nil {
@@ -108,9 +113,9 @@ func (c *WikipediaClient) SearchTrack(ctx context.Context, title, artist, album 
 		return nil, nil
 	}
 
-	track := c.findMatchingTrack(tracks, title)
+	track := c.findMatchingTrack(tracks, normalizedTitle)
 	if track == nil {
-		log.Printf("WIKI: No matching track found for '%s' (searched %d tracks)", title, len(tracks))
+		log.Printf("WIKI: No matching track found for '%s' (searched %d tracks)", normalizedTitle, len(tracks))
 		return nil, nil
 	}
 
@@ -517,12 +522,14 @@ func (c *WikipediaClient) cleanWikiMarkup(s string) string {
 func (c *WikipediaClient) findMatchingTrack(tracks []TrackInfo, searchTitle string) *TrackInfo {
 	var bestMatch *TrackInfo
 	var bestScore float64 = 0
-	searchTitleLower := strings.ToLower(searchTitle)
+	// Normalize the search title for matching
+	normalizedSearchTitle := NormalizeTitle(searchTitle)
+	searchTitleLower := strings.ToLower(normalizedSearchTitle)
 
 	for i := range tracks {
-		trackTitle := tracks[i].Title
+		trackTitle := NormalizeTitle(tracks[i].Title)
 		trackTitleLower := strings.ToLower(trackTitle)
-		score := stringSimilarity(searchTitle, trackTitle)
+		score := stringSimilarity(normalizedSearchTitle, trackTitle)
 
 		if strings.HasPrefix(trackTitleLower, searchTitleLower) {
 			score = 1.0
