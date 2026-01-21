@@ -2,9 +2,6 @@ package controllers
 
 import (
 	"context"
-	"log"
-	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -23,8 +20,8 @@ type DurationController struct {
 func NewDurationController(db *gorm.DB) *DurationController {
 	config := services.DefaultDurationResolverConfig()
 	config.ContactEmail = "https://github.com/xphox2/Vinylfo"
-	config.YouTubeAPIKey = os.Getenv("YOUTUBE_API_KEY")
-	config.LastFMAPIKey = os.Getenv("LASTFM_API_KEY")
+	config.YouTubeAPIKey = ""
+	config.LastFMAPIKey = ""
 
 	return &DurationController{
 		db:              db,
@@ -61,7 +58,7 @@ func (c *DurationController) GetTracksNeedingResolution(ctx *gin.Context) {
 	if err := query.Offset(offset).Limit(limit).
 		Order("album_id, track_number").
 		Find(&tracks).Error; err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -82,7 +79,7 @@ func (c *DurationController) GetTracksNeedingResolution(ctx *gin.Context) {
 		})
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
+	ctx.JSON(200, gin.H{
 		"tracks":      result,
 		"total":       total,
 		"page":        page,
@@ -110,7 +107,7 @@ func (c *DurationController) GetStatistics(ctx *gin.Context) {
 		Limit(10).
 		Find(&recentResolutions)
 
-	ctx.JSON(http.StatusOK, gin.H{
+	ctx.JSON(200, gin.H{
 		"total_tracks":       totalTracks,
 		"missing_duration":   missingDuration,
 		"resolved":           resolved,
@@ -123,7 +120,7 @@ func (c *DurationController) GetStatistics(ctx *gin.Context) {
 func (c *DurationController) ResolveTrack(ctx *gin.Context) {
 	trackID, err := strconv.Atoi(ctx.Param("id"))
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid track ID"})
+		ctx.JSON(400, gin.H{"error": "invalid track ID"})
 		return
 	}
 
@@ -131,7 +128,7 @@ func (c *DurationController) ResolveTrack(ctx *gin.Context) {
 
 	var track models.Track
 	if err := c.db.First(&track, trackID).Error; err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "track not found"})
+		ctx.JSON(404, gin.H{"error": "track not found"})
 		return
 	}
 
@@ -145,11 +142,11 @@ func (c *DurationController) ResolveTrack(ctx *gin.Context) {
 
 	resolution, err := c.resolverService.ResolveTrackDuration(resolveCtx, track)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
+	ctx.JSON(200, gin.H{
 		"resolution": resolution,
 		"message":    "Track resolution completed",
 	})
@@ -158,7 +155,7 @@ func (c *DurationController) ResolveTrack(ctx *gin.Context) {
 func (c *DurationController) SetManualDuration(ctx *gin.Context) {
 	trackID, err := strconv.Atoi(ctx.Param("id"))
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid track ID"})
+		ctx.JSON(400, gin.H{"error": "invalid track ID"})
 		return
 	}
 
@@ -168,22 +165,22 @@ func (c *DurationController) SetManualDuration(ctx *gin.Context) {
 	}
 
 	if err := ctx.ShouldBindJSON(&input); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
 	if input.Duration <= 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "duration must be positive"})
+		ctx.JSON(400, gin.H{"error": "duration must be positive"})
 		return
 	}
 
 	err = c.resolverService.ManuallySetDuration(uint(trackID), input.Duration, input.Notes)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
+	ctx.JSON(200, gin.H{
 		"message": "Manual duration saved",
 	})
 }
@@ -191,24 +188,24 @@ func (c *DurationController) SetManualDuration(ctx *gin.Context) {
 func (c *DurationController) ResolveAlbum(ctx *gin.Context) {
 	albumID, err := strconv.Atoi(ctx.Param("id"))
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid album ID"})
+		ctx.JSON(400, gin.H{"error": "invalid album ID"})
 		return
 	}
 
 	var album models.Album
 	if err := c.db.First(&album, albumID).Error; err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "album not found"})
+		ctx.JSON(404, gin.H{"error": "album not found"})
 		return
 	}
 
 	tracks, err := c.resolverService.GetTracksNeedingResolutionForAlbum(uint(albumID))
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	if len(tracks) == 0 {
-		ctx.JSON(http.StatusOK, gin.H{
+		ctx.JSON(200, gin.H{
 			"message":      "No tracks need resolution in this album",
 			"resolved":     0,
 			"needs_review": 0,
@@ -241,7 +238,7 @@ func (c *DurationController) ResolveAlbum(ctx *gin.Context) {
 		resolutions = append(resolutions, *resolution)
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
+	ctx.JSON(200, gin.H{
 		"message":      "Album resolution completed",
 		"total_tracks": len(tracks),
 		"resolved":     resolved,
@@ -254,13 +251,13 @@ func (c *DurationController) ResolveAlbum(ctx *gin.Context) {
 func (c *DurationController) GetResolutionStatus(ctx *gin.Context) {
 	trackID, err := strconv.Atoi(ctx.Param("id"))
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid track ID"})
+		ctx.JSON(400, gin.H{"error": "invalid track ID"})
 		return
 	}
 
 	var resolution models.DurationResolution
 	if err := c.db.Where("track_id = ?", trackID).First(&resolution).Error; err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "no resolution found for track"})
+		ctx.JSON(404, gin.H{"error": "no resolution found for track"})
 		return
 	}
 
@@ -270,7 +267,7 @@ func (c *DurationController) GetResolutionStatus(ctx *gin.Context) {
 	var album models.Album
 	c.db.First(&album, track.AlbumID)
 
-	ctx.JSON(http.StatusOK, gin.H{
+	ctx.JSON(200, gin.H{
 		"resolution": resolution,
 		"track": gin.H{
 			"id":       track.ID,
@@ -282,386 +279,5 @@ func (c *DurationController) GetResolutionStatus(ctx *gin.Context) {
 			"title":  album.Title,
 			"artist": album.Artist,
 		},
-	})
-}
-
-func (c *DurationController) GetReviewQueue(ctx *gin.Context) {
-	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
-
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 || limit > 50 {
-		limit = 20
-	}
-	offset := (page - 1) * limit
-
-	var total int64
-	c.db.Model(&models.DurationResolution{}).Where("status = ?", "needs_review").Count(&total)
-
-	var resolutions []models.DurationResolution
-	if err := c.db.
-		Where("status = ?", "needs_review").
-		Order("created_at DESC").
-		Offset(offset).Limit(limit).
-		Find(&resolutions).Error; err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	type SourceDisplay struct {
-		ID            uint    `json:"id"`
-		SourceName    string  `json:"source_name"`
-		DurationValue int     `json:"duration_value"`
-		MatchScore    float64 `json:"match_score"`
-		Confidence    float64 `json:"confidence"`
-		ExternalURL   string  `json:"external_url"`
-		ErrorMessage  string  `json:"error_message"`
-	}
-
-	type ReviewItem struct {
-		Resolution models.DurationResolution `json:"resolution"`
-		Sources    []SourceDisplay           `json:"sources"`
-		Track      models.Track              `json:"track"`
-		Album      models.Album              `json:"album"`
-	}
-
-	var items []ReviewItem
-	for _, res := range resolutions {
-		var track models.Track
-		var album models.Album
-		c.db.First(&track, res.TrackID)
-		c.db.First(&album, res.AlbumID)
-
-		var sourceModels []models.DurationSource
-		c.db.Where("resolution_id = ?", res.ID).Order("id").Find(&sourceModels)
-
-		var sources []SourceDisplay
-		for _, sm := range sourceModels {
-			sources = append(sources, SourceDisplay{
-				ID:            sm.ID,
-				SourceName:    sm.SourceName,
-				DurationValue: sm.DurationValue,
-				MatchScore:    sm.MatchScore,
-				Confidence:    sm.Confidence,
-				ExternalURL:   sm.ExternalURL,
-				ErrorMessage:  sm.ErrorMessage,
-			})
-		}
-
-		items = append(items, ReviewItem{
-			Resolution: res,
-			Sources:    sources,
-			Track:      track,
-			Album:      album,
-		})
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"items":       items,
-		"total":       total,
-		"page":        page,
-		"limit":       limit,
-		"total_pages": (total + int64(limit) - 1) / int64(limit),
-	})
-}
-
-func (c *DurationController) GetResolvedQueue(ctx *gin.Context) {
-	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
-
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 || limit > 50 {
-		limit = 20
-	}
-	offset := (page - 1) * limit
-
-	var total int64
-	c.db.Model(&models.DurationResolution{}).Where("status IN ?", []string{"resolved", "approved"}).Count(&total)
-
-	var resolutions []models.DurationResolution
-	if err := c.db.
-		Where("status IN ?", []string{"resolved", "approved"}).
-		Order("updated_at DESC").
-		Offset(offset).Limit(limit).
-		Find(&resolutions).Error; err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	type SourceDisplay struct {
-		ID            uint    `json:"id"`
-		SourceName    string  `json:"source_name"`
-		DurationValue int     `json:"duration_value"`
-		MatchScore    float64 `json:"match_score"`
-		Confidence    float64 `json:"confidence"`
-		ExternalURL   string  `json:"external_url"`
-		CausedMatch   bool    `json:"caused_match"`
-	}
-
-	type ResolvedItem struct {
-		Resolution models.DurationResolution `json:"resolution"`
-		Sources    []SourceDisplay           `json:"sources"`
-		Track      models.Track              `json:"track"`
-		Album      models.Album              `json:"album"`
-	}
-
-	var items []ResolvedItem
-	for _, res := range resolutions {
-		var track models.Track
-		var album models.Album
-		c.db.First(&track, res.TrackID)
-		c.db.First(&album, res.AlbumID)
-
-		var sourceModels []models.DurationSource
-		c.db.Where("resolution_id = ? AND error_message = ?", res.ID, "").Order("confidence DESC").Find(&sourceModels)
-
-		var sources []SourceDisplay
-		for _, sm := range sourceModels {
-			causedMatch := false
-			if res.ResolvedDuration != nil {
-				diff := sm.DurationValue - *res.ResolvedDuration
-				if diff < 0 {
-					diff = -diff
-				}
-				causedMatch = diff <= 3
-			}
-			sources = append(sources, SourceDisplay{
-				ID:            sm.ID,
-				SourceName:    sm.SourceName,
-				DurationValue: sm.DurationValue,
-				MatchScore:    sm.MatchScore,
-				Confidence:    sm.Confidence,
-				ExternalURL:   sm.ExternalURL,
-				CausedMatch:   causedMatch,
-			})
-		}
-
-		items = append(items, ResolvedItem{
-			Resolution: res,
-			Sources:    sources,
-			Track:      track,
-			Album:      album,
-		})
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"items":       items,
-		"total":       total,
-		"page":        page,
-		"limit":       limit,
-		"total_pages": (total + int64(limit) - 1) / int64(limit),
-	})
-}
-
-func (c *DurationController) GetReviewDetails(ctx *gin.Context) {
-	resolutionID, err := strconv.Atoi(ctx.Param("id"))
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid resolution ID"})
-		return
-	}
-
-	var resolution models.DurationResolution
-	if err := c.db.First(&resolution, resolutionID).Error; err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "resolution not found"})
-		return
-	}
-
-	var track models.Track
-	c.db.First(&track, resolution.TrackID)
-
-	var album models.Album
-	c.db.First(&album, resolution.AlbumID)
-
-	type SourceDisplay struct {
-		ID                uint    `json:"id" gorm:"primaryKey"`
-		SourceName        string  `json:"source_name" gorm:"size:50"`
-		DurationValue     int     `json:"duration_value"`
-		Duration          int     `json:"duration" gorm:"-"`
-		DurationFormatted string  `json:"duration_formatted" gorm:"-"`
-		MatchScore        float64 `json:"match_score"`
-		Confidence        float64 `json:"confidence"`
-		ExternalURL       string  `json:"external_url" gorm:"size:512"`
-		ErrorMessage      string  `json:"error_message" gorm:"size:500"`
-	}
-
-	var sourceModels []models.DurationSource
-	if err := c.db.Where("resolution_id = ?", resolutionID).Order("id").Find(&sourceModels).Error; err != nil {
-		log.Printf("Error loading sources for resolution %d: %v", resolutionID, err)
-	}
-
-	var sources []SourceDisplay
-	for _, sm := range sourceModels {
-		sources = append(sources, SourceDisplay{
-			ID:            sm.ID,
-			SourceName:    sm.SourceName,
-			DurationValue: sm.DurationValue,
-			Duration:      sm.DurationValue,
-			MatchScore:    sm.MatchScore,
-			Confidence:    sm.Confidence,
-			ExternalURL:   sm.ExternalURL,
-			ErrorMessage:  sm.ErrorMessage,
-		})
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"resolution": resolution,
-		"sources":    sources,
-		"track":      track,
-		"album":      album,
-	})
-}
-
-func (c *DurationController) SubmitReview(ctx *gin.Context) {
-	resolutionID, err := strconv.Atoi(ctx.Param("id"))
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid resolution ID"})
-		return
-	}
-
-	var input struct {
-		Action   string `json:"action" binding:"required"`
-		Duration int    `json:"duration"`
-		SourceID uint   `json:"source_id"`
-		Notes    string `json:"notes"`
-		TrackID  int    `json:"track_id"`
-	}
-
-	if err := ctx.ShouldBindJSON(&input); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	switch input.Action {
-	case "apply":
-		if input.SourceID > 0 {
-			var source models.DurationSource
-			if err := c.db.First(&source, input.SourceID).Error; err != nil {
-				ctx.JSON(http.StatusBadRequest, gin.H{"error": "source not found"})
-				return
-			}
-			input.Duration = source.DurationValue
-		}
-
-		if input.Duration <= 0 {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "duration required for apply action"})
-			return
-		}
-
-		err := c.resolverService.ApplyResolution(uint(resolutionID), input.Duration, input.Notes)
-		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-	case "reject":
-		err := c.resolverService.RejectResolution(uint(resolutionID), "user", input.Notes)
-		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-	case "manual":
-		if input.Duration <= 0 {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "duration required for manual action"})
-			return
-		}
-
-		if input.TrackID > 0 {
-			err := c.resolverService.ManuallySetDuration(uint(input.TrackID), input.Duration, input.Notes)
-			if err != nil {
-				ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-		} else {
-			var resolution models.DurationResolution
-			c.db.First(&resolution, resolutionID)
-
-			err := c.resolverService.ManuallySetDuration(resolution.TrackID, input.Duration, input.Notes)
-			if err != nil {
-				ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-		}
-
-	case "skip":
-		c.db.Model(&models.DurationResolution{}).
-			Where("id = ?", resolutionID).
-			Update("review_notes", input.Notes)
-
-	default:
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid action"})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"message": "Review submitted successfully",
-		"action":  input.Action,
-	})
-}
-
-func (c *DurationController) BulkReview(ctx *gin.Context) {
-	var input struct {
-		Action        string `json:"action" binding:"required"`
-		ResolutionIDs []uint `json:"resolution_ids" binding:"required"`
-		Notes         string `json:"notes"`
-	}
-
-	if err := ctx.ShouldBindJSON(&input); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	var processed, failed int
-
-	for _, resID := range input.ResolutionIDs {
-		var err error
-
-		switch input.Action {
-		case "apply_all":
-			var resolution models.DurationResolution
-			if err = c.db.First(&resolution, resID).Error; err != nil {
-				failed++
-				continue
-			}
-
-			var bestDuration int
-			var bestConfidence float64 = -1
-			for _, src := range resolution.Sources {
-				if src.DurationValue > 0 && src.Confidence > bestConfidence {
-					bestConfidence = src.Confidence
-					bestDuration = src.DurationValue
-				}
-			}
-
-			if bestDuration > 0 {
-				err = c.resolverService.ApplyResolution(resID, bestDuration, input.Notes)
-			} else {
-				failed++
-				continue
-			}
-
-		case "reject_all":
-			err = c.resolverService.RejectResolution(resID, "system", input.Notes)
-
-		default:
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid action"})
-			return
-		}
-
-		if err != nil {
-			failed++
-		} else {
-			processed++
-		}
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"message":   "Bulk review completed",
-		"processed": processed,
-		"failed":    failed,
 	})
 }

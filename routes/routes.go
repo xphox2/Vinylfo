@@ -159,6 +159,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/api/audit/cleanup", settingsController.CleanupAuditLogs)
 
 	durationController := controllers.NewDurationController(db)
+	durationReviewController := controllers.NewDurationReviewController(db)
 
 	duration := r.Group("/api/duration")
 	{
@@ -176,11 +177,11 @@ func SetupRoutes(r *gin.Engine) {
 		duration.POST("/resolve/cancel", durationController.CancelBulkResolution)
 		duration.GET("/resolve/progress", durationController.GetBulkProgress)
 
-		duration.GET("/review", durationController.GetReviewQueue)
-		duration.GET("/review/resolved", durationController.GetResolvedQueue)
-		duration.GET("/review/:id", durationController.GetReviewDetails)
-		duration.POST("/review/:id", durationController.SubmitReview)
-		duration.POST("/review/bulk", durationController.BulkReview)
+		duration.GET("/review", durationReviewController.GetReviewQueue)
+		duration.GET("/review/resolved", durationReviewController.GetResolvedQueue)
+		duration.GET("/review/:id", durationReviewController.GetReviewDetails)
+		duration.POST("/review/:id", durationReviewController.SubmitReview)
+		duration.POST("/review/bulk", durationReviewController.BulkReview)
 	}
 
 	youtubeController := controllers.NewYouTubeController(db)

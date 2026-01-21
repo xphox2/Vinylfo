@@ -1,30 +1,27 @@
-// Basic frontend functionality
+import { pagination, formatDuration, formatTime, escapeHtml, cleanAlbumTitle, updatePaginationControls } from './app-state.js';
+
+window.pagination = pagination;
+window.formatDuration = formatDuration;
+window.formatTime = formatTime;
+window.escapeHtml = escapeHtml;
+window.cleanAlbumTitle = cleanAlbumTitle;
+window.updatePaginationControls = updatePaginationControls;
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Vinylfo frontend loaded');
 
-    // Pagination state
-    window.albumPagination = { page: 1, limit: 25, totalPages: 1, query: '' };
-    window.trackPagination = { page: 1, limit: 25, totalPages: 1, query: '' };
+    const albumSearchInput = document.getElementById('album-search');
+    const trackSearchInput = document.getElementById('track-search');
     
-    // Add helper function for cleaning album titles
-    window.cleanAlbumTitle = function(albumTitle, trackTitle) {
-        if (!albumTitle) return 'Unknown Album';
-        
-        if (albumTitle.includes(' / ') && albumTitle.includes(trackTitle)) {
-            const parts = albumTitle.split(' / ');
-            return parts[parts.length - 1].trim();
-        }
-        
-        return albumTitle;
-    };
+    let albumSearchTimeout;
+    let trackSearchTimeout;
 
-    // Album pagination event listeners
     document.querySelectorAll('.album-limit').forEach(el => {
         el.addEventListener('change', function() {
-            window.albumPagination.limit = parseInt(this.value);
-            window.albumPagination.page = 1;
-            if (window.albumPagination.query) {
-                searchAlbums(window.albumPagination.query);
+            pagination.album.limit = parseInt(this.value);
+            pagination.album.page = 1;
+            if (pagination.album.query) {
+                searchAlbums(pagination.album.query);
             } else {
                 loadAlbums();
             }
@@ -33,10 +30,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.album-prev').forEach(el => {
         el.addEventListener('click', function() {
-            if (window.albumPagination.page > 1) {
-                window.albumPagination.page--;
-                if (window.albumPagination.query) {
-                    searchAlbums(window.albumPagination.query);
+            if (pagination.album.page > 1) {
+                pagination.album.page--;
+                if (pagination.album.query) {
+                    searchAlbums(pagination.album.query);
                 } else {
                     loadAlbums();
                 }
@@ -46,10 +43,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.album-next').forEach(el => {
         el.addEventListener('click', function() {
-            if (window.albumPagination.page < window.albumPagination.totalPages) {
-                window.albumPagination.page++;
-                if (window.albumPagination.query) {
-                    searchAlbums(window.albumPagination.query);
+            if (pagination.album.page < pagination.album.totalPages) {
+                pagination.album.page++;
+                if (pagination.album.query) {
+                    searchAlbums(pagination.album.query);
                 } else {
                     loadAlbums();
                 }
@@ -57,13 +54,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Track pagination event listeners
     document.querySelectorAll('.track-limit').forEach(el => {
         el.addEventListener('change', function() {
-            window.trackPagination.limit = parseInt(this.value);
-            window.trackPagination.page = 1;
-            if (window.trackPagination.query) {
-                searchTracks(window.trackPagination.query);
+            pagination.track.limit = parseInt(this.value);
+            pagination.track.page = 1;
+            if (pagination.track.query) {
+                searchTracks(pagination.track.query);
             } else {
                 loadTracks();
             }
@@ -72,10 +68,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.track-prev').forEach(el => {
         el.addEventListener('click', function() {
-            if (window.trackPagination.page > 1) {
-                window.trackPagination.page--;
-                if (window.trackPagination.query) {
-                    searchTracks(window.trackPagination.query);
+            if (pagination.track.page > 1) {
+                pagination.track.page--;
+                if (pagination.track.query) {
+                    searchTracks(pagination.track.query);
                 } else {
                     loadTracks();
                 }
@@ -85,10 +81,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.track-next').forEach(el => {
         el.addEventListener('click', function() {
-            if (window.trackPagination.page < window.trackPagination.totalPages) {
-                window.trackPagination.page++;
-                if (window.trackPagination.query) {
-                    searchTracks(window.trackPagination.query);
+            if (pagination.track.page < pagination.track.totalPages) {
+                pagination.track.page++;
+                if (pagination.track.query) {
+                    searchTracks(pagination.track.query);
                 } else {
                     loadTracks();
                 }
@@ -96,15 +92,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Navigation
     const navLinks = document.querySelectorAll('nav a');
     navLinks.forEach(link => {
         link.addEventListener('click', function(e) {
             const href = this.getAttribute('href');
 
-            // Handle hash-based navigation - let the hashchange event handle it naturally
             if (href.startsWith('#')) {
-                // Allow default behavior but prevent full page navigation for same-page hashes
                 const targetHash = href.substring(1);
                 const viewElement = document.getElementById(`${targetHash}-view`);
                 if (viewElement) {
@@ -114,7 +107,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // Handle external routes (paths starting with /)
             if (href.startsWith('/') && href !== '/') {
                 e.preventDefault();
                 window.location.href = href;
@@ -123,7 +115,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Handle back button for hash navigation
     window.addEventListener('hashchange', function() {
         const hash = window.location.hash.substring(1);
         if (hash) {
@@ -148,7 +139,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Handle initial hash on page load
     if (window.location.hash) {
         const hash = window.location.hash.substring(1);
         document.querySelectorAll('.view').forEach(view => {
@@ -170,7 +160,6 @@ document.addEventListener('DOMContentLoaded', function() {
             loadTrackDetail(trackId);
         }
     } else {
-        // No hash - show albums view by default
         document.querySelectorAll('.view').forEach(view => {
             view.style.display = 'none';
         });
@@ -178,7 +167,6 @@ document.addEventListener('DOMContentLoaded', function() {
         loadAlbums();
     }
 
-    // Back to tracks button handler
     const backToTracksBtn = document.getElementById('back-to-tracks');
     if (backToTracksBtn) {
         backToTracksBtn.addEventListener('click', function() {
@@ -190,14 +178,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Search handlers
-    const albumSearchInput = document.getElementById('album-search');
     if (albumSearchInput) {
         albumSearchInput.addEventListener('input', function(e) {
             clearTimeout(albumSearchTimeout);
             const query = e.target.value.trim();
             albumSearchTimeout = setTimeout(() => {
-                window.albumPagination.page = 1;
+                pagination.album.page = 1;
                 if (query) {
                     searchAlbums(query);
                 } else {
@@ -212,19 +198,18 @@ document.addEventListener('DOMContentLoaded', function() {
         albumSearchClear.addEventListener('click', function() {
             const searchInput = document.getElementById('album-search');
             searchInput.value = '';
-            window.albumPagination.page = 1;
+            pagination.album.page = 1;
             loadAlbums();
             searchInput.focus();
         });
     }
 
-    const trackSearchInput = document.getElementById('track-search');
     if (trackSearchInput) {
         trackSearchInput.addEventListener('input', function(e) {
             clearTimeout(trackSearchTimeout);
             const query = e.target.value.trim();
             trackSearchTimeout = setTimeout(() => {
-                window.trackPagination.page = 1;
+                pagination.track.page = 1;
                 if (query) {
                     searchTracks(query);
                 } else {
@@ -239,64 +224,14 @@ document.addEventListener('DOMContentLoaded', function() {
         trackSearchClear.addEventListener('click', function() {
             const searchInput = document.getElementById('track-search');
             searchInput.value = '';
-            window.trackPagination.page = 1;
+            pagination.track.page = 1;
             loadTracks();
             searchInput.focus();
         });
     }
 
-    // Load initial data
     loadAlbums();
 });
-
-let albumSearchTimeout;
-let trackSearchTimeout;
-
-// Helper function to format duration
-function formatDuration(seconds) {
-    if (!seconds || seconds <= 0) return '0:00';
-    
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function formatTime(seconds) {
-    if (!seconds || seconds <= 0) return '00:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-function updatePaginationControls(type) {
-    const pagination = type === 'album' ? window.albumPagination : window.trackPagination;
-    
-    // Update limit selects
-    document.querySelectorAll(`.${type}-limit`).forEach(el => {
-        el.value = pagination.limit;
-    });
-
-    // Update page info
-    const pageInfoElements = document.querySelectorAll(`[id^="${type}-page-info"]`);
-    pageInfoElements.forEach(el => {
-        el.textContent = `Page ${pagination.page} of ${pagination.totalPages}`;
-    });
-
-    // Update prev/next buttons
-    document.querySelectorAll(`.${type}-prev`).forEach(el => {
-        el.disabled = pagination.page <= 1;
-    });
-    document.querySelectorAll(`.${type}-next`).forEach(el => {
-        el.disabled = pagination.page >= pagination.totalPages;
-    });
-}
 
 function renderAlbums(albums) {
     const list = document.getElementById('albums-list');
@@ -377,8 +312,8 @@ function renderTracks(tracks) {
 }
 
 function searchAlbums(query) {
-    window.albumPagination.query = query;
-    const url = `/albums/search?q=${encodeURIComponent(query)}&page=${window.albumPagination.page}&limit=${window.albumPagination.limit}`;
+    pagination.album.query = query;
+    const url = `/albums/search?q=${encodeURIComponent(query)}&page=${pagination.album.page}&limit=${pagination.album.limit}`;
     fetch(url)
         .then(response => response.json())
         .then(data => {
@@ -388,7 +323,7 @@ function searchAlbums(query) {
                 return;
             }
             const albums = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
-            window.albumPagination.totalPages = data.totalPages || 1;
+            pagination.album.totalPages = data.totalPages || 1;
             updatePaginationControls('album');
             renderAlbums(albums);
         })
@@ -399,8 +334,8 @@ function searchAlbums(query) {
 }
 
 function searchTracks(query) {
-    window.trackPagination.query = query;
-    const url = `/tracks/search?q=${encodeURIComponent(query)}&page=${window.trackPagination.page}&limit=${window.trackPagination.limit}`;
+    pagination.track.query = query;
+    const url = `/tracks/search?q=${encodeURIComponent(query)}&page=${pagination.track.page}&limit=${pagination.track.limit}`;
     fetch(url)
         .then(response => response.json())
         .then(data => {
@@ -410,7 +345,7 @@ function searchTracks(query) {
                 return;
             }
             const tracks = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
-            window.trackPagination.totalPages = data.totalPages || 1;
+            pagination.track.totalPages = data.totalPages || 1;
             updatePaginationControls('track');
             renderTracks(tracks);
         })
@@ -421,8 +356,8 @@ function searchTracks(query) {
 }
 
 function loadAlbums() {
-    window.albumPagination.query = '';
-    const url = `/albums?page=${window.albumPagination.page}&limit=${window.albumPagination.limit}`;
+    pagination.album.query = '';
+    const url = `/albums?page=${pagination.album.page}&limit=${pagination.album.limit}`;
     fetch(url)
         .then(response => response.json())
         .then(data => {
@@ -432,7 +367,7 @@ function loadAlbums() {
                 return;
             }
             const albums = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
-            window.albumPagination.totalPages = data.totalPages || 1;
+            pagination.album.totalPages = data.totalPages || 1;
             updatePaginationControls('album');
             renderAlbums(albums);
         })
@@ -443,8 +378,8 @@ function loadAlbums() {
 }
 
 function loadTracks() {
-    window.trackPagination.query = '';
-    const url = `/tracks?page=${window.trackPagination.page}&limit=${window.trackPagination.limit}`;
+    pagination.track.query = '';
+    const url = `/tracks?page=${pagination.track.page}&limit=${pagination.track.limit}`;
     console.log('Loading tracks from:', url);
     fetch(url)
         .then(response => {
@@ -459,7 +394,7 @@ function loadTracks() {
                 return;
             }
             const tracks = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
-            window.trackPagination.totalPages = data.totalPages || 1;
+            pagination.track.totalPages = data.totalPages || 1;
             updatePaginationControls('track');
             renderTracks(tracks);
         })
@@ -469,7 +404,6 @@ function loadTracks() {
         });
 }
 
-// Load tracks for a specific album
 function showTracksForAlbum(albumID) {
     fetch(`/albums/${albumID}`)
         .then(response => response.json())
@@ -538,7 +472,6 @@ function showTracksForAlbum(albumID) {
             list.innerHTML = '<p>Error loading album</p>';
         });
     
-    // Show tracks view
     document.querySelectorAll('.view').forEach(view => {
         view.style.display = 'none';
     });
@@ -602,7 +535,6 @@ function loadSessions() {
                 if (session.queue_count !== undefined) {
                     queueInfo = `<p>Tracks in queue: ${session.queue_count}</p>`;
                 } else {
-                    // Fallback for old sessions
                     try {
                         const queue = JSON.parse(session.queue || '[]');
                         queueInfo = `<p>Tracks in queue: ${queue.length}</p>`;
@@ -658,7 +590,6 @@ function restoreSession(playlistId) {
     .then(data => {
         console.log('Session restored:', data);
         if (data.track) {
-            // Save the queue position and queue for restoration
             if (data.queue_position !== undefined) {
                 localStorage.setItem('vinylfo_queuePosition', data.queue_position.toString());
                 console.log('Saved queue position:', data.queue_position);
@@ -676,3 +607,12 @@ function restoreSession(playlistId) {
         alert('Failed to restore session: ' + error.message);
     });
 }
+
+window.loadAlbums = loadAlbums;
+window.loadTracks = loadTracks;
+window.showTracksForAlbum = showTracksForAlbum;
+window.loadTrackDetail = loadTrackDetail;
+window.loadSessions = loadSessions;
+window.restoreSession = restoreSession;
+window.searchAlbums = searchAlbums;
+window.searchTracks = searchTracks;

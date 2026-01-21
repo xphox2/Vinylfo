@@ -146,150 +146,6 @@ class SyncManager {
         });
     }
 
-    async refreshTracks() {
-        const button = document.getElementById('refresh-tracks');
-        const originalText = button.textContent;
-        
-        if (!confirm('This will re-fetch track listings from Discogs for all synced albums. This may take a while depending on the size of your collection. Continue?')) {
-            return;
-        }
-
-        button.disabled = true;
-        button.textContent = 'Refreshing...';
-
-        try {
-            const response = await fetch(`${API_BASE}/discogs/refresh-tracks`, {
-                method: 'POST'
-            });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                alert(`Track refresh completed!\n\nUpdated: ${result.updated}\nFailed: ${result.failed}\nTotal albums: ${result.total}`);
-            } else {
-                alert(`Track refresh failed: ${result.error || 'Unknown error'}`);
-            }
-        } catch (error) {
-            console.error('Failed to refresh tracks:', error);
-            alert('Failed to refresh tracks. Please check your connection and try again.');
-        } finally {
-            button.disabled = false;
-            button.textContent = originalText;
-        }
-    }
-
-    showCleanupModal() {
-        const modal = document.getElementById('cleanup-modal');
-        modal.classList.remove('hidden');
-        
-        // Reset state
-        document.getElementById('cleanup-loading').classList.remove('hidden');
-        document.getElementById('cleanup-results').classList.add('hidden');
-        document.getElementById('cleanup-empty').classList.add('hidden');
-        document.getElementById('delete-selected').classList.add('hidden');
-        
-        this.unlinkedAlbums = [];
-        this.findUnlinkedAlbums();
-    }
-
-    hideCleanupModal() {
-        document.getElementById('cleanup-modal').classList.add('hidden');
-    }
-
-    async findUnlinkedAlbums() {
-        try {
-            const response = await fetch(`${API_BASE}/discogs/unlinked-albums`);
-            const result = await response.json();
-
-            document.getElementById('cleanup-loading').classList.add('hidden');
-
-            if (!response.ok) {
-                alert(`Failed to scan: ${result.error || 'Unknown error'}`);
-                this.hideCleanupModal();
-                return;
-            }
-
-            this.unlinkedAlbums = result.unlinked_albums || [];
-
-            if (this.unlinkedAlbums.length === 0) {
-                document.getElementById('cleanup-empty').classList.remove('hidden');
-            } else {
-                document.getElementById('cleanup-results').classList.remove('hidden');
-                document.getElementById('delete-selected').classList.remove('hidden');
-                document.getElementById('cleanup-summary').textContent = 
-                    `Found ${this.unlinkedAlbums.length} album(s) not in your Discogs collection (checked ${result.total_checked} local albums against ${result.discogs_total} Discogs releases):`;
-                
-                this.renderUnlinkedAlbums();
-            }
-        } catch (error) {
-            console.error('Failed to find unlinked albums:', error);
-            alert('Failed to scan for unlinked albums. Please try again.');
-            this.hideCleanupModal();
-        }
-    }
-
-    renderUnlinkedAlbums() {
-        const list = document.getElementById('unlinked-albums-list');
-        list.innerHTML = '';
-
-        this.unlinkedAlbums.forEach(album => {
-            const item = document.createElement('div');
-            item.className = 'unlinked-album-item';
-            item.innerHTML = `
-                <label class="album-checkbox">
-                    <input type="checkbox" value="${album.id}" checked>
-                    <span class="album-info">
-                        <span class="album-title">${album.title}</span>
-                        <span class="album-artist">${album.artist}</span>
-                        ${album.year ? `<span class="album-year">(${album.year})</span>` : ''}
-                    </span>
-                </label>
-            `;
-            list.appendChild(item);
-        });
-    }
-
-    async deleteSelectedAlbums() {
-        const checkboxes = document.querySelectorAll('#unlinked-albums-list input[type="checkbox"]:checked');
-        const albumIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
-
-        if (albumIds.length === 0) {
-            alert('No albums selected for deletion.');
-            return;
-        }
-
-        if (!confirm(`Are you sure you want to delete ${albumIds.length} album(s) and all their tracks? This cannot be undone.`)) {
-            return;
-        }
-
-        const button = document.getElementById('delete-selected');
-        button.disabled = true;
-        button.textContent = 'Deleting...';
-
-        try {
-            const response = await fetch(`${API_BASE}/discogs/unlinked-albums/delete`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ album_ids: albumIds })
-            });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                alert(`Deleted ${result.deleted} album(s)${result.failed > 0 ? `, ${result.failed} failed` : ''}.`);
-                this.hideCleanupModal();
-            } else {
-                alert(`Deletion failed: ${result.error || 'Unknown error'}`);
-            }
-        } catch (error) {
-            console.error('Failed to delete albums:', error);
-            alert('Failed to delete albums. Please try again.');
-        } finally {
-            button.disabled = false;
-            button.textContent = 'Delete Selected';
-        }
-    }
-
     handleSyncModeChange(mode) {
         const folderSelector = document.getElementById('folder-selector');
         if (mode === 'specific') {
@@ -414,7 +270,7 @@ class SyncManager {
                 if (data.has_progress) {
                     if (data.total_albums === 0 && data.processed === 0) {
                         if (confirm('There is sync progress saved, but no albums have been synced yet. Would you like to start a fresh sync?')) {
-                            await this.startSync(true);  // Fixed: pass only forceNew=true
+                            await this.startSync(true);
                         } else {
                             this.isRunning = true;
                             this.isPaused = false;
@@ -485,9 +341,8 @@ class SyncManager {
                     document.getElementById('pause-sync').textContent = 'Pause';
                     document.getElementById('pause-sync').classList.remove('btn-success');
                     document.getElementById('pause-sync').classList.add('btn-warning');
-                    // Reset the polling to make sure we get the correct state
                     this.stopPolling();
-                    this.isRunning = true;  // Ensure we're running after resume
+                    this.isRunning = true;
                     this.pollProgress();
                 } else {
                     const error = await response.json();
@@ -511,7 +366,6 @@ class SyncManager {
                     document.getElementById('pause-sync').textContent = 'Resume';
                     document.getElementById('pause-sync').classList.remove('btn-warning');
                     document.getElementById('pause-sync').classList.add('btn-success');
-                    // Continue polling to update UI and detect when sync is resumed
                     this.pollProgress();
                 } else {
                     const error = await response.json();
@@ -551,9 +405,7 @@ class SyncManager {
             const progress = await response.json();
             console.log('pollProgress received:', { is_running: progress.is_running, is_paused: progress.is_paused, processed: progress.processed, total: progress.total });
 
-            // Detect if backend sync goroutine has crashed or stopped unexpectedly
             if (this.isRunning && !progress.is_running && !this.isPaused) {
-                // If we thought sync was running but backend says it's not complete
                 const processed = progress.processed || 0;
                 const total = progress.total || 0;
 
@@ -581,7 +433,6 @@ class SyncManager {
 
             if (total > 0) {
                 progressPercent = Math.min((processed / total) * 100, 100);
-                // Cap displayed processed count at total to avoid confusing "142/141" display
                 const displayProcessed = Math.min(processed, total);
                 progressText = `${displayProcessed} / ${total} albums (${Math.round(progressPercent)}%)`;
             } else {
@@ -590,13 +441,9 @@ class SyncManager {
 
             document.getElementById('sync-progress').style.width = `${progressPercent}%`;
 
-            // Detect stalled sync (backend not responding)
-            // Don't stop polling - sync may be waiting for API rate limit reset (up to 60s)
-            // Just show a warning and keep checking
             if (progress.is_stalled && this.isRunning) {
                 console.log('pollProgress: sync appears stalled, but continuing to poll');
                 document.getElementById('sync-progress-text').textContent = `Waiting for API rate limit reset... (${processed}/${total})`;
-                // Keep polling - don't stop
             } else {
                 document.getElementById('sync-progress-text').textContent = progressText;
             }
@@ -644,8 +491,6 @@ class SyncManager {
                 }
             }
 
-            // Rate limit display disabled
-            // this.updateRateLimitDisplay(progress.api_remaining, progress.anon_remaining);
             this.updateEstimatedTime(processed, total);
 
         } catch (error) {
@@ -702,6 +547,117 @@ class SyncManager {
             timeEl.style.fontSize = '0.8rem';
             timeEl.style.color = '#28a745';
             timeEl.style.marginTop = '0.25rem';
+        }
+    }
+
+    showCleanupModal() {
+        const modal = document.getElementById('cleanup-modal');
+        modal.classList.remove('hidden');
+        
+        document.getElementById('cleanup-loading').classList.remove('hidden');
+        document.getElementById('cleanup-results').classList.add('hidden');
+        document.getElementById('cleanup-empty').classList.add('hidden');
+        document.getElementById('delete-selected').classList.add('hidden');
+        
+        this.unlinkedAlbums = [];
+        this.findUnlinkedAlbums();
+    }
+
+    hideCleanupModal() {
+        document.getElementById('cleanup-modal').classList.add('hidden');
+    }
+
+    async findUnlinkedAlbums() {
+        try {
+            const response = await fetch(`${API_BASE}/discogs/unlinked-albums`);
+            const result = await response.json();
+
+            document.getElementById('cleanup-loading').classList.add('hidden');
+
+            if (!response.ok) {
+                alert(`Failed to scan: ${result.error || 'Unknown error'}`);
+                this.hideCleanupModal();
+                return;
+            }
+
+            this.unlinkedAlbums = result.unlinked_albums || [];
+
+            if (this.unlinkedAlbums.length === 0) {
+                document.getElementById('cleanup-empty').classList.remove('hidden');
+            } else {
+                document.getElementById('cleanup-results').classList.remove('hidden');
+                document.getElementById('delete-selected').classList.remove('hidden');
+                document.getElementById('cleanup-summary').textContent = 
+                    `Found ${this.unlinkedAlbums.length} album(s) not in your Discogs collection (checked ${result.total_checked} local albums against ${result.discogs_total} Discogs releases):`;
+                
+                this.renderUnlinkedAlbums();
+            }
+        } catch (error) {
+            console.error('Failed to find unlinked albums:', error);
+            alert('Failed to scan for unlinked albums. Please try again.');
+            this.hideCleanupModal();
+        }
+    }
+
+    renderUnlinkedAlbums() {
+        const list = document.getElementById('unlinked-albums-list');
+        list.innerHTML = '';
+
+        this.unlinkedAlbums.forEach(album => {
+            const item = document.createElement('div');
+            item.className = 'unlinked-album-item';
+            item.innerHTML = `
+                <label class="album-checkbox">
+                    <input type="checkbox" value="${album.id}" checked>
+                    <span class="album-info">
+                        <span class="album-title">${album.title}</span>
+                        <span class="album-artist">${album.artist}</span>
+                        ${album.year ? `<span class="album-year">(${album.year})</span>` : ''}
+                    </span>
+                </label>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    async deleteSelectedAlbums() {
+        const checkboxes = document.querySelectorAll('#unlinked-albums-list input[type="checkbox"]:checked');
+        const albumIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+        if (albumIds.length === 0) {
+            alert('No albums selected for deletion.');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete ${albumIds.length} album(s) and all their tracks? This cannot be undone.`)) {
+            return;
+        }
+
+        const button = document.getElementById('delete-selected');
+        button.disabled = true;
+        button.textContent = 'Deleting...';
+
+        try {
+            const response = await fetch(`${API_BASE}/discogs/unlinked-albums/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ album_ids: albumIds })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert(`Deleted ${result.deleted} album(s)${result.failed > 0 ? `, ${result.failed} failed` : ''}.`);
+                this.hideCleanupModal();
+            } else {
+                alert(`Deletion failed: ${result.error || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Failed to delete albums:', error);
+            alert('Failed to delete albums. Please try again.');
+        } finally {
+            button.disabled = false;
+            button.textContent = 'Delete Selected';
         }
     }
 }
