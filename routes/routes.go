@@ -184,14 +184,17 @@ func SetupRoutes(r *gin.Engine) {
 	}
 
 	youtubeController := controllers.NewYouTubeController(db)
+	youtubeSyncController := controllers.NewYouTubeSyncController(db)
 
 	youtube := r.Group("/api/youtube")
 	{
+		// OAuth
 		youtube.GET("/oauth/url", youtubeController.GetOAuthURL)
 		youtube.GET("/oauth/callback", youtubeController.OAuthCallback)
 		youtube.POST("/disconnect", youtubeController.Disconnect)
 		youtube.GET("/status", youtubeController.GetStatus)
 
+		// YouTube Playlists (direct management)
 		youtube.POST("/playlists", youtubeController.CreatePlaylist)
 		youtube.PUT("/playlists/:id", youtubeController.UpdatePlaylist)
 		youtube.GET("/playlists", youtubeController.GetPlaylists)
@@ -203,5 +206,17 @@ func SetupRoutes(r *gin.Engine) {
 
 		youtube.POST("/search", youtubeController.SearchVideos)
 		youtube.POST("/export-playlist", youtubeController.ExportPlaylist)
+
+		// YouTube Sync (match local tracks to YouTube videos)
+		youtube.POST("/match-track/:track_id", youtubeSyncController.MatchTrack)
+		youtube.POST("/match-playlist/:playlist_id", youtubeSyncController.MatchPlaylist)
+		youtube.GET("/matches/:playlist_id", youtubeSyncController.GetMatches)
+		youtube.GET("/match/:track_id", youtubeSyncController.GetTrackMatch)
+		youtube.PUT("/matches/:track_id", youtubeSyncController.UpdateMatch)
+		youtube.DELETE("/matches/:track_id", youtubeSyncController.DeleteMatch)
+		youtube.POST("/sync-playlist/:playlist_id", youtubeSyncController.SyncPlaylist)
+		youtube.GET("/sync-status/:playlist_id", youtubeSyncController.GetSyncStatus)
+		youtube.GET("/candidates/:track_id", youtubeSyncController.GetCandidates)
+		youtube.POST("/candidates/:track_id/select/:candidate_id", youtubeSyncController.SelectCandidate)
 	}
 }

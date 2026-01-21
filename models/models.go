@@ -260,7 +260,74 @@ type DurationResolverProgress struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// =============================================================================
+// YOUTUBE SYNC MODELS
+// =============================================================================
+
+// TrackYouTubeMatch represents a matched YouTube video for a track.
+// Stores the best match found via web search or API, along with scoring breakdown.
+type TrackYouTubeMatch struct {
+	ID             uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	TrackID        uint   `gorm:"uniqueIndex;not null" json:"track_id"` // One match per track
+	YouTubeVideoID string `gorm:"size:20;index" json:"youtube_video_id"`
+	VideoTitle     string `gorm:"size:500" json:"video_title"`
+	VideoDuration  int    `json:"video_duration"` // Duration in seconds
+	ChannelName    string `gorm:"size:255" json:"channel_name"`
+	ViewCount      int64  `json:"view_count"`                // For tiebreaking
+	ThumbnailURL   string `gorm:"size:500" json:"thumbnail_url"`
+
+	// Scoring breakdown (0.0-1.0 each)
+	MatchScore    float64 `json:"match_score"`    // Composite score
+	TitleScore    float64 `json:"title_score"`    // Title similarity
+	ArtistScore   float64 `json:"artist_score"`   // Artist similarity
+	DurationScore float64 `json:"duration_score"` // Duration proximity
+	ChannelScore  float64 `json:"channel_score"`  // Channel name match
+
+	// Matching metadata
+	MatchMethod string `gorm:"size:20" json:"match_method"` // web_search, api_search, manual
+	NeedsReview bool   `gorm:"index" json:"needs_review"`   // Scores 0.6-0.85
+	Status      string `gorm:"size:20;index" json:"status"` // pending, matched, reviewed, unavailable
+
+	// Audit trail
+	MatchedAt  *time.Time `json:"matched_at"`
+	ReviewedAt *time.Time `json:"reviewed_at"`
+	ReviewedBy string     `gorm:"size:100" json:"reviewed_by"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Relations (loaded via Preload, not stored)
+	Track Track `gorm:"foreignKey:TrackID" json:"-"`
+}
+
+// TrackYouTubeCandidate stores alternative YouTube video matches for tracks needing review.
+// When a match score is between 0.6-0.85, multiple candidates are stored for user selection.
+type TrackYouTubeCandidate struct {
+	ID             uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	TrackID        uint   `gorm:"index;not null" json:"track_id"` // Multiple candidates per track
+	YouTubeVideoID string `gorm:"size:20" json:"youtube_video_id"`
+	VideoTitle     string `gorm:"size:500" json:"video_title"`
+	VideoDuration  int    `json:"video_duration"`
+	ChannelName    string `gorm:"size:255" json:"channel_name"`
+	ViewCount      int64  `json:"view_count"`
+	ThumbnailURL   string `gorm:"size:500" json:"thumbnail_url"`
+
+	// Scoring breakdown (0.0-1.0 each)
+	MatchScore    float64 `json:"match_score"`
+	TitleScore    float64 `json:"title_score"`
+	ArtistScore   float64 `json:"artist_score"`
+	DurationScore float64 `json:"duration_score"`
+	ChannelScore  float64 `json:"channel_score"`
+
+	Rank         int    `json:"rank"`                           // 1 = best match, 2 = second best, etc.
+	SourceMethod string `gorm:"size:20" json:"source_method"`   // web_search, api_search
+
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // TableName overrides for GORM (optional, uses snake_case by default)
 func (DurationSource) TableName() string           { return "duration_sources" }
 func (DurationResolution) TableName() string       { return "duration_resolutions" }
 func (DurationResolverProgress) TableName() string { return "duration_resolver_progress" }
+func (TrackYouTubeMatch) TableName() string        { return "track_youtube_matches" }
+func (TrackYouTubeCandidate) TableName() string    { return "track_youtube_candidates" }

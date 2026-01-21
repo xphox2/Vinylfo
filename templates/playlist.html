@@ -22,7 +22,16 @@
             <div class="playlist-actions">
                 <button id="delete-playlist-btn">Delete Playlist</button>
                 <button id="add-tracks-btn">Add Tracks</button>
+                <button id="sync-youtube-btn" style="background-color: #ff0000; color: white;">YouTube Sync</button>
                 <button id="play-playlist-btn">Play</button>
+            </div>
+        </div>
+        <div id="youtube-sync-status" class="youtube-sync-status" style="display: none;">
+            <div class="sync-stats">
+                <span class="stat-matched"><span class="stat-count" id="yt-matched-count">0</span> Matched</span>
+                <span class="stat-review"><span class="stat-count" id="yt-review-count">0</span> Needs Review</span>
+                <span class="stat-unavailable"><span class="stat-count" id="yt-unavailable-count">0</span> Unavailable</span>
+                <span class="stat-pending"><span class="stat-count" id="yt-pending-count">0</span> Pending</span>
             </div>
         </div>
         <div id="playlist-tracks"><p>Loading tracks...</p></div>
@@ -65,6 +74,78 @@
         <button id="save-playlist-btn">Create</button>
     </div>
 </div>
+
+<div id="youtube-sync-modal" class="modal" style="display: none;">
+    <div class="modal-content youtube-sync-modal-content">
+        <span class="close-modal" id="close-youtube-sync">&times;</span>
+        <h3>YouTube Playlist Sync</h3>
+        <div id="youtube-sync-content">
+            <div class="sync-status-section">
+                <h4>Match Status</h4>
+                <div class="sync-stats-large">
+                    <div class="stat-box stat-matched">
+                        <span class="stat-number" id="yt-matched">0</span>
+                        <span class="stat-label">Matched</span>
+                    </div>
+                    <div class="stat-box stat-review">
+                        <span class="stat-number" id="yt-review">0</span>
+                        <span class="stat-label">Review</span>
+                    </div>
+                    <div class="stat-box stat-unavailable">
+                        <span class="stat-number" id="yt-unavailable">0</span>
+                        <span class="stat-label">Unavailable</span>
+                    </div>
+                    <div class="stat-box stat-pending">
+                        <span class="stat-number" id="yt-pending">0</span>
+                        <span class="stat-label">Pending</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sync-actions-section">
+                <button id="match-playlist-btn" class="youtube-action-btn">Match Tracks</button>
+                <div class="sync-options">
+                    <label><input type="checkbox" id="include-needs-review"> Include tracks needing review</label>
+                </div>
+                <div class="sync-options">
+                    <label><input type="checkbox" id="youtube-api-fallback"> Use YouTube API as backup (uses quota)</label>
+                </div>
+                <div class="sync-options">
+                    <label><input type="checkbox" id="force-rescan"> <strong>Force re-scan</strong> (clear existing matches)</label>
+                </div>
+            </div>
+            <div id="sync-progress" class="sync-progress" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="match-progress-fill" style="width: 0%;"></div>
+                </div>
+                <p class="progress-text" id="match-progress-text">Matching tracks...</p>
+            </div>
+            <div class="sync-youtube-section" id="sync-youtube-section" style="display: none;">
+                <h4>Export to YouTube</h4>
+                <div class="export-options">
+                    <label class="radio-label"><input type="radio" name="youtube-export" value="new" checked> Create new playlist</label>
+                    <input type="text" id="new-playlist-name-yt" placeholder="YouTube playlist name" style="margin-left: 1rem;">
+                </div>
+                <div class="export-options" style="margin-top: 0.5rem;">
+                    <label class="radio-label"><input type="radio" name="youtube-export" value="existing"> Add to existing playlist</label>
+                    <input type="text" id="existing-playlist-id" placeholder="YouTube Playlist ID" style="margin-left: 1rem;" disabled>
+                </div>
+                <button id="sync-to-youtube-btn" class="youtube-action-btn youtube-export-btn">Sync to YouTube</button>
+            </div>
+            <div class="youtube-status-msg" id="youtube-status-msg"></div>
+        </div>
+    </div>
+</div>
+
+<div id="youtube-review-modal" class="modal" style="display: none;">
+    <div class="modal-content youtube-review-modal-content">
+        <span class="close-modal" id="close-youtube-review">&times;</span>
+        <h3>Review YouTube Match</h3>
+        <div id="review-track-info" class="review-track-info"></div>
+        <h4>Candidates</h4>
+        <div id="review-candidates" class="review-candidates"></div>
+    </div>
+</div>
+
 <script src="/static/js/playlist.js"></script>
 </body>
 </html>

@@ -243,6 +243,28 @@ vinylfo/
 - **DurationSource**: Individual source results (MusicBrainz, Wikipedia)
 - **DurationResolverProgress**: Bulk resolution progress for resume
 - **AppConfig**: Application settings and OAuth credentials (Discogs, YouTube)
+- **TrackYouTubeMatch**: YouTube video matches for tracks
+- **TrackYouTubeCandidate**: Candidate matches awaiting review
+
+## Configuration
+
+### YouTube Playlist Sync Settings
+
+| Environment Variable | Default | Description |
+|----------------------|---------|-------------|
+| `YOUTUBE_MATCH_SCORE_THRESHOLD` | 0.6 | Minimum score to consider a match (0.6-0.85 = needs review) |
+| `YOUTUBE_AUTO_MATCH_THRESHOLD` | 0.85 | Minimum score to auto-apply match without review |
+| `YOUTUBE_MAX_CANDIDATES` | 5 | Number of candidate matches stored per track |
+| `YOUTUBE_WEB_SEARCH_ENABLED` | true | Use web search before falling back to YouTube API |
+| `YOUTUBE_API_FALLBACK_ENABLED` | true | Fallback to YouTube API if web search insufficient |
+
+### Scoring Weights
+
+The YouTube matching algorithm uses weighted scoring:
+- Title similarity: 40%
+- Artist similarity: 30%
+- Duration proximity: 20%
+- Channel name match: 10%
 
 ## License
 

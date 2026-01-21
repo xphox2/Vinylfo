@@ -46,7 +46,7 @@ func InitDB() (*gorm.DB, error) {
 			return nil, fmt.Errorf("missing required environment variables: %s. Either set DATABASE_URL or all of: DB_USER, DB_PASS, DB_HOST, DB_PORT, DB_NAME", strings.Join(missingVars, ", "))
 		}
 
-		dsn = dbUser + ":" + dbPass + "@tcp(" + dbHost + ":" + dbPort + ")/" + dbName + "?parseTime=true"
+		dsn = dbUser + ":" + dbPass + "@tcp(" + dbHost + ":" + dbPort + ")/" + dbName + "?parseTime=true&allowNativePasswords=true"
 	}
 
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
@@ -65,7 +65,27 @@ func InitDB() (*gorm.DB, error) {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// Run migrations for all models
-	err = db.AutoMigrate(&models.Album{}, &models.Track{}, &models.PlaybackSession{}, &models.SessionPlaylist{}, &models.SessionSharing{}, &models.SessionNote{}, &models.AppConfig{}, &models.TrackHistory{}, &models.SyncLog{}, &models.SyncProgress{}, &models.SyncHistory{}, &models.DurationSource{}, &models.DurationResolution{}, &models.DurationResolverProgress{}, &models.PKCEState{}, &models.AuditLog{})
+	err = db.AutoMigrate(
+		&models.Album{},
+		&models.Track{},
+		&models.PlaybackSession{},
+		&models.SessionPlaylist{},
+		&models.SessionSharing{},
+		&models.SessionNote{},
+		&models.AppConfig{},
+		&models.TrackHistory{},
+		&models.SyncLog{},
+		&models.SyncProgress{},
+		&models.SyncHistory{},
+		&models.DurationSource{},
+		&models.DurationResolution{},
+		&models.DurationResolverProgress{},
+		&models.PKCEState{},
+		&models.AuditLog{},
+		// YouTube Sync models
+		&models.TrackYouTubeMatch{},
+		&models.TrackYouTubeCandidate{},
+	)
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)
 		return nil, err

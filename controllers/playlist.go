@@ -266,10 +266,26 @@ func (c *PlaylistController) GetPlaylist(ctx *gin.Context) {
 		return
 	}
 
+	type TrackResult struct {
+		ID             uint   `json:"id"`
+		AlbumID        uint   `json:"album_id"`
+		Title          string `json:"title"`
+		Duration       int    `json:"duration"`
+		TrackNumber    int    `json:"track_number"`
+		DiscNumber     int    `json:"disc_number"`
+		Side           string `json:"side"`
+		Position       string `json:"position"`
+		AudioFileURL   string `json:"audio_file_url"`
+		AlbumTitle     string `json:"album_title"`
+		DurationSource string `json:"duration_source"`
+		CreatedAt      string `json:"created_at"`
+		UpdatedAt      string `json:"updated_at"`
+	}
+
 	if len(playlistEntries) == 0 {
 		ctx.JSON(200, gin.H{
 			"session_id": sessionID,
-			"tracks":     []models.Track{},
+			"tracks":     []TrackResult{},
 			"count":      0,
 			"total":      total,
 			"page":       page,
@@ -279,7 +295,7 @@ func (c *PlaylistController) GetPlaylist(ctx *gin.Context) {
 		return
 	}
 
-	var tracks []models.Track
+	var tracks []TrackResult
 	trackIDSet := make(map[uint]int)
 	for i, entry := range playlistEntries {
 		trackIDSet[entry.TrackID] = i
@@ -301,7 +317,7 @@ func (c *PlaylistController) GetPlaylist(ctx *gin.Context) {
 		}
 	}
 
-	sortedTracks := make([]models.Track, len(playlistEntries))
+	sortedTracks := make([]TrackResult, len(playlistEntries))
 	for _, track := range tracks {
 		if order, ok := trackIDSet[track.ID]; ok {
 			sortedTracks[order] = track

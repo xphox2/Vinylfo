@@ -1,8 +1,14 @@
-/.*
-TODO.md
 *.exe
 *.log
 .env
+.env.example
+TODO.md
 TECHNICAL_DEBT.md
 API_DOCS.md
 DEPLOYMENT.md
+__debug_bin*
+vinylfo.exe
+.youtube_cache/
+.youtube_web_cache/
+.*
+.*/
