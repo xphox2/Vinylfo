@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"vinylfo/duration"
 )
 
 // VideoMetadata represents metadata for a YouTube video
@@ -70,6 +72,11 @@ func (s *YouTubeWebSearcher) waitForRateLimit() {
 	s.lastRequest = time.Now()
 }
 
+// ClearCache removes all cached web search results
+func (s *YouTubeWebSearcher) ClearCache() error {
+	return s.cache.Clear()
+}
+
 // badTitlePatterns matches very low-quality YouTube videos (only exclude lyrics)
 var badTitlePatterns = []string{
 	"lyrics", "lyric video",
@@ -96,8 +103,12 @@ type SearchResult struct {
 // SearchForTrack searches for YouTube videos matching the given track
 // Returns video IDs found from web search results
 func (s *YouTubeWebSearcher) SearchForTrack(ctx context.Context, title, artist string) ([]SearchResult, error) {
+	// Normalize title and artist for better search results
+	normalizedTitle := duration.NormalizeTitle(title)
+	normalizedArtist := duration.NormalizeArtistName(artist)
+
 	// Check cache first
-	cacheKey := s.generateCacheKey(title, artist)
+	cacheKey := s.generateCacheKey(normalizedTitle, normalizedArtist)
 	if cached, found := s.cache.Get(cacheKey); found {
 		return cached, nil
 	}
@@ -106,15 +117,15 @@ func (s *YouTubeWebSearcher) SearchForTrack(ctx context.Context, title, artist s
 	// Using the full track title + artist as a phrase (no quotes around individual parts)
 	queryVariations := []string{
 		// Best: Full track title + artist (as phrase) + YouTube Music
-		fmt.Sprintf(`"%s %s" YouTube Music`, title, artist),
+		fmt.Sprintf(`"%s %s" YouTube Music`, normalizedTitle, normalizedArtist),
 		// Full track title + artist + Official Audio
-		fmt.Sprintf(`"%s %s" "Official Audio"`, title, artist),
+		fmt.Sprintf(`"%s %s" "Official Audio"`, normalizedTitle, normalizedArtist),
 		// Full track title + artist
-		fmt.Sprintf(`"%s %s"`, title, artist),
+		fmt.Sprintf(`"%s %s"`, normalizedTitle, normalizedArtist),
 		// Artist + track title (reversed)
-		fmt.Sprintf(`"%s" "%s"`, artist, title),
+		fmt.Sprintf(`"%s" "%s"`, normalizedArtist, normalizedTitle),
 		// Just the track title (fallback)
-		fmt.Sprintf(`"%s"`, title),
+		fmt.Sprintf(`"%s"`, normalizedTitle),
 	}
 
 	var allResults []SearchResult
@@ -151,9 +162,9 @@ func (s *YouTubeWebSearcher) SearchForTrack(ctx context.Context, title, artist s
 
 	results := allResults
 
-	// Fetch metadata for each video
+	// Fetch metadata for each video (using noembed to get duration)
 	for i := range results {
-		metadata, err := s.FetchVideoMetadata(ctx, results[i].VideoID)
+		metadata, err := s.FetchVideoMetadataWithDuration(ctx, results[i].VideoID)
 		if err == nil {
 			results[i].Metadata = metadata
 		}

@@ -150,7 +150,28 @@ func (c *YouTubeSyncController) GetMatches(ctx *gin.Context) {
 		results = append(results, status)
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"tracks": results})
+	// Get playlist info including YouTube sync status
+	var session models.PlaybackSession
+	var youtubeSyncInfo gin.H
+	if err := c.db.Where("playlist_id = ?", playlistID).First(&session).Error; err == nil {
+		youtubeSyncInfo = gin.H{
+			"youtube_playlist_id":   session.YouTubePlaylistID,
+			"youtube_playlist_name": session.YouTubePlaylistName,
+			"synced_at":             session.YouTubeSyncedAt,
+		}
+	} else {
+		youtubeSyncInfo = gin.H{
+			"youtube_playlist_id":   "",
+			"youtube_playlist_name": "",
+			"synced_at":             nil,
+		}
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"tracks":        results,
+		"youtube_sync":  youtubeSyncInfo,
+		"playlist_name": session.PlaylistName,
+	})
 }
 
 // UpdateMatch manually sets or overrides a match for a track
@@ -367,4 +388,20 @@ func (c *YouTubeSyncController) GetTrackMatch(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, match)
+}
+
+// ClearWebCache clears the YouTube web search cache
+// POST /api/youtube/clear-cache
+func (c *YouTubeSyncController) ClearWebCache(ctx *gin.Context) {
+	if c.service == nil || c.service.WebSearcher() == nil {
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Web search service not available"})
+		return
+	}
+
+	if err := c.service.WebSearcher().ClearCache(); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clear cache: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"status": "cleared"})
 }

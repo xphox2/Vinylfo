@@ -61,10 +61,13 @@ type PlaybackSession struct {
 	QueuePosition int    `json:"queue_position"`         // Saved position in current track (seconds)
 	Status        string `gorm:"size:20;default:'stopped'" json:"status"`
 	// Status values: "playing", "paused", "stopped"
-	StartedAt    time.Time `json:"started_at"`
-	LastPlayedAt time.Time `json:"last_played_at"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	YouTubePlaylistID   string     `gorm:"size:100" json:"youtube_playlist_id,omitempty"`
+	YouTubePlaylistName string     `gorm:"size:255" json:"youtube_playlist_name,omitempty"`
+	YouTubeSyncedAt     *time.Time `json:"youtube_synced_at,omitempty"`
+	StartedAt           time.Time  `json:"started_at"`
+	LastPlayedAt        time.Time  `json:"last_played_at"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
 // SessionPlaylist represents a playlist within a session
@@ -273,7 +276,7 @@ type TrackYouTubeMatch struct {
 	VideoTitle     string `gorm:"size:500" json:"video_title"`
 	VideoDuration  int    `json:"video_duration"` // Duration in seconds
 	ChannelName    string `gorm:"size:255" json:"channel_name"`
-	ViewCount      int64  `json:"view_count"`                // For tiebreaking
+	ViewCount      int64  `json:"view_count"` // For tiebreaking
 	ThumbnailURL   string `gorm:"size:500" json:"thumbnail_url"`
 
 	// Scoring breakdown (0.0-1.0 each)
@@ -319,8 +322,8 @@ type TrackYouTubeCandidate struct {
 	DurationScore float64 `json:"duration_score"`
 	ChannelScore  float64 `json:"channel_score"`
 
-	Rank         int    `json:"rank"`                           // 1 = best match, 2 = second best, etc.
-	SourceMethod string `gorm:"size:20" json:"source_method"`   // web_search, api_search
+	Rank         int    `json:"rank"`                         // 1 = best match, 2 = second best, etc.
+	SourceMethod string `gorm:"size:20" json:"source_method"` // web_search, api_search
 
 	CreatedAt time.Time `json:"created_at"`
 }

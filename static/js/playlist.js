@@ -131,6 +131,53 @@ function showPlaylistDetail(sessionId) {
     };
 
     loadPlaylistTracksForDetail(sessionId);
+    updateMainSyncButtonState(sessionId);
+}
+
+function updateMainSyncButtonState(playlistId) {
+    const syncBtn = document.getElementById('sync-youtube-btn');
+
+    fetch(`/api/youtube/matches/${playlistId}`)
+        .then(response => {
+            if (!response.ok) {
+                updateSyncButtonDisplay(syncBtn, false, null);
+                return null;
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.youtube_sync && data.youtube_sync.youtube_playlist_id) {
+                updateSyncButtonDisplay(syncBtn, true, data.youtube_sync.youtube_playlist_id, data.youtube_sync.youtube_playlist_name || '');
+            } else {
+                updateSyncButtonDisplay(syncBtn, false, null, null);
+            }
+        })
+        .catch(error => {
+            console.error('Error checking sync status:', error);
+            updateSyncButtonDisplay(syncBtn, false, null, null);
+        });
+}
+
+function updateSyncButtonDisplay(btn, isSynced, youtubePlaylistId, youtubePlaylistName) {
+    if (isSynced) {
+        btn.textContent = 'Synced';
+        btn.style.backgroundColor = '#28a745';
+        btn.onclick = function() {
+            if (youtubePlaylistId) {
+                if (youtubePlaylistName) {
+                    window.location.href = `/youtube?playlist_id=${youtubePlaylistId}&playlist_title=${encodeURIComponent(youtubePlaylistName)}`;
+                } else {
+                    window.location.href = `/youtube?playlist_id=${youtubePlaylistId}`;
+                }
+            }
+        };
+    } else {
+        btn.textContent = 'YouTube Sync';
+        btn.style.backgroundColor = '#ff0000';
+        btn.onclick = function() {
+            openYouTubeSyncModal();
+        };
+    }
 }
 
 function loadPlaylistTracksForDetail(sessionId) {
@@ -689,24 +736,33 @@ function loadYouTubeMatchStatus(playlistId) {
             }
 
             const tracks = data.tracks;
-            const matched = tracks.filter(t => t.status === 'matched').length;
+            const matched = tracks.filter(t => t.status === 'matched' || t.status === 'reviewed').length;
             const needsReview = tracks.filter(t => t.status === 'needs_review').length;
             const unavailable = tracks.filter(t => t.status === 'unavailable').length;
             const pending = tracks.filter(t => t.status === 'pending').length;
 
-            document.getElementById('yt-matched-count').textContent = matched;
-            document.getElementById('yt-review-count').textContent = needsReview;
-            document.getElementById('yt-unavailable-count').textContent = unavailable;
-            document.getElementById('yt-pending-count').textContent = pending;
+            updateSyncStatusDisplay(matched, needsReview, unavailable, pending);
 
-            if (matched + needsReview + unavailable + pending > 0) {
-                document.getElementById('youtube-sync-status').style.display = 'block';
+            if (matched > 0 || needsReview > 0) {
+                document.getElementById('sync-youtube-section').style.display = 'block';
             } else {
-                document.getElementById('youtube-sync-status').style.display = 'none';
+                document.getElementById('sync-youtube-section').style.display = 'none';
+            }
+
+            // Pre-fill playlist name and update sync button state
+            if (data.youtube_sync && data.youtube_sync.youtube_playlist_id) {
+                // Already synced - update button and pre-fill
+                document.getElementById('new-playlist-name-yt').value = data.youtube_sync.youtube_playlist_name || data.playlist_name;
+                updateSyncButtonState(true, data.youtube_sync.youtube_playlist_id, data.youtube_sync.youtube_playlist_name || data.playlist_name);
+            } else {
+                // Not synced - pre-fill with playlist name
+                document.getElementById('new-playlist-name-yt').value = data.playlist_name || '';
+                updateSyncButtonState(false, null, null);
             }
         })
         .catch(error => {
-            console.error('Error loading YouTube match status:', error);
+            console.error('Error loading sync status:', error);
+            showNotification('Error loading sync status', 'error');
         });
 }
 
@@ -720,45 +776,42 @@ function openYouTubeSyncModal() {
     loadYouTubeSyncStatus();
 }
 
-function loadYouTubeSyncStatus() {
-    const playlistId = window.currentPlaylistId;
-
-    fetch(`/api/youtube/matches/${playlistId}`)
-        .then(response => {
-            if (!response.ok) {
-                if (response.status === 404) {
-                    updateSyncStatusDisplay(0, 0, 0, 0);
-                    return null;
-                }
-                throw new Error('Failed to load sync status');
+function updateSyncButtonState(isSynced, youtubePlaylistId, youtubePlaylistName) {
+    const syncBtn = document.getElementById('sync-youtube-btn');
+    if (isSynced) {
+        syncBtn.textContent = 'Synced';
+        syncBtn.style.backgroundColor = '#28a745';
+        syncBtn.onclick = function() {
+            if (youtubePlaylistId) {
+                loadYouTubePlaylist(youtubePlaylistId, youtubePlaylistName);
             }
-            return response.json();
-        })
-        .then(data => {
-            if (!data || !data.tracks) {
-                updateSyncStatusDisplay(0, 0, 0, 0);
-                document.getElementById('sync-youtube-section').style.display = 'none';
-                return;
-            }
+        };
+    } else {
+        syncBtn.textContent = 'YouTube Sync';
+        syncBtn.style.backgroundColor = '#ff0000';
+        syncBtn.onclick = function() {
+            openYouTubeSyncModal();
+        };
+    }
+}
 
-            const tracks = data.tracks;
-            const matched = tracks.filter(t => t.status === 'matched').length;
-            const needsReview = tracks.filter(t => t.status === 'needs_review').length;
-            const unavailable = tracks.filter(t => t.status === 'unavailable').length;
-            const pending = tracks.filter(t => t.status === 'pending').length;
+function loadYouTubePlaylist(playlistId, playlistName) {
+    if (playlistName) {
+        window.location.href = `/youtube?playlist_id=${playlistId}&playlist_title=${encodeURIComponent(playlistName)}`;
+    } else {
+        window.location.href = `/youtube?playlist_id=${playlistId}`;
+    }
+}
+        };
+    } else {
+        syncBtn.textContent = 'Sync to YouTube';
+        syncBtn.style.backgroundColor = '';
+        syncBtn.onclick = syncToYouTube;
+    }
+}
 
-            updateSyncStatusDisplay(matched, needsReview, unavailable, pending);
-
-            if (matched > 0 || needsReview > 0) {
-                document.getElementById('sync-youtube-section').style.display = 'block';
-            } else {
-                document.getElementById('sync-youtube-section').style.display = 'none';
-            }
-        })
-        .catch(error => {
-            console.error('Error loading sync status:', error);
-            showNotification('Error loading sync status', 'error');
-        });
+function loadYouTubePlaylist(playlistId) {
+    window.location.href = `/youtube?playlist_id=${playlistId}`;
 }
 
 function updateSyncStatusDisplay(matched, needsReview, unavailable, pending) {
@@ -891,6 +944,9 @@ function syncToYouTube() {
         }
 
         showNotification(`Synced ${data.synced_count} tracks to YouTube`, 'success');
+
+        // Reload sync status to update button state
+        loadYouTubeSyncStatus();
     })
     .catch(error => {
         console.error('Error syncing to YouTube:', error);
@@ -898,6 +954,27 @@ function syncToYouTube() {
         document.getElementById('youtube-status-msg').textContent = 'Error: ' + error.message;
         showNotification('Error syncing to YouTube: ' + error.message, 'error');
     });
+}
+
+function clearWebCache() {
+    if (!confirm('Clear the YouTube web search cache? This will force fresh searches for all tracks.')) {
+        return;
+    }
+
+    fetch('/api/youtube/clear-cache', { method: 'POST' })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to clear cache');
+            }
+            return response.json();
+        })
+        .then(data => {
+            showNotification('Web cache cleared successfully', 'success');
+        })
+        .catch(error => {
+            console.error('Error clearing cache:', error);
+            showNotification('Error clearing cache: ' + error.message, 'error');
+        });
 }
 
 function openReviewModal(playlistId) {
@@ -984,7 +1061,7 @@ function renderCandidates(candidates, trackId) {
             <div class="candidate-info">
                 <p class="candidate-title">${escapeHtml(candidate.title)}</p>
                 <p class="candidate-channel">${escapeHtml(candidate.channel_name)}</p>
-                <p class="candidate-duration">Duration: ${formatDuration(candidate.duration)}</p>
+                <p class="candidate-duration">Duration: ${formatDuration(candidate.video_duration)}</p>
                 <p class="candidate-score">Match Score: ${(candidate.match_score * 100).toFixed(0)}%</p>
             </div>
             <button class="select-candidate-btn" data-candidate-id="${candidate.id}">Select</button>
@@ -1142,6 +1219,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.getElementById('match-playlist-btn').addEventListener('click', matchPlaylistTracks);
     document.getElementById('sync-to-youtube-btn').addEventListener('click', syncToYouTube);
+    document.getElementById('clear-cache-btn').addEventListener('click', clearWebCache);
 
     document.querySelectorAll('input[name="youtube-export"]').forEach(radio => {
         radio.addEventListener('change', function() {

@@ -89,10 +89,16 @@ type playlistItemResponse struct {
 }
 
 type playlistItemSnippet struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Position    int    `json:"position"`
-	VideoID     string `json:"resourceId"`
+	Title        string     `json:"title"`
+	Description  string     `json:"description"`
+	Position     int        `json:"position"`
+	ResourceID   resourceId `json:"resourceId"`
+	ChannelTitle string     `json:"videoOwnerChannelTitle"`
+}
+
+type resourceId struct {
+	Kind    string `json:"kind"`
+	VideoID string `json:"videoId"`
 }
 
 type playlistItemListResponse struct {

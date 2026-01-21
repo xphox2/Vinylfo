@@ -48,6 +48,11 @@ func NewYouTubeSyncService(db *gorm.DB) (*YouTubeSyncService, error) {
 	}, nil
 }
 
+// WebSearcher returns the web searcher instance
+func (s *YouTubeSyncService) WebSearcher() *YouTubeWebSearcher {
+	return s.webSearcher
+}
+
 // MatchResult represents the result of matching a track to YouTube
 type MatchResult struct {
 	TrackID     uint                           `json:"track_id"`
@@ -602,6 +607,20 @@ func (s *YouTubeSyncService) SyncPlaylistToYouTube(ctx context.Context, req Sync
 		position++
 	}
 
+	// Update the PlaybackSession with YouTube playlist info
+	now := time.Now()
+	var session models.PlaybackSession
+	if err := s.db.Where("playlist_id = ?", req.PlaylistID).First(&session).Error; err == nil {
+		session.YouTubePlaylistID = youtubePlaylistID
+		if req.PlaylistName != "" {
+			session.YouTubePlaylistName = req.PlaylistName
+		} else {
+			session.YouTubePlaylistName = session.PlaylistName
+		}
+		session.YouTubeSyncedAt = &now
+		s.db.Save(&session)
+	}
+
 	return result, nil
 }
 
@@ -641,32 +660,36 @@ func (s *YouTubeSyncService) GetPlaylistSyncStatus(playlistID string) (*Playlist
 	readyToSync := pending == 0 && needsReview == 0
 
 	return &PlaylistSyncStatus{
-		PlaylistID:    playlistID,
-		PlaylistName:  session.PlaylistName,
-		TotalTracks:   int(totalTracks),
-		Matched:       int(matched),
-		NeedsReview:   int(needsReview),
-		Unavailable:   int(unavailable),
-		Pending:       pending,
-		MatchProgress: progress,
-		ReadyToSync:   readyToSync,
+		PlaylistID:          playlistID,
+		PlaylistName:        session.PlaylistName,
+		TotalTracks:         int(totalTracks),
+		Matched:             int(matched),
+		NeedsReview:         int(needsReview),
+		Unavailable:         int(unavailable),
+		Pending:             pending,
+		MatchProgress:       progress,
+		ReadyToSync:         readyToSync,
+		YouTubePlaylistID:   session.YouTubePlaylistID,
+		YouTubePlaylistName: session.YouTubePlaylistName,
+		LastSyncedAt:        session.YouTubeSyncedAt,
 	}, nil
 }
 
 // PlaylistSyncStatus represents the sync status of a playlist
 type PlaylistSyncStatus struct {
-	PlaylistID        string     `json:"playlist_id"`
-	PlaylistName      string     `json:"playlist_name"`
-	TotalTracks       int        `json:"total_tracks"`
-	Matched           int        `json:"matched"`
-	NeedsReview       int        `json:"needs_review"`
-	Unavailable       int        `json:"unavailable"`
-	Pending           int        `json:"pending"`
-	MatchProgress     float64    `json:"match_progress"`
-	ReadyToSync       bool       `json:"ready_to_sync"`
-	YouTubePlaylistID string     `json:"youtube_playlist_id,omitempty"`
-	LastSyncedAt      *time.Time `json:"last_synced_at,omitempty"`
-	LastSyncedCount   int        `json:"last_synced_count,omitempty"`
+	PlaylistID          string     `json:"playlist_id"`
+	PlaylistName        string     `json:"playlist_name"`
+	TotalTracks         int        `json:"total_tracks"`
+	Matched             int        `json:"matched"`
+	NeedsReview         int        `json:"needs_review"`
+	Unavailable         int        `json:"unavailable"`
+	Pending             int        `json:"pending"`
+	MatchProgress       float64    `json:"match_progress"`
+	ReadyToSync         bool       `json:"ready_to_sync"`
+	YouTubePlaylistID   string     `json:"youtube_playlist_id,omitempty"`
+	YouTubePlaylistName string     `json:"youtube_playlist_name,omitempty"`
+	LastSyncedAt        *time.Time `json:"last_synced_at,omitempty"`
+	LastSyncedCount     int        `json:"last_synced_count,omitempty"`
 }
 
 // SelectCandidate selects a candidate as the match for a track

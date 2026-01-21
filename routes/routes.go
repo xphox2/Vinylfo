@@ -218,5 +218,6 @@ func SetupRoutes(r *gin.Engine) {
 		youtube.GET("/sync-status/:playlist_id", youtubeSyncController.GetSyncStatus)
 		youtube.GET("/candidates/:track_id", youtubeSyncController.GetCandidates)
 		youtube.POST("/candidates/:track_id/select/:candidate_id", youtubeSyncController.SelectCandidate)
+		youtube.POST("/clear-cache", youtubeSyncController.ClearWebCache)
 	}
 }

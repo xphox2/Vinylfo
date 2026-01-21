@@ -387,11 +387,31 @@ func (c *PlaylistController) UpdatePlaylist(ctx *gin.Context) {
 func (c *PlaylistController) DeletePlaylist(ctx *gin.Context) {
 	sessionID := ctx.Param("id")
 
+	// Get all track IDs in this playlist first
+	var playlistTracks []models.SessionPlaylist
+	if err := c.db.Where("session_id = ?", sessionID).Find(&playlistTracks).Error; err == nil {
+		var trackIDs []uint
+		for _, pt := range playlistTracks {
+			trackIDs = append(trackIDs, pt.TrackID)
+		}
+
+		// Clean up YouTube match data for tracks in this playlist
+		if len(trackIDs) > 0 {
+			c.db.Where("track_id IN ?", trackIDs).Delete(&models.TrackYouTubeMatch{})
+			c.db.Where("track_id IN ?", trackIDs).Delete(&models.TrackYouTubeCandidate{})
+		}
+	}
+
+	// Delete SessionPlaylist entries
 	result := c.db.Where("session_id = ?", sessionID).Delete(&models.SessionPlaylist{})
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to delete playlist"})
 		return
 	}
+
+	// Delete the PlaybackSession itself (including YouTube sync info)
+	c.db.Where("playlist_id = ?", sessionID).Delete(&models.PlaybackSession{})
+
 	ctx.JSON(200, gin.H{"message": "Playlist deleted successfully"})
 }
 

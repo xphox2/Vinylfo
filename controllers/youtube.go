@@ -275,11 +275,12 @@ func (c *YouTubeController) GetPlaylistItems(ctx *gin.Context) {
 	result := make([]gin.H, 0, len(items.Items))
 	for _, item := range items.Items {
 		result = append(result, gin.H{
-			"id":          item.ID,
-			"title":       item.Snippet.Title,
-			"description": item.Snippet.Description,
-			"position":    item.Snippet.Position,
-			"video_id":    item.Snippet.VideoID,
+			"id":            item.ID,
+			"title":         item.Snippet.Title,
+			"description":   item.Snippet.Description,
+			"position":      item.Snippet.Position,
+			"video_id":      item.Snippet.ResourceID.VideoID,
+			"channel_title": item.Snippet.ChannelTitle,
 		})
 	}
 

@@ -5,6 +5,83 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7-alpha] - 2026-01-21
+
+### Added
+
+#### YouTube Playlist Sync Improvements
+
+**Web Search Normalization**
+- Fixed "Sublime (2)" searching instead of "Sublime" by normalizing track names before web search queries
+- Now strips disambiguation suffixes like `(2)`, `(3)`, etc. just like scoring normalization does
+- Uses `duration.NormalizeTitle()` and `duration.NormalizeArtistName()` before constructing search queries
+
+**Duration Display in Match Review**
+- Duration now shows on Review YouTube Match screen for candidates
+- Fixed JavaScript using wrong field name (`candidate.duration` → `candidate.video_duration`)
+- Changed `FetchVideoMetadata` to `FetchVideoMetadataWithDuration` to get duration via noembed.com
+
+**Web Cache Management**
+- Added "Clear Web Cache" button in YouTube Sync modal
+- New API endpoint: `POST /api/youtube/clear-cache`
+- Clears `.youtube_web_cache/` folder to force fresh searches
+- Useful when cached results have incomplete metadata
+
+**Synced State Button**
+- After successful sync, "YouTube Sync" button changes to green "Synced" button
+- Clicking "Synced" button opens YouTube Playlist Manager for that playlist
+- Default playlist name pre-fills in sync modal with local playlist name
+
+**Manual Match in Count**
+- Tracks manually matched (status: "reviewed") now count towards Matched count
+- Both "matched" and "reviewed" statuses included in matched count calculation
+
+**Playlist Deletion Cleanup**
+- When deleting a playlist, all related YouTube data is cleaned up:
+  - `TrackYouTubeMatch` records for tracks in playlist
+  - `TrackYouTubeCandidate` records for tracks in playlist
+  - `PlaybackSession` record (including YouTube sync info)
+  - `SessionPlaylist` entries
+
+**YouTube Playlist Manager Enhancements**
+- Click any playlist to view its videos
+- Shows video title, channel name, and YouTube thumbnail
+- Dynamic video counts (fetches actual count, bypasses stale cached count)
+- Back button to return to playlist list
+- URL parameter support: `/youtube?playlist_id=xxx&playlist_title=yyy`
+
+### Fixed
+
+**JavaScript Reference Errors**
+- Fixed `openYouTubeSyncModal` function defined after use
+- Fixed `updateSyncButtonState` function ordering issue
+- Fixed `updateSyncButtonDisplay` missing playlist name parameter
+
+**YouTube API Response Parsing**
+- Fixed `resourceId` field being parsed as string when it's actually an object
+- Added `resourceId` struct and `VideoID` field access via `item.Snippet.ResourceID.VideoID`
+- Fixed `ChannelTitle` field access for playlist items
+
+**GUI Bug Fixes**
+- Fixed duration not showing on Review YouTube Match screen
+- Fixed playlist items not loading (wrong endpoint path)
+- Fixed "Untitled / Unknown" display for playlist videos
+
+### Changed
+
+**Updated API Responses**
+- `GET /api/youtube/matches/:playlist_id` now returns `youtube_sync` info and `playlist_name`
+- `GET /api/youtube/matches/:playlist_id` returns tracks with top-level fields (not nested under `snippet`)
+- `PlaylistSyncStatus` now includes `YouTubePlaylistName` field
+
+**Database Schema Changes**
+- Extended `PlaybackSession` with `YouTubePlaylistID`, `YouTubePlaylistName`, `YouTubeSyncedAt` columns
+
+### New API Endpoints
+- `POST /api/youtube/clear-cache` - Clear web search cache
+
+---
+
 ## [0.2.6-alpha] - 2026-01-20
 
 ### Changed

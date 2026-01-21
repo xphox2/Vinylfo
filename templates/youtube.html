@@ -109,6 +109,46 @@
             padding: 60px 20px;
             color: #666;
         }
+        .video-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 10px;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .video-item img {
+            width: 120px;
+            height: 68px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+        .video-item .video-info {
+            flex: 1;
+        }
+        .video-item .video-info h4 {
+            margin: 0;
+            font-size: 14px;
+        }
+        .video-item .video-info p {
+            margin: 5px 0 0;
+            color: #666;
+            font-size: 12px;
+        }
+        .back-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+        }
     </style>
 </head>
 <body>
@@ -122,8 +162,21 @@
         <div style="display: flex; justify-content: flex-end; margin-bottom: 15px;">
             <button id="create-playlist-btn" class="btn-create-playlist">+ Create Playlist</button>
         </div>
-        <div id="playlists-container" class="playlist-list">
-            <div class="loading">Loading playlists...</div>
+        
+        <!-- Playlists List View -->
+        <div id="playlists-view">
+            <div id="playlists-container" class="playlist-list">
+                <div class="loading">Loading playlists...</div>
+            </div>
+        </div>
+        
+        <!-- Playlist Items View -->
+        <div id="playlist-items-view" style="display: none;">
+            <button id="back-to-playlists" class="back-btn">&larr; Back to Playlists</button>
+            <h2 id="playlist-items-title">Playlist Videos</h2>
+            <div id="playlist-items-container" class="playlist-list">
+                <div class="loading">Loading videos...</div>
+            </div>
         </div>
     </div>
 
@@ -191,30 +244,108 @@ async function loadPlaylists(container) {
         } else if (!data.items || data.items.length === 0) {
             container.innerHTML = '<p class="empty-state">No playlists found.<br>Create a playlist to get started!</p>';
         } else {
-            data.items.forEach(playlist => {
-                const snippet = playlist.snippet || {};
-                const thumbnails = snippet.thumbnails || {};
+            data.items.forEach(item => {
                 const playlistItem = document.createElement('div');
                 playlistItem.className = 'playlist-item';
-                const thumbnail = thumbnails.default || thumbnails.medium || thumbnails.high || { url: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4=' };
-                const playlistTitle = playlist.title || snippet.title || 'Untitled';
+                playlistItem.style.cursor = 'pointer';
+                playlistItem.dataset.playlistId = item.id;
+                playlistItem.dataset.playlistTitle = item.title || 'Untitled';
+                const thumbnailUrl = item.id 
+                    ? `https://img.youtube.com/p/img/lg_${item.id}_default.jpg`
+                    : 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4=';
                 playlistItem.innerHTML = `
-                    <img src="${thumbnail.url}" alt="${escapeHtml(playlistTitle)}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4='">
+                    <img src="${thumbnailUrl}" alt="${escapeHtml(item.title)}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4='">
                     <div class="playlist-info">
-                        <h4>${escapeHtml(playlistTitle)}</h4>
-                        <p>${playlist.content_details?.item_count || 0} videos</p>
+                        <h4>${escapeHtml(item.title || 'Untitled')}</h4>
+                        <p class="playlist-video-count">Loading...</p>
                     </div>
                     <div class="playlist-actions">
-                        <button class="btn-delete" data-playlist-id="${playlist.id}" data-playlist-title="${escapeHtml(playlistTitle)}">Delete</button>
+                        <button class="btn-delete" data-playlist-id="${item.id}" data-playlist-title="${escapeHtml(item.title)}" onclick="event.stopPropagation()">Delete</button>
                     </div>
                 `;
+                playlistItem.addEventListener('click', () => loadPlaylistItems(item.id, item.title));
                 container.appendChild(playlistItem);
+
+                // Fetch actual item count
+                fetch(`${API_BASE}/playlists/${item.id}`, { method: 'GET' })
+                    .then(response => response.json())
+                    .then(data => {
+                        const countElem = playlistItem.querySelector('.playlist-video-count');
+                        if (countElem && data.items) {
+                            countElem.textContent = `${data.items.length} videos`;
+                        }
+                    })
+                    .catch(() => {
+                        const countElem = playlistItem.querySelector('.playlist-video-count');
+                        if (countElem) {
+                            countElem.textContent = item.content_details?.item_count ? `${item.content_details.item_count} videos` : 'View';
+                        }
+                    });
             });
         }
     } catch (err) {
         console.error('Playlists load error:', err);
         container.innerHTML = '<p class="error-message">Failed to load playlists. Please try reconnecting from Settings.</p>';
     }
+}
+
+async function loadPlaylistItems(playlistId, playlistTitle) {
+    const container = document.getElementById('playlist-items-container');
+    const playlistsView = document.getElementById('playlists-view');
+    const playlistItemsView = document.getElementById('playlist-items-view');
+    const titleElement = document.getElementById('playlist-items-title');
+
+    if (!container) return;
+
+    playlistsView.style.display = 'none';
+    playlistItemsView.style.display = 'block';
+    titleElement.textContent = playlistTitle;
+    container.innerHTML = '<div class="loading">Loading videos...</div>';
+
+    try {
+        const response = await fetch(`${API_BASE}/playlists/${playlistId}`, {
+            method: 'GET'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to load playlist items');
+        }
+
+        const data = await response.json();
+        container.innerHTML = '';
+
+        if (!data.items || data.items.length === 0) {
+            container.innerHTML = '<p class="empty-state">No videos in this playlist yet.</p>';
+        } else {
+            data.items.forEach(item => {
+                const videoItem = document.createElement('div');
+                videoItem.className = 'video-item';
+                const videoTitle = item.title || 'Untitled';
+                const channelTitle = item.channel_title || 'Unknown';
+                const videoId = item.video_id || '';
+                const thumbnailUrl = videoId 
+                    ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+                    : 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4=';
+                videoItem.innerHTML = `
+                    <img src="${thumbnailUrl}" alt="${escapeHtml(videoTitle)}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4='">
+                    <div class="video-info">
+                        <h4>${escapeHtml(videoTitle)}</h4>
+                        <p>${escapeHtml(channelTitle)}</p>
+                    </div>
+                `;
+                container.appendChild(videoItem);
+            });
+        }
+    } catch (err) {
+        console.error('Error loading playlist items:', err);
+        container.innerHTML = '<p class="error-message">Failed to load videos. Please try again.</p>';
+    }
+}
+
+function showPlaylistsList() {
+    document.getElementById('playlists-view').style.display = 'block';
+    document.getElementById('playlist-items-view').style.display = 'none';
+    loadPlaylists();
 }
 
 async function deletePlaylist(playlistId, playlistTitle) {
@@ -328,12 +459,26 @@ function escapeHtml(text) {
 
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
-        loadYouTubeData();
+        // Check if we have a playlist_id in the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const playlistId = urlParams.get('playlist_id');
+        const playlistTitle = urlParams.get('playlist_title');
+
+        if (playlistId) {
+            loadPlaylistItems(playlistId, playlistTitle || 'Playlist');
+        } else {
+            loadYouTubeData();
+        }
     }, 100);
 
     const createBtn = document.getElementById('create-playlist-btn');
     if (createBtn) {
         createBtn.addEventListener('click', createPlaylist);
+    }
+
+    const backBtn = document.getElementById('back-to-playlists');
+    if (backBtn) {
+        backBtn.addEventListener('click', showPlaylistsList);
     }
 
     const cancelBtn = document.getElementById('cancel-playlist');
