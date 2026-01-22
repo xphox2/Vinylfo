@@ -3,8 +3,8 @@ package controllers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"sync"
 	"time"
 
@@ -51,6 +51,7 @@ func NewPlaybackController(db *gorm.DB) *PlaybackController {
 func (pm *PlaybackManager) StartPlayback(playlistID string, session *models.PlaybackSession) {
 	pm.Lock()
 	defer pm.Unlock()
+	log.Printf("[DEBUG] StartPlayback called with playlistID=%s, session.PlaylistName=%s\n", playlistID, session.PlaylistName)
 	pm.sessions[playlistID] = &PlaybackSessionState{
 		IsPlaying:       true,
 		IsPaused:        false,
@@ -59,6 +60,7 @@ func (pm *PlaybackManager) StartPlayback(playlistID string, session *models.Play
 	}
 	pm.playlistID = playlistID
 	pm.playlistName = session.PlaylistName
+	log.Printf("[DEBUG] StartPlayback complete, sessions count=%d, isPlaying=%v\n", len(pm.sessions), pm.sessions[playlistID].IsPlaying)
 }
 
 func (pm *PlaybackManager) PausePlayback(playlistID string) {
@@ -97,8 +99,10 @@ func (pm *PlaybackManager) IsPlaying(playlistID string) bool {
 	pm.RLock()
 	defer pm.RUnlock()
 	if sess, ok := pm.sessions[playlistID]; ok {
+		log.Printf("[DEBUG] IsPlaying(%s): found session, returning %v\n", playlistID, sess.IsPlaying)
 		return sess.IsPlaying
 	}
+	log.Printf("[DEBUG] IsPlaying(%s): no session found, sessions=%v\n", playlistID, len(pm.sessions))
 	return false
 }
 
@@ -187,19 +191,16 @@ func (c *PlaybackController) GetPlaybackState(ctx *gin.Context) {
 		playlistID = c.playbackManager.GetCurrentPlaylistID()
 	}
 
-	fmt.Printf("[DEBUG] GetPlaybackState: requested playlistID=%s, currentInMemory=%s\n", playlistID, c.playbackManager.GetCurrentPlaylistID())
-
 	var playbackState *models.PlaybackSession
+
 	if playlistID != "" {
 		playbackState = c.playbackManager.GetSession(playlistID)
-		fmt.Printf("[DEBUG] GetPlaybackState: inMemorySession=%v\n", playbackState != nil)
-		if playbackState == nil {
-			var session models.PlaybackSession
-			result := c.db.First(&session, "playlist_id = ?", playlistID)
-			fmt.Printf("[DEBUG] GetPlaybackState: dbQueryResult=%v\n", result.Error == nil)
-			if result.Error == nil {
-				playbackState = &session
-			}
+
+		// Always refresh from database to get latest QueueIndex
+		var session models.PlaybackSession
+		result := c.db.First(&session, "playlist_id = ?", playlistID)
+		if result.Error == nil {
+			playbackState = &session
 		}
 	}
 
@@ -374,36 +375,36 @@ func (c *PlaybackController) RestoreSession(ctx *gin.Context) {
 	// Read and parse body manually to avoid consuming it
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
-		fmt.Printf("[DEBUG] RestoreSession: failed to read body=%s\n", err.Error())
+		log.Printf("[DEBUG] RestoreSession: failed to read body=%s\n", err.Error())
 		ctx.JSON(400, gin.H{"error": "Failed to read request body"})
 		return
 	}
 
-	fmt.Printf("[DEBUG] RestoreSession: raw body=%s\n", string(body))
+	log.Printf("[DEBUG] RestoreSession: raw body=%s\n", string(body))
 
 	// Parse JSON manually
 	var req struct {
 		PlaylistID string `json:"playlist_id"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		fmt.Printf("[DEBUG] RestoreSession: parse error=%s\n", err.Error())
+		log.Printf("[DEBUG] RestoreSession: parse error=%s\n", err.Error())
 		ctx.JSON(400, gin.H{"error": "Invalid JSON: " + err.Error()})
 		return
 	}
 
 	playlistID := req.PlaylistID
-	fmt.Printf("[DEBUG] RestoreSession: playlistID=%s\n", playlistID)
+	log.Printf("[DEBUG] RestoreSession: playlistID=%s\n", playlistID)
 
 	var playbackState models.PlaybackSession
 	result := c.db.First(&playbackState, "playlist_id = ?", playlistID)
 	if result.Error != nil {
-		fmt.Printf("[DEBUG] RestoreSession: session not found for playlistID=%s\n", playlistID)
+		log.Printf("[DEBUG] RestoreSession: session not found for playlistID=%s\n", playlistID)
 		ctx.JSON(404, gin.H{"error": "Session not found"})
 		return
 	}
 
 	playlistSize := c.getPlaylistSize(playlistID)
-	fmt.Printf("[DEBUG] RestoreSession: playlistSize=%d\n", playlistSize)
+	log.Printf("[DEBUG] RestoreSession: playlistSize=%d\n", playlistSize)
 	if playlistSize == 0 {
 		ctx.JSON(400, gin.H{"error": "Session has no tracks"})
 		return
@@ -472,7 +473,7 @@ func (c *PlaybackController) buildTrackResponse(track models.Track, album models
 func (c *PlaybackController) getQueueTracks(playlistID string) []map[string]interface{} {
 	var playlistEntries []models.SessionPlaylist
 	c.db.Where("session_id = ?", playlistID).Order("`order` ASC").Find(&playlistEntries)
-	fmt.Printf("[DEBUG] getQueueTracks: playlistID=%s, entriesCount=%d\n", playlistID, len(playlistEntries))
+	log.Printf("[DEBUG] getQueueTracks: playlistID=%s, entriesCount=%d\n", playlistID, len(playlistEntries))
 
 	var queueTracks []map[string]interface{}
 	if len(playlistEntries) > 0 {
@@ -584,12 +585,11 @@ func (c *PlaybackController) StartPlaylist(ctx *gin.Context) {
 		}
 		playlistEntries = append(playlistEntries, entry)
 	}
-	fmt.Printf("[DEBUG] StartPlaylist: Creating %d SessionPlaylist entries for playlistID=%s\n", len(playlistEntries), req.PlaylistID)
+	log.Printf("[DEBUG] StartPlaylist: Creating %d SessionPlaylist entries for playlistID=%s\n", len(playlistEntries), req.PlaylistID)
 	c.db.Create(&playlistEntries)
 
+	c.playbackManager.StartPlayback(playbackState.PlaylistID, &playbackState)
 	c.playbackManager.SetCurrentTrack(playbackState.PlaylistID, &firstTrack)
-	c.playbackManager.UpdatePosition(playbackState.PlaylistID, 0)
-	c.playbackManager.ResumePlayback(playbackState.PlaylistID)
 
 	queueWithAlbums := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -752,6 +752,64 @@ func (c *PlaybackController) Skip(ctx *gin.Context) {
 
 	ctx.JSON(200, gin.H{
 		"status":      "Skipped to next track",
+		"track":       c.buildTrackResponse(newTrack, album),
+		"queue":       queueTracks,
+		"queue_index": playbackState.QueueIndex,
+		"is_playing":  true,
+		"playlist_id": playlistID,
+	})
+}
+
+func (c *PlaybackController) PlayIndex(ctx *gin.Context) {
+	var req struct {
+		PlaylistID string `json:"playlist_id"`
+		QueueIndex int    `json:"queue_index"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	playlistID := req.PlaylistID
+	queueIndex := req.QueueIndex
+
+	var playbackState models.PlaybackSession
+	result := c.db.First(&playbackState, "playlist_id = ?", playlistID)
+	if result.Error != nil {
+		ctx.JSON(404, gin.H{"error": "No playback state found"})
+		return
+	}
+
+	playlistSize := c.getPlaylistSize(playlistID)
+	if queueIndex < 0 || queueIndex >= playlistSize {
+		ctx.JSON(400, gin.H{"error": "Invalid queue index"})
+		return
+	}
+
+	playbackState.QueueIndex = queueIndex
+	playbackState.QueuePosition = 0
+
+	trackID, ok := c.getTrackIDAtOrder(playlistID, queueIndex+1)
+	if !ok {
+		ctx.JSON(404, gin.H{"error": "Track not found at order"})
+		return
+	}
+	playbackState.TrackID = trackID
+
+	var newTrack models.Track
+	c.db.First(&newTrack, playbackState.TrackID)
+	var album models.Album
+	c.db.First(&album, newTrack.AlbumID)
+
+	c.playbackManager.SetCurrentTrack(playlistID, &newTrack)
+	c.playbackManager.UpdatePosition(playlistID, 0)
+	c.playbackManager.ResumePlayback(playlistID)
+
+	c.db.Save(&playbackState)
+
+	queueTracks := c.getQueueTracks(playbackState.PlaylistID)
+
+	ctx.JSON(200, gin.H{
+		"status":      "Playing track at index",
 		"track":       c.buildTrackResponse(newTrack, album),
 		"queue":       queueTracks,
 		"queue_index": playbackState.QueueIndex,

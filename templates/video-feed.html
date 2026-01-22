@@ -1,0 +1,91 @@
+{{ define "video-feed.html" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinylfo Video Feed</title>
+    <link rel="stylesheet" href="/static/css/video-feed.css">
+</head>
+<body data-overlay="{{ .overlay }}" data-theme="{{ .theme }}" data-transition="{{ .transition }}" data-show-visualizer="{{ .showVisualizer }}" data-quality="{{ .quality }}" data-overlay-duration="{{ .overlayDuration }}">
+
+    <!-- Main Container -->
+    <div id="video-feed-container">
+
+        <!-- Video Layer -->
+        <div id="video-layer" class="layer">
+            <div id="youtube-player-container">
+                <div id="youtube-player"></div>
+            </div>
+        </div>
+
+        <!-- Album Art Fallback Layer -->
+        <div id="album-art-layer" class="layer hidden">
+            <div id="album-art-wrapper">
+                <img id="album-art" src="" alt="Album Art">
+            </div>
+        </div>
+
+        <!-- Visualizer Layer -->
+        <div id="visualizer-layer" class="layer hidden">
+            <canvas id="visualizer-canvas"></canvas>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="overlay">
+            <div class="spinner">
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring"></div>
+            </div>
+            <p class="loading-text">Loading...</p>
+        </div>
+
+        <!-- No Track Overlay -->
+        <div id="no-track-overlay" class="overlay hidden">
+            <div class="no-track-content">
+                <svg class="vinyl-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" fill="#1a1a1a" stroke="#333" stroke-width="2"/>
+                    <circle cx="50" cy="50" r="35" fill="none" stroke="#222" stroke-width="1"/>
+                    <circle cx="50" cy="50" r="25" fill="none" stroke="#222" stroke-width="1"/>
+                    <circle cx="50" cy="50" r="15" fill="none" stroke="#222" stroke-width="1"/>
+                    <circle cx="50" cy="50" r="8" fill="#333"/>
+                    <circle cx="50" cy="50" r="3" fill="#666"/>
+                </svg>
+                <p class="no-track-text">No track playing</p>
+                <p class="no-track-subtext">Start playback in Vinylfo to see video</p>
+            </div>
+        </div>
+
+        <!-- Track Info Overlay -->
+        <div id="track-overlay" class="overlay hidden">
+            <div id="track-info">
+                <img id="overlay-album-art" src="" alt="">
+                <div id="track-details">
+                    <h2 id="track-title"></h2>
+                    <p id="track-artist"></p>
+                    <p id="track-album"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Status -->
+        <div id="connection-status" class="hidden">
+            <span class="status-dot"></span>
+            <span class="status-text">Reconnecting...</span>
+        </div>
+
+    </div>
+
+    <!-- YouTube IFrame API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+
+    <!-- Audio Visualizer -->
+    <script src="/static/js/audio-visualizer.js"></script>
+
+    <!-- Video Feed Manager -->
+    <script src="/static/js/video-feed.js"></script>
+
+</body>
+</html>
+{{ end }}

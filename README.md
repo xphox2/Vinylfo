@@ -51,6 +51,28 @@ Vinylfo is a self-hosted web application for managing your vinyl record collecti
 - **Secure Token Storage**: OAuth tokens encrypted and stored in database with automatic refresh
 - **Smart API Usage**: 10,000 daily quota units per connected user
 
+### Video Feed for OBS Streaming
+- **Real-Time Video Display**: Shows YouTube music videos synced with your playback queue
+- **OBS Browser Source**: Dedicated endpoint for OBS streaming overlays
+- **Server-Sent Events (SSE)**: Instant sync with main player (no polling delay)
+- **Playback Control Sync**: Play, pause, stop, skip commands sync to video feed in real-time
+- **Smart Fallbacks**: Album art with Ken Burns effect when no video available
+- **Audio Visualizer**: Animated frequency bars as fallback display
+- **Track Info Overlay**: Configurable lower-third with track/artist/album info
+- **Smooth Transitions**: Fade or slide transitions between tracks
+- **Customizable via URL Parameters**:
+  - Overlay position (top, bottom, none)
+  - Theme (dark, light, transparent)
+  - Transition style (fade, slide, none)
+  - Visualizer toggle
+  - Video quality selection
+  - Overlay auto-hide duration
+
+**Usage:**
+1. Start playback from `/player` page
+2. Open `/feeds/video` in OBS as a Browser Source
+3. Control playback from `/player` - video feed syncs automatically
+
 ### Discogs Sync Features
 - **Pause/Resume**: Long syncs can be paused and resumed later
 - **Progress Persistence**: Sync progress saved to database (survives restarts)
@@ -67,6 +89,7 @@ The application includes pages for:
 - **Playlist** (`/playlist`) - Manage playlists
 - **Sync** (`/sync`) - Discogs sync dashboard
 - **YouTube** (`/youtube`) - YouTube integration and playlist management
+- **Video Feed** (`/feeds/video`) - OBS browser source for streaming video overlay
 - **Duration Review** (`/resolution-center`) - Resolve missing track durations
 - **Search** (`/search`) - Search Discogs database
 - **Settings** (`/settings`) - Configure Discogs and YouTube connections
@@ -85,6 +108,7 @@ vinylfo/
 │   ├── playlist.go        # Playlist management
 │   ├── settings.go        # Settings API
 │   ├── track.go           # Track CRUD operations
+│   ├── video_feed.go      # Video feed for OBS streaming
 │   └── youtube.go         # YouTube OAuth and playlist API
 ├── services/              # Business logic layer
 │   ├── album_import.go    # Album import from Discogs
@@ -121,9 +145,17 @@ vinylfo/
 │   ├── header.html        # Shared header template
 │   ├── index.html         # Home page
 │   ├── youtube.html       # YouTube integration page
+│   ├── video-feed.html    # OBS video feed page
 │   ├── resolution-center.html  # Duration resolution page
 │   └── ...                # Other page templates
 └── static/                # Static assets (JS, CSS)
+    ├── js/
+    │   ├── video-feed.js      # Video feed manager
+    │   ├── audio-visualizer.js # Canvas audio visualizer
+    │   └── ...
+    └── css/
+        ├── video-feed.css     # Video feed styles
+        └── ...
 ```
 
 ## API Reference
@@ -219,6 +251,20 @@ vinylfo/
 | DELETE | `/api/youtube/playlists/:id/videos/:item_id` | Remove video |
 | POST | `/api/youtube/search` | Search YouTube videos |
 | POST | `/api/youtube/export-playlist` | Export session to YouTube playlist |
+
+### Video Feed (OBS Streaming)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/feeds/video` | Video feed page for OBS browser source |
+| GET | `/feeds/video/events` | SSE endpoint for real-time track updates |
+| GET | `/playback/current-youtube` | Get current track's YouTube video info |
+| GET | `/playback/next-preload` | Get next track info for preloading |
+| POST | `/playback/video/play` | Play video |
+| POST | `/playback/video/pause` | Pause video |
+| POST | `/playback/video/stop` | Stop video (preserves session) |
+| POST | `/playback/video/next` | Skip to next video |
+| POST | `/playback/video/previous` | Go to previous video |
+| POST | `/playback/video/seek` | Seek video to position |
 
 ### Settings
 | Method | Endpoint | Description |

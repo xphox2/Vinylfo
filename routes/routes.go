@@ -12,9 +12,23 @@ import (
 
 func CSPMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com; frame-src https://accounts.google.com")
+		// Check if this is the video feed page - allow YouTube embedding
+		if c.Request.URL.Path == "/feeds/video" || c.Request.URL.Path == "/feeds/video/events" {
+			c.Header("Content-Security-Policy",
+				"default-src 'self'; "+
+					"script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com https://www.youtube.com https://s.ytimg.com; "+
+					"style-src 'self' 'unsafe-inline'; "+
+					"img-src 'self' data: https:; "+
+					"connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://www.youtube.com; "+
+					"frame-src https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com; "+
+					"media-src 'self' https://www.youtube.com")
+			// Allow embedding in OBS
+			c.Header("X-Frame-Options", "ALLOWALL")
+		} else {
+			c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com; frame-src https://accounts.google.com")
+			c.Header("X-Frame-Options", "DENY")
+		}
 		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-XSS-Protection", "1; mode=block")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
@@ -88,6 +102,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/playback/pause", playbackController.Pause)
 	r.POST("/playback/resume", playbackController.Resume)
 	r.POST("/playback/skip", playbackController.Skip)
+	r.POST("/playback/play-index", playbackController.PlayIndex)
 	r.POST("/playback/previous", playbackController.Previous)
 	r.POST("/playback/stop", playbackController.Stop)
 	r.POST("/playback/restore", playbackController.RestoreSession)
@@ -99,6 +114,19 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/playback/history/recent", playbackController.GetRecent)
 	r.GET("/playback/history/:track_id", playbackController.GetTrackHistory)
 	r.POST("/playback/update-history", playbackController.UpdateHistory)
+
+	// Video Feed for OBS streaming
+	videoFeedController := controllers.NewVideoFeedController(db, playbackController)
+	r.GET("/feeds/video", videoFeedController.GetVideoFeedPage)
+	r.GET("/feeds/video/events", videoFeedController.StreamEvents)
+	r.GET("/playback/current-youtube", videoFeedController.GetCurrentYouTubeVideo)
+	r.GET("/playback/next-preload", videoFeedController.GetNextTrackPreload)
+	r.POST("/playback/video/play", videoFeedController.Play)
+	r.POST("/playback/video/pause", videoFeedController.Pause)
+	r.POST("/playback/video/stop", videoFeedController.Stop)
+	r.POST("/playback/video/next", videoFeedController.Next)
+	r.POST("/playback/video/previous", videoFeedController.Previous)
+	r.POST("/playback/video/seek", videoFeedController.Seek)
 
 	r.GET("/sessions", playlistController.GetSessions)
 	r.GET("/playback-sessions/:id", playlistController.GetSessionByID)

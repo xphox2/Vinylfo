@@ -1,0 +1,510 @@
+/**
+ * Vinylfo Video Feed Styles
+ * Professional styling for OBS streaming overlay
+ */
+
+/* Reset and Base */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+}
+
+body {
+    background: #000;
+}
+
+/* Main Container */
+#video-feed-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Layers */
+.layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transition: opacity 0.5s ease;
+}
+
+.layer.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.layer.fading-out {
+    opacity: 0;
+}
+
+.layer.fading-in {
+    opacity: 1;
+}
+
+/* Video Layer */
+#video-layer {
+    z-index: 1;
+    background: #000;
+}
+
+#youtube-player-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+#youtube-player {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100vw;
+    height: 56.25vw; /* 16:9 aspect ratio */
+    min-height: 100vh;
+    min-width: 177.78vh; /* 16:9 */
+    transform: translate(-50%, -50%);
+}
+
+/* Hide YouTube controls overlay */
+#youtube-player-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* Album Art Layer */
+#album-art-layer {
+    z-index: 2;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#album-art-wrapper {
+    position: relative;
+    width: 60vmin;
+    height: 60vmin;
+    max-width: 600px;
+    max-height: 600px;
+    animation: kenBurns 20s ease-in-out infinite alternate;
+}
+
+#album-art {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 8px;
+    box-shadow:
+        0 25px 50px -12px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+@keyframes kenBurns {
+    0% {
+        transform: scale(1) translate(0, 0);
+    }
+    100% {
+        transform: scale(1.1) translate(-2%, -2%);
+    }
+}
+
+/* Visualizer Layer */
+#visualizer-layer {
+    z-index: 3;
+    pointer-events: none;
+}
+
+#visualizer-canvas {
+    width: 100%;
+    height: 100%;
+}
+
+/* Overlays */
+.overlay {
+    position: absolute;
+    z-index: 10;
+    transition: opacity 0.5s ease;
+}
+
+.overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Loading Overlay */
+#loading-overlay {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.spinner {
+    position: relative;
+    width: 80px;
+    height: 80px;
+}
+
+.spinner-ring {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border: 3px solid transparent;
+    border-radius: 50%;
+}
+
+.spinner-ring:nth-child(1) {
+    border-top-color: #667eea;
+    animation: spin 1s linear infinite;
+}
+
+.spinner-ring:nth-child(2) {
+    border-right-color: #764ba2;
+    animation: spin 1.5s linear infinite reverse;
+}
+
+.spinner-ring:nth-child(3) {
+    border-bottom-color: #f093fb;
+    animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.loading-text {
+    margin-top: 20px;
+    color: #888;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+/* No Track Overlay */
+#no-track-overlay {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.no-track-content {
+    text-align: center;
+}
+
+.vinyl-icon {
+    width: 150px;
+    height: 150px;
+    margin-bottom: 30px;
+    animation: rotate 8s linear infinite;
+}
+
+@keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.no-track-text {
+    color: #fff;
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.no-track-subtext {
+    color: #666;
+    font-size: 16px;
+}
+
+/* Track Info Overlay */
+#track-overlay {
+    left: 0;
+    right: 0;
+    padding: 0 40px;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    pointer-events: none;
+}
+
+#track-overlay.position-bottom {
+    bottom: 40px;
+}
+
+#track-overlay.position-top {
+    top: 40px;
+}
+
+#track-overlay:not(.visible) {
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+#track-overlay.position-top:not(.visible) {
+    transform: translateY(-20px);
+}
+
+#track-info {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px 30px;
+    border-radius: 16px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    max-width: 800px;
+}
+
+/* Theme: Dark */
+.theme-dark #track-info {
+    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.theme-dark #track-title {
+    color: #fff;
+}
+
+.theme-dark #track-artist {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.theme-dark #track-album {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* Theme: Light */
+.theme-light #track-info {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.theme-light #track-title {
+    color: #1a1a2e;
+}
+
+.theme-light #track-artist {
+    color: rgba(0, 0, 0, 0.7);
+}
+
+.theme-light #track-album {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+.theme-light #no-track-overlay {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+}
+
+.theme-light .no-track-text {
+    color: #1a1a2e;
+}
+
+.theme-light .vinyl-icon circle {
+    fill: #e4e8eb;
+    stroke: #ccc;
+}
+
+/* Theme: Transparent */
+.theme-transparent #track-info {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.theme-transparent #track-title {
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.theme-transparent #track-artist {
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.theme-transparent #track-album {
+    color: rgba(255, 255, 255, 0.7);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Track Info Content */
+#overlay-album-art {
+    width: 80px;
+    height: 80px;
+    border-radius: 8px;
+    object-fit: cover;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
+}
+
+#overlay-album-art.hidden {
+    display: none;
+}
+
+#track-details {
+    min-width: 0;
+    flex: 1;
+}
+
+#track-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#track-artist {
+    font-size: 18px;
+    font-weight: 500;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#track-album {
+    font-size: 14px;
+    font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Connection Status */
+#connection-status {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: rgba(255, 100, 100, 0.9);
+    border-radius: 20px;
+    z-index: 200;
+    transition: opacity 0.3s ease;
+}
+
+#connection-status.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    background: #fff;
+    border-radius: 50%;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-text {
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Transition: Slide */
+.transition-slide .layer.fading-out {
+    transform: translateX(-100%);
+    opacity: 1;
+}
+
+.transition-slide .layer.fading-in {
+    transform: translateX(0);
+    animation: slideIn 0.5s ease forwards;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+    }
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    #track-overlay {
+        padding: 0 20px;
+    }
+
+    #track-overlay.position-bottom {
+        bottom: 20px;
+    }
+
+    #track-overlay.position-top {
+        top: 20px;
+    }
+
+    #track-info {
+        padding: 15px 20px;
+        gap: 15px;
+    }
+
+    #overlay-album-art {
+        width: 60px;
+        height: 60px;
+    }
+
+    #track-title {
+        font-size: 18px;
+    }
+
+    #track-artist {
+        font-size: 14px;
+    }
+
+    #track-album {
+        font-size: 12px;
+    }
+
+    #album-art-wrapper {
+        width: 70vmin;
+        height: 70vmin;
+    }
+}
+
+/* OBS Specific: Remove any potential artifacts */
+body.obs-mode {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ensure crisp rendering at any resolution */
+#video-feed-container * {
+    image-rendering: -webkit-optimize-contrast;
+}

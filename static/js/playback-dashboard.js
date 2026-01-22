@@ -46,6 +46,7 @@ class PlaybackManager {
         this.trackEndedHandler = null;
         this.queueCurrentPage = 1;
         this.queueItemsPerPage = 25;
+        this.stateSyncBlocked = false;
     }
 
     async init() {
@@ -165,29 +166,17 @@ class PlaybackManager {
     }
 
     async syncStateFromServer() {
+        // Skip sync if we're in the middle of a user-initiated update
+        if (this.stateSyncBlocked) {
+            return;
+        }
+        
         try {
             const url = this.currentPlaylistId 
                 ? `/playback/current?playlist_id=${encodeURIComponent(this.currentPlaylistId)}`
                 : '/playback/current';
             const response = await fetch(url);
             const data = await response.json();
-            
-            console.log('[Sync] Server track:', data.track?.title, 'queue_index:', data.queue_index);
-            console.log('[Sync] Local currentTrack:', this.currentTrack?.title, 'queueIndex:', this.queueIndex);
-            
-            if (data.track && (!this.currentTrack || data.track.id !== this.currentTrack.id)) {
-                console.log('[Sync] TRACK CHANGED on server, updating from', this.currentTrack?.title, 'to', data.track.title);
-                this.currentTrack = data.track;
-                this.currentPlaylistId = data.playlist_id;
-                this.currentPlaylistName = data.playlist_name;
-                
-                document.getElementById('track-title').textContent = data.track.title || 'Unknown Track';
-                document.getElementById('track-artist').textContent = data.track.album_artist || 'Unknown Artist';
-                document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(data.track.album_title, data.track.title);
-                document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(data.track.duration || 0);
-            } else {
-                console.log('[Sync] No track change needed');
-            }
             
             if (data.queue && data.queue.length > 0) {
                 const serverQueueIds = data.queue.map(t => t.id).join(',');
@@ -197,11 +186,10 @@ class PlaybackManager {
                 const indexChanged = this.queueIndex !== data.queue_index;
                 
                 if (queueChanged || indexChanged) {
-                    console.log('[Sync] Queue update needed:', { queueChanged, indexChanged });
-                    console.log('[Sync] Server queue first 3:', data.queue.slice(0, 3).map(t => t.title));
-                    console.log('[Sync] Local queue first 3:', this.queue.slice(0, 3).map(t => t.title));
                     this.queue = data.queue;
-                    this.queueIndex = data.queue_index || 0;
+                    if (indexChanged && this.queueIndex === data.queue_index) {
+                        this.queueIndex = data.queue_index || 0;
+                    }
                     this.renderQueue();
                 }
             }
@@ -799,15 +787,45 @@ class PlaybackManager {
 
     playQueueItem(index) {
         if (index >= 0 && index < this.queue.length) {
-            this.queueIndex = index;
-            this.currentPosition = 0;
-            this.displayTrack(this.queue[index]);
-            this.renderQueue();
-            this.startProgressSaving();
-            this.saveProgress();
-
+            const track = this.queue[index];
+            
+            // Prevent periodic sync from overwriting our update
             this.isLocalChange = true;
-            this.broadcastState();
+            this.stateSyncBlocked = true;
+            
+            fetch('/playback/play-index', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    playlist_id: this.currentPlaylistId,
+                    queue_index: index
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.track) {
+                    this.queueIndex = index;
+                    this.currentPosition = 0;
+                    this.displayTrack(track);
+                    this.renderQueue();
+                    this.startProgressSaving();
+                    this.updateButtonStates();
+                    
+                    // Wait for server to persist
+                    setTimeout(() => {
+                        this.stateSyncBlocked = false;
+                    }, 1000);
+                    
+                    this.isLocalChange = true;
+                    this.tabSync.broadcastSkip(data.track, index, this.queue);
+                } else {
+                    this.stateSyncBlocked = false;
+                }
+            })
+            .catch(error => {
+                console.error('[Queue] Error playing queue item:', error);
+                this.stateSyncBlocked = false;
+            });
         }
     }
 

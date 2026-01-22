@@ -5,6 +5,106 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8-alpha] - 2026-01-21
+
+### Added
+
+#### Video Feed for OBS Streaming
+- **New Video Feed Page** (`/feeds/video`): Dedicated page for OBS browser source streaming
+  - Shows YouTube music videos synced with your playback queue
+  - Designed as a display-only view that mirrors the main player
+  - Full viewport video display for streaming overlays
+
+- **Real-Time Sync via Server-Sent Events (SSE)**
+  - New SSE endpoint `/feeds/video/events` for instant track updates
+  - No polling delay - video changes immediately when track changes
+  - Automatic reconnection with exponential backoff
+  - Connection status indicator
+
+- **Smart Fallback Display**
+  - Album art with Ken Burns effect when no YouTube video available
+  - Canvas-based audio visualizer with animated frequency bars
+  - Simulated audio visualization (works in OBS without audio input)
+  - Theme support for visualizer (dark, light, transparent)
+
+- **Track Info Overlay**
+  - Configurable position (top, bottom, or none)
+  - Shows track title, artist, and album name
+  - Album art thumbnail in overlay
+  - Auto-hide with configurable duration
+  - Three themes: dark, light, transparent
+
+- **Smooth Video Transitions**
+  - Fade transition between tracks (default)
+  - Slide transition option
+  - No transition option for instant switching
+
+- **URL Parameter Customization**
+  - `overlay` - Position: `none`, `bottom`, `top` (default: bottom)
+  - `theme` - Color theme: `dark`, `light`, `transparent` (default: dark)
+  - `transition` - Effect: `fade`, `slide`, `none` (default: fade)
+  - `showVisualizer` - Enable visualizer: `true`, `false` (default: true)
+  - `quality` - Video quality: `auto`, `1080`, `720`, `480` (default: auto)
+  - `overlayDuration` - Seconds to show overlay, 0 = always (default: 5)
+
+- **Video Preloading**
+  - Fetches next track info via `/playback/next-preload`
+  - Enables seamless transitions between tracks
+
+#### New API Endpoints
+- `GET /feeds/video` - Video feed page for OBS browser source
+- `GET /feeds/video/events` - SSE endpoint for real-time track updates
+- `GET /playback/current-youtube` - Get current track's YouTube video info
+- `GET /playback/next-preload` - Get next track info for preloading
+- `POST /playback/video/play` - Play video
+- `POST /playback/video/pause` - Pause video
+- `POST /playback/video/stop` - Stop video (preserves session)
+- `POST /playback/video/next` - Skip to next video
+- `POST /playback/video/previous` - Go to previous video
+- `POST /playback/video/seek` - Seek video to position
+
+#### New Files
+- `controllers/video_feed.go` - Video feed controller with SSE support
+- `templates/video-feed.html` - OBS video feed page template
+- `static/js/video-feed.js` - Video feed manager with YouTube IFrame API
+- `static/js/audio-visualizer.js` - Canvas-based audio visualizer
+- `static/css/video-feed.css` - Video feed styles with transitions
+
+### Changed
+
+#### CSP Updates for YouTube Embedding
+- Updated Content-Security-Policy for `/feeds/video` routes
+- Added YouTube domains to script-src, frame-src, and connect-src
+- Allows YouTube IFrame embedding in video feed
+- X-Frame-Options set to ALLOWALL for OBS browser source compatibility
+
+### Fixed
+
+#### Video Feed Stop Button Preserving Session
+- Stop now pauses and resets position instead of deleting session
+- Users can resume playback after stopping
+- Session state preserved in database with status "stopped"
+
+#### Video Feed Pause Detection
+- State monitor now distinguishes between track changes and play/pause state changes
+- Sends dedicated `playback_state` SSE event for pause/play changes
+- Improved JavaScript handling for pause state
+
+### Fixed
+
+#### Playlist Playback Session Not Created
+- **Fixed `is_playing` always returning false after starting playlist**: `StartPlaylist` was calling `ResumePlayback()` which only works if a session already exists
+  - Changed to call `StartPlayback()` which properly creates the session with `IsPlaying: true`
+  - This fix enables the video feed pause functionality to work correctly
+  - File: `controllers/playback.go`
+
+#### Video Feed Not Receiving Pause Events
+- Fixed state monitor not detecting pause state changes because session was never created
+- Added debug logging throughout the pause flow for troubleshooting
+- Files: `controllers/video_feed.go`, `controllers/playback.go`, `static/js/video-feed.js`
+
+---
+
 ## [0.2.7-alpha] - 2026-01-21
 
 ### Added
