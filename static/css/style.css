@@ -942,6 +942,13 @@ footer {
     border-top: 1px solid #eee;
 }
 
+footer .footer-icon {
+    width: 16px;
+    height: 16px;
+    vertical-align: text-bottom;
+    margin-right: 0.25rem;
+}
+
 #playback-dashboard footer {
     text-align: center;
     padding: 1rem;

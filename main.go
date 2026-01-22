@@ -2,13 +2,21 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"runtime"
+	"sync"
 	"syscall"
+	"time"
+	"unsafe"
 
+	"github.com/getlantern/systray"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"gorm.io/gorm"
@@ -24,8 +32,49 @@ import (
 
 var db *gorm.DB
 var playbackController *controllers.PlaybackController
+var server *http.Server
+var exitChan chan struct{}
+var iconBytes []byte
+var logFile *os.File
+var fileOpenMutex sync.Mutex
+
+func init() {
+	setupFileLogging()
+
+	data, err := os.ReadFile("icons/vinyl-icon.ico")
+	if err != nil {
+		data, err = os.ReadFile("icons/vinyl-icon.png")
+		if err != nil {
+			log.Printf("Warning: No icon file found (tried icons/vinyl-icon.ico and icons/vinyl-icon.png)")
+			return
+		}
+	}
+	if len(data) == 0 {
+		log.Printf("Warning: Icon file is empty")
+		return
+	}
+	iconBytes = data
+	log.Printf("Loaded icon: %d bytes", len(data))
+}
+
+func setupFileLogging() {
+	logDir := "logs"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return
+	}
+
+	logPath := filepath.Join(logDir, "vinylfo.log")
+	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+
+	log.SetOutput(logFile)
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
 
 func main() {
+	log.Println("Vinylfo starting...")
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("Warning: No .env file found. Using default configuration.")
@@ -58,6 +107,7 @@ func main() {
 	r.Use(gin.Logger())
 
 	r.Static("/static", "./static")
+	r.Static("/icons", "./icons")
 
 	tmpl := template.Must(template.ParseFiles(
 		"templates/header.html",
@@ -133,9 +183,20 @@ func main() {
 		}
 	}()
 
+	go func() {
+		time.Sleep(2 * time.Second)
+		openBrowser()
+	}()
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+
+	go runSystray()
+
+	select {
+	case <-quit:
+	case <-exitChan:
+	}
 	log.Println("Shutting down server...")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), config.HTTP.ShutdownTimeout)
@@ -157,4 +218,101 @@ func main() {
 	}
 
 	log.Println("Server exited")
+}
+
+func runSystray() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Warning: Systray initialization failed: %v", r)
+		}
+	}()
+
+	systray.Run(func() {
+		if len(iconBytes) > 0 {
+			systray.SetIcon(iconBytes)
+			systray.SetTemplateIcon(iconBytes, iconBytes)
+		}
+		systray.SetTitle("Vinylfo")
+		systray.SetTooltip("Vinylfo Server")
+
+		mOpenLogs := systray.AddMenuItem("Open Log File", "View application logs")
+		mOpenBrowser := systray.AddMenuItem("Open Web Interface", "Open web interface in browser")
+		systray.AddSeparator()
+		mExit := systray.AddMenuItem("Exit", "Exit application")
+
+		go func() {
+			for {
+				select {
+				case <-mOpenLogs.ClickedCh:
+					go openLogFile()
+				case <-mOpenBrowser.ClickedCh:
+					go openBrowser()
+				case <-mExit.ClickedCh:
+					close(exitChan)
+					systray.Quit()
+				}
+			}
+		}()
+	}, func() {
+		log.Println("Systray exiting")
+	})
+}
+
+func openLogFile() {
+	logPath := filepath.Join("logs", "vinylfo.log")
+	openFile(logPath)
+}
+
+func openBrowser() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	url := fmt.Sprintf("http://localhost:%s", port)
+	if runtime.GOOS == "windows" {
+		exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	} else if runtime.GOOS == "darwin" {
+		exec.Command("open", url).Start()
+	} else {
+		exec.Command("xdg-open", url).Start()
+	}
+}
+
+func openFile(path string) {
+	fileOpenMutex.Lock()
+	defer fileOpenMutex.Unlock()
+
+	if runtime.GOOS == "windows" {
+		openFileWindows(path)
+	} else if runtime.GOOS == "darwin" {
+		_ = exec.Command("open", path).Start()
+	} else {
+		_ = exec.Command("xdg-open", path).Start()
+	}
+}
+
+func openFileWindows(path string) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return
+	}
+
+	pathPtr, err := syscall.UTF16PtrFromString(absPath)
+	if err != nil {
+		return
+	}
+
+	shell32 := syscall.MustLoadDLL("shell32.dll")
+	procShellExecute := shell32.MustFindProc("ShellExecuteW")
+
+	_, _, _ = procShellExecute.Call(
+		0,
+		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("open"))),
+		uintptr(unsafe.Pointer(pathPtr)),
+		0,
+		0,
+		uintptr(1),
+	)
+
+	time.Sleep(100 * time.Millisecond)
 }
