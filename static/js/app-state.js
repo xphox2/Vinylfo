@@ -26,13 +26,22 @@ export function escapeHtml(text) {
 
 export function cleanAlbumTitle(albumTitle, trackTitle) {
     if (!albumTitle) return 'Unknown Album';
-    
+
     if (albumTitle.includes(' / ') && albumTitle.includes(trackTitle)) {
         const parts = albumTitle.split(' / ');
         return parts[parts.length - 1].trim();
     }
-    
+
     return albumTitle;
+}
+
+export function cleanArtistName(artistName) {
+    if (!artistName) return 'Unknown Artist';
+    // Use the global normalizeArtistName from utils.js if available
+    if (typeof window.normalizeArtistName === 'function') {
+        return window.normalizeArtistName(artistName) || 'Unknown Artist';
+    }
+    return artistName;
 }
 
 export function updatePaginationControls(type) {

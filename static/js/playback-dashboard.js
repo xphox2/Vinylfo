@@ -13,13 +13,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function cleanAlbumTitle(albumTitle, trackTitle) {
     if (!albumTitle) return 'Unknown Album';
-    
+
     if (albumTitle.includes(' / ') && albumTitle.includes(trackTitle)) {
         const parts = albumTitle.split(' / ');
         return parts[parts.length - 1].trim();
     }
-    
+
     return albumTitle;
+}
+
+function cleanArtistName(artistName) {
+    if (!artistName) return 'Unknown Artist';
+    // Use the global normalizeArtistName from utils.js if available
+    if (typeof window.normalizeArtistName === 'function') {
+        return window.normalizeArtistName(artistName) || 'Unknown Artist';
+    }
+    return artistName;
 }
 
 // TabSyncManager is loaded from tab-sync-manager.js
@@ -47,6 +56,8 @@ class PlaybackManager {
         this.queueCurrentPage = 1;
         this.queueItemsPerPage = 25;
         this.stateSyncBlocked = false;
+        this.useYouTubeDuration = false;
+        this.currentYouTubeDuration = 0;
     }
 
     async init() {
@@ -80,13 +91,23 @@ class PlaybackManager {
             if (data.track && data.playlist_id) {
                 this.currentPlaylistId = data.playlist_id;
                 this.currentPlaylistName = data.playlist_name || null;
+                this.currentTrack = data.track;
+                this.currentYouTubeDuration = data.track.youtube_video_duration || 0;
+                
+                console.log('[PlaybackManager] Initial load track:', {
+                    title: data.track.title,
+                    duration: data.track.duration,
+                    youtube_video_duration: data.track.youtube_video_duration,
+                    youtube_video_id: data.track.youtube_video_id
+                });
                 
                 document.getElementById('track-title').textContent = data.track.title || 'Unknown Track';
-                document.getElementById('track-artist').textContent = data.track.album_artist || 'Unknown Artist';
+                document.getElementById('track-artist').textContent = cleanArtistName(data.track.album_artist);
                 document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(data.track.album_title, data.track.title);
-                document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(data.track.duration || 0);
+                document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(this.getEffectiveDuration());
                 document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(data.position || 0);
                 document.getElementById('progress-bar').style.width = '0%';
+                this.updateDurationComparison();
                 
                 const playBtn = document.getElementById('play-btn');
                 const pauseBtn = document.getElementById('pause-btn');
@@ -108,9 +129,10 @@ class PlaybackManager {
                 
                 if (data.queue && data.queue.length > 0) {
                     console.log('[PlaybackManager] Queue received, count:', data.queue.length);
+                    console.log('[PlaybackManager] First queue track:', data.queue[0]);
                     this.queue = data.queue;
                     this.queueIndex = data.queue_index || 0;
-                    console.log('[PlaybackManager] Queue first 3:', this.queue.slice(0, 3).map(t => t.title));
+                    console.log('[PlaybackManager] Queue first 3:', this.queue.slice(0, 3).map(t => ({ title: t.title, yt_duration: t.youtube_video_duration })));
                     this.renderQueue();
                 } else {
                     console.log('[PlaybackManager] No queue in response');
@@ -325,14 +347,16 @@ class PlaybackManager {
         
         if (trackToPlay) {
             this.currentTrack = trackToPlay;
+            this.currentYouTubeDuration = trackToPlay.youtube_video_duration || 0;
             console.log('[PlaybackManager] applyRemoteSkip - updating UI with track:', trackToPlay.title);
             
             document.getElementById('track-title').textContent = trackToPlay.title || 'Unknown Track';
-            document.getElementById('track-artist').textContent = trackToPlay.album_artist || 'Unknown Artist';
+            document.getElementById('track-artist').textContent = cleanArtistName(trackToPlay.album_artist);
             document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(trackToPlay.album_title, trackToPlay.title);
-            document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(trackToPlay.duration || 0);
+            document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(this.getEffectiveDuration());
             document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
             document.getElementById('progress-bar').style.width = '0%';
+            this.updateDurationComparison();
         } else {
             console.log('[PlaybackManager] applyRemoteSkip - NO TRACK to play!');
         }
@@ -440,6 +464,29 @@ class PlaybackManager {
             }
         }
         
+        // YouTube duration toggle button
+        const useYouTubeDurationCheckbox = document.getElementById('use-youtube-duration');
+        if (useYouTubeDurationCheckbox) {
+            // Restore preference
+            const savedUseYouTubeDuration = localStorage.getItem('useYouTubeDuration');
+            if (savedUseYouTubeDuration === 'true') {
+                this.useYouTubeDuration = true;
+                useYouTubeDurationCheckbox.checked = true;
+            }
+            
+            useYouTubeDurationCheckbox.addEventListener('change', () => {
+                this.useYouTubeDuration = useYouTubeDurationCheckbox.checked;
+                localStorage.setItem('useYouTubeDuration', this.useYouTubeDuration);
+                this.updateDurationComparison();
+            });
+        }
+        
+        // YouTube duration refresh button
+        const refreshDurationBtn = document.getElementById('refresh-duration-btn');
+        if (refreshDurationBtn) {
+            refreshDurationBtn.addEventListener('click', () => this.refreshYouTubeDuration());
+        }
+        
         // Queue pagination buttons
         const prevPageBtn = document.getElementById('prev-page-btn');
         const nextPageBtn = document.getElementById('next-page-btn');
@@ -467,7 +514,8 @@ class PlaybackManager {
     }
 
     seekToPosition(event) {
-        if (!this.currentTrack || !this.currentTrack.duration) return;
+        const effectiveDuration = this.getEffectiveDuration();
+        if (!this.currentTrack || !effectiveDuration) return;
 
         const progressContainer = event.currentTarget;
         const rect = progressContainer.getBoundingClientRect();
@@ -478,7 +526,7 @@ class PlaybackManager {
         const percentage = clickX / containerWidth;
 
         // Calculate new position in seconds
-        const newPosition = Math.floor(percentage * this.currentTrack.duration);
+        const newPosition = Math.floor(percentage * effectiveDuration);
 
         console.log('[PlaybackManager] Seeking to position:', newPosition);
 
@@ -567,14 +615,16 @@ class PlaybackManager {
                 
                 if (prevTrack) {
                     this.currentTrack = prevTrack;
+                    this.currentYouTubeDuration = prevTrack.youtube_video_duration || 0;
                     console.log('[PlaybackManager] previous() - FINAL this.currentTrack:', this.currentTrack.title);
                     
                     document.getElementById('track-title').textContent = prevTrack.title || 'Unknown Track';
-                    document.getElementById('track-artist').textContent = prevTrack.album_artist || 'Unknown Artist';
+                    document.getElementById('track-artist').textContent = cleanArtistName(prevTrack.album_artist);
                     document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(prevTrack.album_title, prevTrack.title);
-                    document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(prevTrack.duration || 0);
+                    document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(this.getEffectiveDuration());
                     document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
                     document.getElementById('progress-bar').style.width = '0%';
+                    this.updateDurationComparison();
                 }
                 
                 if (data.queue && data.queue.length > 0) {
@@ -628,14 +678,16 @@ class PlaybackManager {
                 
                 if (nextTrack) {
                     this.currentTrack = nextTrack;
+                    this.currentYouTubeDuration = nextTrack.youtube_video_duration || 0;
                     console.log('[PlaybackManager] next() - FINAL this.currentTrack:', this.currentTrack.title);
                     
                     document.getElementById('track-title').textContent = nextTrack.title || 'Unknown Track';
-                    document.getElementById('track-artist').textContent = nextTrack.album_artist || 'Unknown Artist';
+                    document.getElementById('track-artist').textContent = cleanArtistName(nextTrack.album_artist);
                     document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(nextTrack.album_title, nextTrack.title);
-                    document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(nextTrack.duration || 0);
+                    document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(this.getEffectiveDuration());
                     document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
                     document.getElementById('progress-bar').style.width = '0%';
+                    this.updateDurationComparison();
                 }
                 
                 if (data.queue && data.queue.length > 0) {
@@ -660,6 +712,58 @@ class PlaybackManager {
             }
         } catch (error) {
             console.error('Error skipping to next:', error);
+        }
+    }
+
+    // Advance to next track but stay paused (used when track ends with auto-play disabled)
+    async advanceAndPause() {
+        console.log('[PlaybackManager] Advancing to next track and pausing');
+        try {
+            // First skip to next track on server
+            const response = await fetch('/playback/skip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playlist_id: this.currentPlaylistId })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+
+                if (data.queue_index !== undefined) {
+                    this.queueIndex = data.queue_index;
+                }
+
+                let nextTrack = data.track;
+                if (!nextTrack && data.queue && data.queue.length > 0 && this.queueIndex < data.queue.length) {
+                    nextTrack = data.queue[this.queueIndex];
+                }
+
+                if (nextTrack) {
+                    this.currentTrack = nextTrack;
+                    this.currentYouTubeDuration = nextTrack.youtube_video_duration || 0;
+
+                    document.getElementById('track-title').textContent = nextTrack.title || 'Unknown Track';
+                    document.getElementById('track-artist').textContent = cleanArtistName(nextTrack.album_artist);
+                    document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(nextTrack.album_title, nextTrack.title);
+                    document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(this.getEffectiveDuration());
+                    document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
+                    document.getElementById('progress-bar').style.width = '0%';
+                    this.updateDurationComparison();
+                }
+
+                if (data.queue && data.queue.length > 0) {
+                    this.queue = data.queue;
+                    this.queueIndex = data.queue_index || this.queueIndex;
+                    this.renderQueue();
+                }
+
+                this.currentPosition = 0;
+
+                // Now pause immediately
+                await this.pause();
+            }
+        } catch (error) {
+            console.error('Error advancing to next track:', error);
         }
     }
 
@@ -832,18 +936,22 @@ class PlaybackManager {
     displayTrack(track, playlistName) {
         this.currentTrack = track;
         this.currentPlaylistName = playlistName || this.currentPlaylistName;
+        this.currentYouTubeDuration = track.youtube_video_duration || 0;
 
         console.log('[PlaybackManager] displayTrack called with:', {
             title: track.title,
             album_title: track.album_title,
             duration: track.duration,
-            id: track.id
+            youtube_video_duration: this.currentYouTubeDuration,
+            youtube_video_id: track.youtube_video_id,
+            id: track.id,
+            fullTrack: track
         });
 
         document.getElementById('track-title').textContent = track.title || 'Unknown Track';
-        document.getElementById('track-artist').textContent = track.album_artist || 'Unknown Artist';
+        document.getElementById('track-artist').textContent = cleanArtistName(track.album_artist);
         document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(track.album_title, track.title);
-        document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(track.duration || 0);
+        document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(this.getEffectiveDuration());
         document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(this.currentPosition);
         document.getElementById('progress-bar').style.width = '0%';
 
@@ -855,6 +963,9 @@ class PlaybackManager {
         } else if (playlistInfo) {
             playlistInfo.style.display = 'none';
         }
+
+        // Update duration comparison
+        this.updateDurationComparison();
     }
 
     startStatusUpdate() {
@@ -869,8 +980,10 @@ class PlaybackManager {
 
     checkTrackEnd() {
         if (!this.currentTrack) return;
-        
-        if (this.currentPosition >= this.currentTrack.duration) {
+
+        const effectiveDuration = this.getEffectiveDuration();
+
+        if (this.currentPosition >= effectiveDuration) {
             console.log('[PlaybackManager] Track ended! QueueIndex:', this.queueIndex, 'Queue length:', this.queue.length);
             console.log('[PlaybackManager] Queue first 3:', this.queue.slice(0, 3).map(t => t.title));
             
@@ -879,49 +992,18 @@ class PlaybackManager {
                 console.log('[PlaybackManager] Next track from queue:', nextTrack?.title);
                 
                 if (this.autoPlayEnabled) {
-                    console.log('[PlaybackManager] Auto-playing next track:', nextTrack?.title);
-                    
-                    this.queueIndex++;
-                    this.currentPosition = 0;
-                    this.currentTrack = nextTrack;
-                    
-                    document.getElementById('track-title').textContent = nextTrack.title || 'Unknown Track';
-                    document.getElementById('track-artist').textContent = nextTrack.album_artist || 'Unknown Artist';
-                    document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(nextTrack.album_title, nextTrack.title);
-                    document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(nextTrack.duration || 0);
-                    document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
-                    document.getElementById('progress-bar').style.width = '0%';
-                    
-                    this.renderQueue();
-                    this.startProgressSaving();
-                    this.updateButtonStates();
-                    this.saveProgress();
-                    
-                    console.log('[PlaybackManager] Broadcasting skip - track:', nextTrack?.title, 'queueIndex:', this.queueIndex);
-                    this.isLocalChange = true;
-                    this.tabSync.broadcastSkip(nextTrack, this.queueIndex, this.queue);
+                    console.log('[PlaybackManager] Auto-playing next track via server skip');
+
+                    // Call the server's skip endpoint to properly update in-memory state
+                    // This ensures the video feed gets notified via SSE
+                    this.next();
+                    return; // next() handles everything
                 } else {
-                    console.log('[PlaybackManager] Queueing next track (auto-play disabled)');
-                    
-                    this.queueIndex++;
-                    const newTrack = this.queue[this.queueIndex];
-                    if (newTrack) {
-                        this.currentTrack = newTrack;
-                        this.currentPosition = 0;
-                        
-                        document.getElementById('track-title').textContent = newTrack.title || 'Unknown Track';
-                        document.getElementById('track-artist').textContent = newTrack.album_artist || 'Unknown Artist';
-                        document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(newTrack.album_title, newTrack.title);
-                        document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(newTrack.duration || 0);
-                        document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(0);
-                        document.getElementById('progress-bar').style.width = '0%';
-                    }
-                    
-                    this.renderQueue();
-                    this.stop();
-                    
-                    this.isLocalChange = true;
-                    this.broadcastState();
+                    console.log('[PlaybackManager] Advancing to next track (auto-play disabled)');
+
+                    // Call the server to advance to next track, then pause
+                    // This ensures the video feed gets notified via SSE
+                    this.advanceAndPause();
                 }
             } else {
                 console.log('[PlaybackManager] No more tracks in queue');
@@ -932,9 +1014,11 @@ class PlaybackManager {
 
     updatePositionDisplay() {
         document.getElementById('track-position').textContent = 'Position: ' + this.formatTime(this.currentPosition);
+        document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(this.getEffectiveDuration());
 
-        if (this.currentTrack && this.currentTrack.duration > 0) {
-            const progress = (this.currentPosition / this.currentTrack.duration) * 100;
+        const effectiveDuration = this.getEffectiveDuration();
+        if (effectiveDuration > 0) {
+            const progress = (this.currentPosition / effectiveDuration) * 100;
             document.getElementById('progress-bar').style.width = progress + '%';
         }
     }
@@ -1065,8 +1149,113 @@ class PlaybackManager {
     formatTime(seconds) {
         if (!seconds || seconds <= 0) return '00:00';
         const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
+        const secs = Math.floor(seconds % 60);
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    getEffectiveDuration() {
+        if (this.useYouTubeDuration && this.currentYouTubeDuration > 0) {
+            return this.currentYouTubeDuration;
+        }
+        return this.currentTrack?.duration || 0;
+    }
+
+    updateDurationComparison() {
+        const dbDuration = this.currentTrack?.duration || 0;
+        const ytDuration = this.currentYouTubeDuration || 0;
+        const comparisonDiv = document.getElementById('duration-comparison');
+        const refreshBtn = document.getElementById('refresh-duration-btn');
+        const statusDiv = document.getElementById('duration-status');
+        
+        console.log('[Duration] DB:', dbDuration, 'YT:', ytDuration, 'currentTrack:', this.currentTrack);
+        
+        if (ytDuration > 0 && dbDuration > 0 && dbDuration !== ytDuration) {
+            comparisonDiv.classList.add('visible');
+            document.getElementById('db-duration').textContent = `DB: ${this.formatTime(dbDuration)}`;
+            document.getElementById('yt-duration').textContent = `YT: ${this.formatTime(ytDuration)}`;
+            
+            const diff = ytDuration - dbDuration;
+            const diffAbs = Math.abs(diff);
+            const diffText = diff > 0 ? `+${this.formatTime(diffAbs)}` : `-${this.formatTime(diffAbs)}`;
+            const diffEl = document.getElementById('duration-diff');
+            diffEl.textContent = `Diff: ${diffText}`;
+            diffEl.style.color = diff > 0 ? '#4CAF50' : '#ff5722';
+            
+            refreshBtn.style.display = 'none';
+            statusDiv.textContent = '';
+        } else if (ytDuration === 0 && this.currentTrack?.youtube_video_id) {
+            console.log('[Duration] No YouTube duration found - showing refresh button');
+            comparisonDiv.classList.add('visible');
+            document.getElementById('db-duration').textContent = `DB: ${this.formatTime(dbDuration)}`;
+            document.getElementById('yt-duration').textContent = `YT: --:--`;
+            document.getElementById('duration-diff').textContent = 'No duration cached';
+            document.getElementById('duration-diff').style.color = '#888';
+            
+            refreshBtn.style.display = 'inline-block';
+            statusDiv.textContent = '';
+        } else {
+            comparisonDiv.classList.remove('visible');
+            refreshBtn.style.display = 'none';
+            statusDiv.textContent = '';
+        }
+    }
+
+    async refreshYouTubeDuration() {
+        const refreshBtn = document.getElementById('refresh-duration-btn');
+        const statusDiv = document.getElementById('duration-status');
+        
+        if (!this.currentTrack?.youtube_video_id) {
+            statusDiv.textContent = 'No YouTube video ID found for this track';
+            statusDiv.className = 'duration-status error';
+            return;
+        }
+        
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = 'Fetching...';
+        statusDiv.textContent = 'Fetching duration from YouTube...';
+        statusDiv.className = 'duration-status loading';
+        
+        try {
+            const response = await fetch('/playback/video/refresh-duration', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_id: this.currentTrack.youtube_video_id })
+            });
+            
+            const data = await response.json();
+            
+            if (response.status === 401) {
+                statusDiv.textContent = 'YouTube not connected. Go to Settings to connect YouTube.';
+                statusDiv.className = 'duration-status error';
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Retry';
+                return;
+            }
+            
+            if (data.success) {
+                this.currentYouTubeDuration = data.video_duration;
+                console.log('[Duration] Fetched new duration:', this.currentYouTubeDuration);
+                statusDiv.textContent = `Duration updated: ${this.formatTime(data.video_duration)}`;
+                statusDiv.className = 'duration-status success';
+                refreshBtn.textContent = 'Refresh Again';
+                refreshBtn.disabled = false;
+                
+                this.updateDurationComparison();
+                
+                document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(this.getEffectiveDuration());
+            } else {
+                statusDiv.textContent = data.error || 'Failed to fetch duration';
+                statusDiv.className = 'duration-status error';
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Retry';
+            }
+        } catch (error) {
+            console.error('[Duration] Error fetching duration:', error);
+            statusDiv.textContent = 'Error: ' + error.message;
+            statusDiv.className = 'duration-status error';
+            refreshBtn.disabled = false;
+            refreshBtn.textContent = 'Retry';
+        }
     }
 
     escapeHtml(text) {

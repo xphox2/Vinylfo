@@ -6,6 +6,7 @@ import (
 
 	"vinylfo/controllers"
 	"vinylfo/database"
+	"vinylfo/duration"
 
 	"github.com/gin-gonic/gin"
 )
@@ -49,6 +50,12 @@ func SetupRoutes(r *gin.Engine) {
 	settingsController := controllers.NewSettingsController(db)
 
 	r.Use(CSPMiddleware())
+
+	// Serve favicon
+	r.GET("/favicon.ico", func(c *gin.Context) {
+		c.File("./icons/vinyl-icon.ico")
+	})
+
 	r.GET("/health", func(c *gin.Context) {
 		sqlDB, err := db.DB()
 		if err != nil {
@@ -116,7 +123,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/playback/update-history", playbackController.UpdateHistory)
 
 	// Video Feed for OBS streaming
-	videoFeedController := controllers.NewVideoFeedController(db, playbackController)
+	videoFeedController := controllers.NewVideoFeedController(db, playbackController, duration.NewYouTubeOAuthClient(db))
 	r.GET("/feeds/video", videoFeedController.GetVideoFeedPage)
 	r.GET("/feeds/video/events", videoFeedController.StreamEvents)
 	r.GET("/playback/current-youtube", videoFeedController.GetCurrentYouTubeVideo)
@@ -127,6 +134,9 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/playback/video/next", videoFeedController.Next)
 	r.POST("/playback/video/previous", videoFeedController.Previous)
 	r.POST("/playback/video/seek", videoFeedController.Seek)
+	r.GET("/playback/video/youtube-duration", videoFeedController.GetYouTubeVideoDuration)
+	r.POST("/playback/video/refresh-duration", videoFeedController.RefreshYouTubeDuration)
+	r.POST("/playback/video/refresh-all-durations", videoFeedController.RefreshAllYouTubeDurations)
 
 	r.GET("/sessions", playlistController.GetSessions)
 	r.GET("/playback-sessions/:id", playlistController.GetSessionByID)

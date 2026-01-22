@@ -1,4 +1,13 @@
 // Album detail page JavaScript
+
+function cleanArtistName(artistName) {
+    if (!artistName) return 'Unknown Artist';
+    if (typeof window.normalizeArtistName === 'function') {
+        return window.normalizeArtistName(artistName) || 'Unknown Artist';
+    }
+    return artistName;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Album detail page loaded');
 
@@ -60,7 +69,7 @@ function loadAlbumDetail(albumId) {
                     <div class="album-detail-info-grid">
                         <div class="album-detail-info-item">
                             <strong>Artist:</strong>
-                            <span>${escapeHtml(album.artist || 'Unknown Artist')}</span>
+                            <span>${escapeHtml(cleanArtistName(album.artist))}</span>
                         </div>
                         <div class="album-detail-info-item">
                             <strong>Release Year:</strong>

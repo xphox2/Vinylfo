@@ -165,7 +165,7 @@ class SearchManager {
                 </div>
                 <div class="result-info">
                     <span class="result-title">${this.escapeHtml(this.cleanTitle(album.title))}</span>
-                    <span class="result-artist">${this.escapeHtml(album.artist)}</span>
+                    <span class="result-artist">${this.escapeHtml(this.cleanArtistName(album.artist))}</span>
                     <span class="result-year">${album.year || 'Unknown year'}</span>
                 </div>
                 <button class="btn btn-primary btn-sm view-album-btn" data-id="${album.discogs_id}">View</button>
@@ -240,7 +240,7 @@ class SearchManager {
             <div class="modal-album-info">
                 <img src="${album.cover_image || '/static/images/no-cover.png'}" alt="${this.escapeHtml(album.title)}" class="modal-cover">
                 <div class="modal-details">
-                    <p><strong>Artist:</strong> ${this.escapeHtml(album.artist)}</p>
+                    <p><strong>Artist:</strong> ${this.escapeHtml(this.cleanArtistName(album.artist))}</p>
                     <p><strong>Year:</strong> ${album.year || 'Unknown'}</p>
                     <p><strong>Genre:</strong> ${album.genre || 'Unknown'}</p>
                     ${album.label ? `<p><strong>Label:</strong> ${this.escapeHtml(album.label)}</p>` : ''}
@@ -261,6 +261,14 @@ class SearchManager {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    cleanArtistName(artistName) {
+        if (!artistName) return 'Unknown Artist';
+        if (typeof window.normalizeArtistName === 'function') {
+            return window.normalizeArtistName(artistName) || 'Unknown Artist';
+        }
+        return artistName;
     }
 
     closeModal() {

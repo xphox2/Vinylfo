@@ -1,10 +1,11 @@
-import { pagination, formatDuration, formatTime, escapeHtml, cleanAlbumTitle, updatePaginationControls } from './app-state.js';
+import { pagination, formatDuration, formatTime, escapeHtml, cleanAlbumTitle, cleanArtistName, updatePaginationControls } from './app-state.js';
 
 window.pagination = pagination;
 window.formatDuration = formatDuration;
 window.formatTime = formatTime;
 window.escapeHtml = escapeHtml;
 window.cleanAlbumTitle = cleanAlbumTitle;
+window.cleanArtistName = cleanArtistName;
 window.updatePaginationControls = updatePaginationControls;
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -265,7 +266,7 @@ function renderAlbums(albums) {
         
         const infoDiv = document.createElement('div');
         infoDiv.className = 'album-info';
-        infoDiv.innerHTML = '<h3>' + (album.title || 'Unknown Title') + '</h3><p>Artist: ' + (album.artist || 'Unknown Artist') + '</p><p>Year: ' + (album.release_year || 'Unknown Year') + '</p>';
+        infoDiv.innerHTML = '<h3>' + (album.title || 'Unknown Title') + '</h3><p>Artist: ' + cleanArtistName(album.artist) + '</p><p>Year: ' + (album.release_year || 'Unknown Year') + '</p>';
         
         item.appendChild(imageContainer);
         item.appendChild(infoDiv);
@@ -297,7 +298,7 @@ function renderTracks(tracks) {
             </div>
             <div class="track-info">
                 <h3>${track.title || 'Unknown Title'}</h3>
-                <p>${track.album_artist || 'Unknown Artist'}</p>
+                <p>${cleanArtistName(track.album_artist)}</p>
             </div>
             <div class="track-meta">
                 <p class="track-album-title">${displayAlbumTitle}</p>
@@ -424,7 +425,7 @@ function showTracksForAlbum(albumID) {
                             ${coverHtml}
                             <div>
                                 <h2 style="margin: 0 0 0.25rem 0;">${escapeHtml(album.title || 'Unknown Title')}</h2>
-                                <p style="margin: 0; color: #666;">${escapeHtml(album.artist || 'Unknown Artist')}</p>
+                                <p style="margin: 0; color: #666;">${escapeHtml(cleanArtistName(album.artist))}</p>
                                 <p style="margin: 0; color: #666; font-size: 0.85rem;">${album.release_year || ''}</p>
                             </div>
                         </div>
@@ -448,7 +449,7 @@ function showTracksForAlbum(albumID) {
                             </div>
                             <div class="track-info">
                                 <h3>${track.title || 'Unknown Title'}</h3>
-                                <p>${track.album_artist || 'Unknown Artist'}</p>
+                                <p>${cleanArtistName(track.album_artist)}</p>
                             </div>
                             <div class="track-meta">
                                 <p class="track-duration">${formatDuration(track.duration) || ''}</p>
@@ -489,7 +490,7 @@ function loadTrackDetail(trackId) {
             detail.innerHTML = `
                 <div class="track-detail-item">
                     <h3>${track.title || 'Unknown Title'}</h3>
-                    <p><strong>Artist:</strong> ${track.album_artist || 'Unknown Artist'}</p>
+                    <p><strong>Artist:</strong> ${cleanArtistName(track.album_artist)}</p>
                     <p><strong>Album:</strong> ${displayAlbumTitle}</p>
                     <p><strong>Duration:</strong> ${formatDuration(track.duration) || 'Unknown Duration'}</p>
                     <p><strong>Track Number:</strong> ${track.track_number || 'Unknown'}</p>

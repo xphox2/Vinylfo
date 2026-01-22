@@ -1,14 +1,19 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
+	"vinylfo/duration"
 	"vinylfo/models"
 
 	"github.com/gin-gonic/gin"
@@ -22,14 +27,15 @@ type VideoFeedController struct {
 	sseClientsMux      sync.RWMutex
 	lastState          *VideoFeedState
 	lastStateMux       sync.RWMutex
+	youtubeOAuth       *duration.YouTubeOAuthClient
 }
 
 type VideoFeedState struct {
-	TrackID       uint      `json:"track_id"`
-	IsPlaying     bool      `json:"is_playing"`
-	IsPaused      bool      `json:"is_paused"`
-	Position      int       `json:"position"`
-	LastUpdated   time.Time `json:"last_updated"`
+	TrackID     uint      `json:"track_id"`
+	IsPlaying   bool      `json:"is_playing"`
+	IsPaused    bool      `json:"is_paused"`
+	Position    int       `json:"position"`
+	LastUpdated time.Time `json:"last_updated"`
 }
 
 type VideoFeedEvent struct {
@@ -52,11 +58,12 @@ type VideoTrackInfo struct {
 	MatchScore     float64 `json:"match_score,omitempty"`
 }
 
-func NewVideoFeedController(db *gorm.DB, playbackController *PlaybackController) *VideoFeedController {
+func NewVideoFeedController(db *gorm.DB, playbackController *PlaybackController, youtubeOAuth *duration.YouTubeOAuthClient) *VideoFeedController {
 	vfc := &VideoFeedController{
 		db:                 db,
 		playbackController: playbackController,
 		sseClients:         make(map[string]chan VideoFeedEvent),
+		youtubeOAuth:       youtubeOAuth,
 	}
 
 	// Start background state broadcaster
@@ -85,9 +92,9 @@ func (c *VideoFeedController) GetCurrentYouTubeVideo(ctx *gin.Context) {
 
 	if currentTrack == nil {
 		ctx.JSON(200, gin.H{
-			"has_track":   false,
-			"is_playing":  false,
-			"is_paused":   false,
+			"has_track":  false,
+			"is_playing": false,
+			"is_paused":  false,
 		})
 		return
 	}
@@ -95,12 +102,12 @@ func (c *VideoFeedController) GetCurrentYouTubeVideo(ctx *gin.Context) {
 	trackInfo := c.buildVideoTrackInfo(currentTrack)
 
 	ctx.JSON(200, gin.H{
-		"has_track":     true,
-		"track":         trackInfo,
-		"is_playing":    pm.IsPlaying(playlistID),
-		"is_paused":     pm.IsPaused(playlistID),
-		"position":      pm.GetPosition(playlistID),
-		"playlist_id":   playlistID,
+		"has_track":   true,
+		"track":       trackInfo,
+		"is_playing":  pm.IsPlaying(playlistID),
+		"is_paused":   pm.IsPaused(playlistID),
+		"position":    pm.GetPosition(playlistID),
+		"playlist_id": playlistID,
 	})
 }
 
@@ -424,9 +431,9 @@ func (c *VideoFeedController) buildVideoTrackInfo(track *models.Track) VideoTrac
 
 	info := VideoTrackInfo{
 		TrackID:     track.ID,
-		TrackTitle:  track.Title,
-		Artist:      album.Artist,
-		AlbumTitle:  album.Title,
+		TrackTitle:  duration.NormalizeTitle(track.Title),
+		Artist:      duration.NormalizeArtistName(album.Artist),
+		AlbumTitle:  duration.NormalizeTitle(album.Title),
 		AlbumArtURL: fmt.Sprintf("/albums/%d/image", album.ID),
 		Duration:    track.Duration,
 		HasVideo:    false,
@@ -445,6 +452,244 @@ func (c *VideoFeedController) buildVideoTrackInfo(track *models.Track) VideoTrac
 	}
 
 	return info
+}
+
+// GetYouTubeVideoDuration fetches the duration for a YouTube video ID
+// This can be used when the cached duration is missing or needs refresh
+func (c *VideoFeedController) GetYouTubeVideoDuration(ctx *gin.Context) {
+	videoID := ctx.Query("video_id")
+	if videoID == "" {
+		ctx.JSON(400, gin.H{"error": "video_id is required"})
+		return
+	}
+
+	var youtubeMatch models.TrackYouTubeMatch
+	result := c.db.Where("youtube_video_id = ?", videoID).First(&youtubeMatch)
+	if result.Error != nil {
+		ctx.JSON(404, gin.H{"error": "No YouTube match found for this video ID"})
+		return
+	}
+
+	ctx.JSON(200, gin.H{
+		"video_id":       videoID,
+		"video_duration": youtubeMatch.VideoDuration,
+		"video_title":    youtubeMatch.VideoTitle,
+	})
+}
+
+// RefreshYouTubeDuration fetches the duration from YouTube API and updates the database
+func (c *VideoFeedController) RefreshYouTubeDuration(ctx *gin.Context) {
+	var req struct {
+		VideoID string `json:"video_id"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		req.VideoID = ctx.Query("video_id")
+	}
+
+	if req.VideoID == "" {
+		ctx.JSON(400, gin.H{"error": "video_id is required"})
+		return
+	}
+
+	var duration int
+	var err error
+
+	if c.youtubeOAuth != nil && c.youtubeOAuth.IsAuthenticated() {
+		duration, err = c.fetchYouTubeVideoDurationWithOAuth(req.VideoID)
+		if err != nil {
+			log.Printf("[VideoFeed] OAuth failed, trying API key: %v", err)
+			duration, err = fetchYouTubeVideoDuration(req.VideoID)
+		}
+	} else {
+		duration, err = fetchYouTubeVideoDuration(req.VideoID)
+	}
+
+	if err != nil {
+		log.Printf("[VideoFeed] Failed to fetch duration for %s: %v", req.VideoID, err)
+		ctx.JSON(500, gin.H{"error": fmt.Sprintf("Failed to fetch duration: %v", err)})
+		return
+	}
+
+	pm := c.playbackController.GetPlaybackManager()
+	currentTrack := pm.GetCurrentTrack()
+	if currentTrack == nil {
+		ctx.JSON(404, gin.H{"error": "No track currently playing"})
+		return
+	}
+
+	var youtubeMatch models.TrackYouTubeMatch
+	result := c.db.Where("track_id = ?", currentTrack.ID).First(&youtubeMatch)
+	if result.Error != nil {
+		log.Printf("[VideoFeed] No YouTube match found for track %d, creating one with video ID %s", currentTrack.ID, req.VideoID)
+		youtubeMatch = models.TrackYouTubeMatch{
+			TrackID:        currentTrack.ID,
+			YouTubeVideoID: req.VideoID,
+			VideoDuration:  duration,
+			MatchScore:     1.0,
+			Status:         "matched",
+		}
+		if err := c.db.Create(&youtubeMatch).Error; err != nil {
+			ctx.JSON(500, gin.H{"error": "Failed to create YouTube match"})
+			return
+		}
+	} else {
+		youtubeMatch.VideoDuration = duration
+		c.db.Save(&youtubeMatch)
+	}
+
+	log.Printf("[VideoFeed] Updated duration for track %d (video: %s): %d seconds", currentTrack.ID, req.VideoID, duration)
+
+	ctx.JSON(200, gin.H{
+		"video_id":       req.VideoID,
+		"video_duration": duration,
+		"success":        true,
+	})
+}
+
+// RefreshAllYouTubeDurations fetches durations for all tracks with YouTube matches that have no duration
+func (c *VideoFeedController) RefreshAllYouTubeDurations(ctx *gin.Context) {
+	if c.youtubeOAuth == nil || !c.youtubeOAuth.IsAuthenticated() {
+		ctx.JSON(401, gin.H{"error": "YouTube not connected. Please connect to YouTube first."})
+		return
+	}
+
+	var matches []models.TrackYouTubeMatch
+	result := c.db.Where("video_duration = 0 OR video_duration IS NULL").Where("status = ?", "matched").Find(&matches)
+	if result.Error != nil {
+		ctx.JSON(500, gin.H{"error": "Failed to find matches"})
+		return
+	}
+
+	updated := 0
+	failed := 0
+
+	for _, match := range matches {
+		if match.YouTubeVideoID == "" {
+			continue
+		}
+
+		duration, err := c.fetchYouTubeVideoDurationWithOAuth(match.YouTubeVideoID)
+		if err != nil {
+			log.Printf("[VideoFeed] Failed to fetch duration for %s: %v", match.YouTubeVideoID, err)
+			failed++
+			continue
+		}
+
+		match.VideoDuration = duration
+		c.db.Save(&match)
+		updated++
+	}
+
+	ctx.JSON(200, gin.H{
+		"total_matches": len(matches),
+		"updated":       updated,
+		"failed":        failed,
+		"success":       true,
+	})
+}
+
+var youtubeDurationRegex = regexp.MustCompile(`PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?`)
+
+// fetchYouTubeVideoDurationWithOAuth uses the user's OAuth token to fetch video duration
+func (c *VideoFeedController) fetchYouTubeVideoDurationWithOAuth(videoID string) (int, error) {
+	if c.youtubeOAuth == nil {
+		return 0, fmt.Errorf("OAuth client not available")
+	}
+
+	if !c.youtubeOAuth.IsAuthenticated() {
+		return 0, fmt.Errorf("not authenticated with YouTube")
+	}
+
+	url := fmt.Sprintf("https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=%s", videoID)
+
+	ctx := context.Background()
+	resp, err := c.youtubeOAuth.MakeAuthenticatedRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("YouTube API error: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Items []struct {
+			ContentDetails struct {
+				Duration string `json:"duration"`
+			} `json:"contentDetails"`
+		} `json:"items"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, err
+	}
+
+	if len(result.Items) == 0 {
+		return 0, fmt.Errorf("video not found")
+	}
+
+	durationStr := result.Items[0].ContentDetails.Duration
+	matches := youtubeDurationRegex.FindStringSubmatch(durationStr)
+	if matches == nil {
+		return 0, fmt.Errorf("failed to parse duration: %s", durationStr)
+	}
+
+	hours, _ := strconv.Atoi(matches[1])
+	minutes, _ := strconv.Atoi(matches[2])
+	seconds, _ := strconv.Atoi(matches[3])
+
+	return hours*3600 + minutes*60 + seconds, nil
+}
+
+// fetchYouTubeVideoDuration is a standalone function that tries to use API key as fallback
+func fetchYouTubeVideoDuration(videoID string) (int, error) {
+	apiKey := os.Getenv("YOUTUBE_API_KEY")
+	if apiKey == "" {
+		return 0, fmt.Errorf("YouTube API key not configured (set YOUTUBE_API_KEY environment variable)")
+	}
+
+	url := fmt.Sprintf("https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=%s&key=%s", videoID, apiKey)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("YouTube API error: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Items []struct {
+			ContentDetails struct {
+				Duration string `json:"duration"`
+			} `json:"contentDetails"`
+		} `json:"items"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, err
+	}
+
+	if len(result.Items) == 0 {
+		return 0, fmt.Errorf("video not found")
+	}
+
+	durationStr := result.Items[0].ContentDetails.Duration
+	matches := youtubeDurationRegex.FindStringSubmatch(durationStr)
+	if matches == nil {
+		return 0, fmt.Errorf("failed to parse duration: %s", durationStr)
+	}
+
+	hours, _ := strconv.Atoi(matches[1])
+	minutes, _ := strconv.Atoi(matches[2])
+	seconds, _ := strconv.Atoi(matches[3])
+
+	return hours*3600 + minutes*60 + seconds, nil
 }
 
 // stateMonitor monitors playback state and broadcasts changes

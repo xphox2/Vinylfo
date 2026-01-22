@@ -156,6 +156,14 @@ class SyncManager {
         }
     }
 
+    cleanArtistName(artistName) {
+        if (!artistName) return 'Unknown Artist';
+        if (typeof window.normalizeArtistName === 'function') {
+            return window.normalizeArtistName(artistName) || 'Unknown Artist';
+        }
+        return artistName;
+    }
+
     async loadFolders() {
         const select = document.getElementById('selected-folder');
         select.innerHTML = '<option value="">Loading folders...</option>';
@@ -611,7 +619,7 @@ class SyncManager {
                     <input type="checkbox" value="${album.id}" checked>
                     <span class="album-info">
                         <span class="album-title">${album.title}</span>
-                        <span class="album-artist">${album.artist}</span>
+                        <span class="album-artist">${this.cleanArtistName(album.artist)}</span>
                         ${album.year ? `<span class="album-year">(${album.year})</span>` : ''}
                     </span>
                 </label>

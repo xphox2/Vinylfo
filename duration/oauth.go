@@ -394,3 +394,8 @@ func (c *YouTubeOAuthClient) makeAuthenticatedRequestWithBytes(ctx context.Conte
 
 	return resp, nil
 }
+
+// MakeAuthenticatedRequest is an exported version of makeAuthenticatedRequest for use by other packages
+func (c *YouTubeOAuthClient) MakeAuthenticatedRequest(ctx context.Context, method, url string, body io.Reader) (*http.Response, error) {
+	return c.makeAuthenticatedRequest(ctx, method, url, body)
+}

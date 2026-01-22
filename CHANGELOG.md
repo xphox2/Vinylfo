@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9-alpha] - 2026-01-22
+
+### Fixed
+
+#### Video Feed Race Conditions
+- **Fixed duplicate `handleTabSyncSeek` function**: Removed duplicate function definition (lines 91-115 and 430-441) that was causing unpredictable behavior
+- **Fixed race conditions in play state handling**: Both `handleTrackUpdate` and `handlePlaybackState` had independent retry loops (up to 20 retries, 100ms each) that could run simultaneously when SSE events arrived in quick succession
+  - Created centralized `queuePlayStateOperation()` method that cancels pending operations before starting new ones
+  - Reduced retry attempts from 20 to 10, only retrying on track changes
+  - Prevents conflicting `playVideo()` and `pauseVideo()` calls hitting the YouTube player simultaneously
+- **Added operation queuing**: New `pendingOperation` and `operationTimeout` state variables prevent concurrent state modifications
+- File: `static/js/video-feed.js`
+
+#### Auto-Play Not Loading Next Video
+- **Fixed next video not loading when auto-play advances**: When a track ended and auto-play was enabled, only `saveProgress()` was called which updated the database but NOT the in-memory `PlaybackManager.currentTrack`
+  - The video feed's SSE `stateMonitor` checks `pm.GetCurrentTrack()` (in-memory state), so no `track_changed` event was sent
+  - `checkTrackEnd()` now calls `this.next()` which properly calls `/playback/skip` to update both database AND in-memory state
+  - Added `advanceAndPause()` method for non-autoplay case (track ends but auto-play disabled)
+- File: `static/js/playback-dashboard.js`
+
+### Changed
+
+#### Artist Name Normalization Across All Display Locations
+- **Normalized artist names everywhere**: Applied `normalizeArtistName()` consistently across all UI components
+  - Removes disambiguation suffixes like `(2)`, `(3)`, `(rapper)`, `(singer)`, `(band)`, `(DJ)`, etc.
+  - Example: `"Eminem (2)"` → `"Eminem"`, `"Pink (singer)"` → `"Pink"`
+- **Files updated**:
+  - `static/js/playback-dashboard.js` - Added `cleanArtistName()` helper, updated 5 display locations
+  - `static/js/video-feed.js` - Added `cleanArtistName()` helper, updated track overlay
+  - `static/js/app.js` - Imported `cleanArtistName` from app-state.js, updated 5 locations
+  - `static/js/app-state.js` - Added and exported `cleanArtistName()` function
+  - `static/js/playlist.js` - Added `cleanArtistName()` helper, updated track list
+  - `static/js/album-detail.js` - Added `cleanArtistName()` helper, updated album artist display
+  - `static/js/track-detail.js` - Added `cleanArtistName()` helper, updated track artist display
+  - `static/js/search.js` - Added `cleanArtistName()` method to SearchManager class, updated 2 locations
+  - `static/js/playlist-youtube.js` - Added `cleanArtistNameYT()` helper, updated review track info
+  - `static/js/sync.js` - Added `cleanArtistName()` method to SyncManager class, updated cleanup modal
+
+---
+
 ## [0.2.8-alpha] - 2026-01-21
 
 ### Added
@@ -1215,6 +1255,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Playback timer functionality
 - Collection management interface
 
+[0.2.9-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.9-alpha
+[0.2.8-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.8-alpha
+[0.2.7-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.7-alpha
+[0.2.6-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.6-alpha
+[0.2.5-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.5-alpha
+[0.2.4-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.4-alpha
+[0.2.3-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.3-alpha
+[0.2.2-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.2-alpha
 [0.2.1-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.1-alpha
 [0.2.0-alpha]: https://github.com/xphox2/vinylfo/releases/tag/v0.2.0-alpha
 [0.1.3-alpha]: https://github.com/yourusername/vinylfo/releases/tag/v0.1.3-alpha

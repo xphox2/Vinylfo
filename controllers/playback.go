@@ -297,7 +297,12 @@ func (c *PlaybackController) Previous(ctx *gin.Context) {
 
 	c.playbackManager.SetCurrentTrack(playlistID, &newTrack)
 	c.playbackManager.UpdatePosition(playlistID, 0)
-	c.playbackManager.ResumePlayback(playlistID)
+
+	isPlaying := c.playbackManager.IsPlaying(playlistID)
+	isPaused := c.playbackManager.IsPaused(playlistID)
+	if isPlaying && !isPaused {
+		c.playbackManager.ResumePlayback(playlistID)
+	}
 
 	c.db.Save(&playbackState)
 
@@ -454,19 +459,30 @@ func (c *PlaybackController) RestoreSession(ctx *gin.Context) {
 }
 
 func (c *PlaybackController) buildTrackResponse(track models.Track, album models.Album) map[string]interface{} {
+	var youtubeVideoDuration int
+	var youtubeVideoID string
+
+	var youtubeMatch models.TrackYouTubeMatch
+	if result := c.db.Where("track_id = ? AND status = ?", track.ID, "matched").First(&youtubeMatch); result.Error == nil {
+		youtubeVideoDuration = youtubeMatch.VideoDuration
+		youtubeVideoID = youtubeMatch.YouTubeVideoID
+	}
+
 	return map[string]interface{}{
-		"id":             track.ID,
-		"album_id":       track.AlbumID,
-		"album_title":    album.Title,
-		"album_artist":   album.Artist,
-		"title":          track.Title,
-		"duration":       track.Duration,
-		"track_number":   track.TrackNumber,
-		"audio_file_url": track.AudioFileURL,
-		"release_year":   album.ReleaseYear,
-		"album_genre":    album.Genre,
-		"created_at":     track.CreatedAt,
-		"updated_at":     track.UpdatedAt,
+		"id":                     track.ID,
+		"album_id":               track.AlbumID,
+		"album_title":            album.Title,
+		"album_artist":           album.Artist,
+		"title":                  track.Title,
+		"duration":               track.Duration,
+		"youtube_video_id":       youtubeVideoID,
+		"youtube_video_duration": youtubeVideoDuration,
+		"track_number":           track.TrackNumber,
+		"audio_file_url":         track.AudioFileURL,
+		"release_year":           album.ReleaseYear,
+		"album_genre":            album.Genre,
+		"created_at":             track.CreatedAt,
+		"updated_at":             track.UpdatedAt,
 	}
 }
 
@@ -744,7 +760,12 @@ func (c *PlaybackController) Skip(ctx *gin.Context) {
 
 	c.playbackManager.SetCurrentTrack(playlistID, &newTrack)
 	c.playbackManager.UpdatePosition(playlistID, 0)
-	c.playbackManager.ResumePlayback(playlistID)
+
+	isPlaying := c.playbackManager.IsPlaying(playlistID)
+	isPaused := c.playbackManager.IsPaused(playlistID)
+	if isPlaying && !isPaused {
+		c.playbackManager.ResumePlayback(playlistID)
+	}
 
 	c.db.Save(&playbackState)
 
@@ -802,7 +823,12 @@ func (c *PlaybackController) PlayIndex(ctx *gin.Context) {
 
 	c.playbackManager.SetCurrentTrack(playlistID, &newTrack)
 	c.playbackManager.UpdatePosition(playlistID, 0)
-	c.playbackManager.ResumePlayback(playlistID)
+
+	isPlaying := c.playbackManager.IsPlaying(playlistID)
+	isPaused := c.playbackManager.IsPaused(playlistID)
+	if isPlaying && !isPaused {
+		c.playbackManager.ResumePlayback(playlistID)
+	}
 
 	c.db.Save(&playbackState)
 

@@ -44,6 +44,24 @@
             <button id="toggle-queue-btn">Show Queue</button>
             <button id="auto-play-btn" class="toggle-btn">Auto-Play: OFF</button>
         </div>
+        <div id="duration-settings" class="duration-settings">
+            <label class="duration-toggle">
+                <input type="checkbox" id="use-youtube-duration">
+                <span class="duration-label">Use YouTube video duration</span>
+            </label>
+            <p class="duration-hint">Use this if the YouTube video is longer than the database duration</p>
+            <div id="duration-comparison" class="duration-comparison">
+                <span id="db-duration" class="duration-db">DB: --:--</span>
+                <span class="duration-separator">|</span>
+                <span id="yt-duration" class="duration-yt">YT: --:--</span>
+                <span class="duration-separator">|</span>
+                <span id="duration-diff" class="duration-diff"></span>
+            </div>
+            <button id="refresh-duration-btn" class="refresh-duration-btn" style="display: none;">
+                Refresh YouTube Duration
+            </button>
+            <div id="duration-status" class="duration-status"></div>
+        </div>
         <div id="queue-panel" style="display: none;">
             <h3>Up Next</h3>
             <div id="queue-list"><p class="empty-message">Queue is empty</p></div>

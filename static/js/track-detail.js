@@ -1,4 +1,13 @@
 // Track detail page JavaScript
+
+function cleanArtistName(artistName) {
+    if (!artistName) return 'Unknown Artist';
+    if (typeof window.normalizeArtistName === 'function') {
+        return window.normalizeArtistName(artistName) || 'Unknown Artist';
+    }
+    return artistName;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Track detail page loaded');
 
@@ -50,7 +59,7 @@ function loadTrackDetail(trackId) {
                             </div>
                             <div class="track-info-item">
                                 <strong>Artist:</strong>
-                                <span>${escapeHtml(track.album_artist || 'Unknown Artist')}</span>
+                                <span>${escapeHtml(cleanArtistName(track.album_artist))}</span>
                             </div>
                             <div class="track-info-item">
                                 <strong>Duration:</strong>

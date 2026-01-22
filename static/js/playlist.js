@@ -1,5 +1,13 @@
 // Playlist management JavaScript
 
+function cleanArtistName(artistName) {
+    if (!artistName) return 'Unknown Artist';
+    if (typeof window.normalizeArtistName === 'function') {
+        return window.normalizeArtistName(artistName) || 'Unknown Artist';
+    }
+    return artistName;
+}
+
 window.currentPlaylistId = null;
 let playlists = [];
 let tracks = [];
@@ -395,7 +403,7 @@ function renderAvailableTracks() {
                         </div>
                         <div class="track-info">
                             <h3>${track.title || 'Unknown Title'}</h3>
-                            <p>${track.album_artist || 'Unknown Artist'}</p>
+                            <p>${cleanArtistName(track.album_artist)}</p>
                         </div>
                         <div class="track-meta">
                             <p class="track-album-title">${displayAlbumTitle}</p>

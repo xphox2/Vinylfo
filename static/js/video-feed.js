@@ -1,8 +1,16 @@
 /**
  * Vinylfo Video Feed Manager
  * Handles YouTube video playback synced with Vinylfo playback queue
- * Uses SSE for real-time updates
+ * Uses SSE for real-time updates and TabSync for tab-to-tab communication
  */
+
+function cleanArtistName(artistName) {
+    if (!artistName) return 'Unknown Artist';
+    if (typeof window.normalizeArtistName === 'function') {
+        return window.normalizeArtistName(artistName) || 'Unknown Artist';
+    }
+    return artistName;
+}
 
 class VideoFeedManager {
     constructor() {
@@ -29,6 +37,11 @@ class VideoFeedManager {
         this.maxReconnectAttempts = 10;
         this.eventSource = null;
         this.visualizer = null;
+        this.tabSync = null;
+
+        // Operation queue to prevent race conditions
+        this.pendingOperation = null;
+        this.operationTimeout = null;
 
         // DOM Elements
         this.elements = {
@@ -58,6 +71,18 @@ class VideoFeedManager {
     async init() {
         console.log('[VideoFeed] Initializing with config:', this.config);
 
+        // Initialize TabSync for tab-to-tab communication
+        if (typeof TabSyncManager !== 'undefined') {
+            this.tabSync = new TabSyncManager();
+            window.addEventListener('vinylfo_seek', (e) => {
+                const position = e.detail?.position;
+                if (typeof position === 'number') {
+                    console.log('[VideoFeed] Received seek from TabSync:', position);
+                    this.handleTabSyncSeek(position);
+                }
+            });
+        }
+
         // Initialize visualizer if enabled
         if (this.config.showVisualizer && typeof AudioVisualizer !== 'undefined') {
             this.visualizer = new AudioVisualizer(this.elements.visualizerCanvas, {
@@ -73,6 +98,19 @@ class VideoFeedManager {
 
         // Fetch initial state
         await this.fetchInitialState();
+    }
+
+    handleTabSyncSeek(position) {
+        if (typeof position !== 'number' || position < 0) {
+            return;
+        }
+
+        if (!this.player || !this.playerReady) {
+            console.log('[VideoFeed] Player not ready for seek');
+            return;
+        }
+
+        this.seekVideo(position);
     }
 
     applyTheme() {
@@ -103,18 +141,24 @@ class VideoFeedManager {
 
     initYouTubePlayer(videoId) {
         if (this.player) {
-            // If player exists and video changed, load new video
             if (videoId && this.currentVideoId !== videoId) {
-                this.player.loadVideoById({
-                    videoId: videoId,
-                    suggestedQuality: this.getQualitySetting()
-                });
+                if (this.isPaused || !this.isPlaying) {
+                    this.player.cueVideoById({
+                        videoId: videoId,
+                        suggestedQuality: this.getQualitySetting()
+                    });
+                } else {
+                    this.player.loadVideoById({
+                        videoId: videoId,
+                        suggestedQuality: this.getQualitySetting()
+                    });
+                }
                 this.currentVideoId = videoId;
             }
             return;
         }
 
-        console.log('[VideoFeed] Initializing YouTube player with video:', videoId);
+        console.log('[VideoFeed] Initializing YouTube player with video:', videoId, 'isPaused:', this.isPaused);
 
         this.player = new YT.Player('youtube-player', {
             height: '100%',
@@ -132,7 +176,11 @@ class VideoFeedManager {
                 playsinline: 1,
                 rel: 0,
                 showinfo: 0,
-                origin: window.location.origin
+                origin: window.location.origin,
+                cc_load_policy: 0,
+                egm: 0,
+                ptl: 0,
+                wmode: 'transparent'
             },
             events: {
                 onReady: (event) => this.onPlayerReady(event),
@@ -289,15 +337,39 @@ class VideoFeedManager {
             this.preloadNextTrack();
         }
 
-        // Handle play state
-        if (this.playerReady && this.player) {
-            console.log('[VideoFeed] handleTrackUpdate play state - isPlaying:', this.isPlaying, 'isPaused:', this.isPaused);
-            if (this.isPlaying && !this.isPaused) {
-                this.player.playVideo();
-            } else if (this.isPaused || !this.isPlaying) {
-                this.player.pauseVideo();
-            }
+        // Queue play state operation - cancels any pending operation
+        this.queuePlayStateOperation(trackChanged);
+    }
+
+    // Centralized method to apply play state - prevents race conditions
+    queuePlayStateOperation(isTrackChange = false) {
+        // Cancel any pending operation
+        if (this.operationTimeout) {
+            clearTimeout(this.operationTimeout);
+            this.operationTimeout = null;
         }
+
+        const applyPlayState = (attempt = 1) => {
+            if (this.playerReady && this.player) {
+                console.log('[VideoFeed] Applying play state - isPlaying:', this.isPlaying, 'isPaused:', this.isPaused);
+
+                if (this.isPlaying && !this.isPaused) {
+                    this.player.playVideo();
+                } else {
+                    this.player.pauseVideo();
+                }
+                this.operationTimeout = null;
+            } else if (isTrackChange && attempt < 10) {
+                // Only retry on track change, max 10 attempts
+                console.log('[VideoFeed] Player not ready, retry attempt', attempt);
+                this.operationTimeout = setTimeout(() => applyPlayState(attempt + 1), 150);
+            } else {
+                console.log('[VideoFeed] Player not ready, skipping play state update');
+                this.operationTimeout = null;
+            }
+        };
+
+        applyPlayState();
     }
 
     handlePlaybackState(data) {
@@ -307,40 +379,56 @@ class VideoFeedManager {
 
         if (data.stopped) {
             console.log('[VideoFeed] Stopped - pausing and seeking to 0');
+            // Cancel any pending operation
+            if (this.operationTimeout) {
+                clearTimeout(this.operationTimeout);
+                this.operationTimeout = null;
+            }
             if (this.playerReady && this.player) {
                 this.player.pauseVideo();
                 this.player.seekTo(0, true);
+            } else {
+                console.log('[VideoFeed] Cannot stop - player not ready');
             }
             return;
         }
 
-        console.log('[VideoFeed] playerReady:', this.playerReady, 'player:', !!this.player);
-
-        if (this.playerReady && this.player) {
-            const playerState = this.player.getPlayerState();
-            console.log('[VideoFeed] YouTube player state:', playerState, '(1=playing, 2=paused, 3=buffering)');
-            console.log('[VideoFeed] Should pause?', this.isPaused || !this.isPlaying);
-
-            if (this.isPlaying && !this.isPaused) {
-                console.log('[VideoFeed] Calling playVideo()');
-                this.player.playVideo();
-            } else if (this.isPaused || !this.isPlaying) {
-                console.log('[VideoFeed] Calling pauseVideo()');
-                try {
-                    this.player.pauseVideo();
-                    console.log('[VideoFeed] pauseVideo() called successfully');
-                } catch (e) {
-                    console.error('[VideoFeed] Error calling pauseVideo():', e);
-                }
-            }
-        } else {
-            console.warn('[VideoFeed] Cannot control player - not ready');
-        }
+        // Use centralized queue to prevent race conditions
+        this.queuePlayStateOperation(false);
     }
 
     handlePositionUpdate(data) {
-        // We could sync video position here if needed
-        // For now, we let the video play independently since it's muted
+        if (!this.player || !this.playerReady) {
+            return;
+        }
+
+        const position = data.position;
+        if (typeof position !== 'number' || position < 0) {
+            return;
+        }
+
+        this.seekVideo(position);
+    }
+
+    seekVideo(position) {
+        const currentTime = this.player.getCurrentTime();
+
+        if (Math.abs(currentTime - position) <= 2) {
+            return;
+        }
+
+        console.log('[VideoFeed] Seeking from', currentTime, 'to', position);
+
+        const playerState = this.player.getPlayerState();
+        const isPaused = playerState === YT.PlayerState.PAUSED;
+        const isYouTube = this.currentVideoId && this.currentVideoId.length > 0;
+
+        this.player.seekTo(position, true);
+
+        if (!isYouTube && isPaused) {
+            this.player.playVideo();
+            setTimeout(() => this.player.pauseVideo(), 50);
+        }
     }
 
     transitionToTrack(track) {
@@ -352,10 +440,18 @@ class VideoFeedManager {
                     this.initYouTubePlayer(track.youtube_video_id);
                 } else if (this.currentVideoId !== track.youtube_video_id) {
                     this.currentVideoId = track.youtube_video_id;
-                    this.player.loadVideoById({
-                        videoId: track.youtube_video_id,
-                        suggestedQuality: this.getQualitySetting()
-                    });
+                    
+                    if (this.isPaused || !this.isPlaying) {
+                        this.player.cueVideoById({
+                            videoId: track.youtube_video_id,
+                            suggestedQuality: this.getQualitySetting()
+                        });
+                    } else {
+                        this.player.loadVideoById({
+                            videoId: track.youtube_video_id,
+                            suggestedQuality: this.getQualitySetting()
+                        });
+                    }
                 }
             });
         } else {
@@ -488,7 +584,7 @@ class VideoFeedManager {
 
     updateTrackOverlay(track) {
         this.elements.trackTitle.textContent = track.track_title || 'Unknown Track';
-        this.elements.trackArtist.textContent = track.artist || 'Unknown Artist';
+        this.elements.trackArtist.textContent = cleanArtistName(track.artist);
         this.elements.trackAlbum.textContent = track.album_title || '';
 
         if (track.album_art_url) {

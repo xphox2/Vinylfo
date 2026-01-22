@@ -1,6 +1,14 @@
 // YouTube integration for playlist management
 // This file is loaded after playlist.js and uses its shared functions
 
+function cleanArtistNameYT(artistName) {
+    if (!artistName) return 'Unknown Artist';
+    if (typeof window.normalizeArtistName === 'function') {
+        return window.normalizeArtistName(artistName) || 'Unknown Artist';
+    }
+    return artistName;
+}
+
 // Review state variables
 let reviewTracks = [];
 let currentReviewIndex = 0;
@@ -298,7 +306,7 @@ function renderReviewTrack(tracks, index, playlistId) {
     const trackInfo = document.getElementById('review-track-info');
     trackInfo.innerHTML = `
         <p><strong>Track ${index + 1} of ${tracks.length}</strong></p>
-        <p>${escapeHtml(track.track_title)} - ${escapeHtml(track.artist)}</p>
+        <p>${escapeHtml(track.track_title)} - ${escapeHtml(cleanArtistNameYT(track.artist))}</p>
         <p>Duration: ${formatDuration(track.duration)}</p>
     `;
 

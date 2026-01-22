@@ -262,6 +262,106 @@ main {
     background-color: #4CAF50 !important;
 }
 
+/* Duration Settings */
+.duration-settings {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+.duration-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.duration-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.duration-label {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+}
+
+.duration-hint {
+    margin: 8px 0 0 28px;
+    font-size: 12px;
+    color: #888;
+}
+
+.duration-comparison {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e0e0e0;
+    font-size: 13px;
+    display: none;
+}
+
+.duration-comparison.visible {
+    display: block;
+}
+
+.duration-db {
+    color: #666;
+}
+
+.duration-yt {
+    color: #2196F3;
+}
+
+.duration-diff {
+    font-weight: 600;
+}
+
+.duration-separator {
+    color: #ccc;
+    margin: 0 5px;
+}
+
+.refresh-duration-btn {
+    margin-top: 12px;
+    padding: 8px 16px;
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.refresh-duration-btn:hover {
+    background-color: #1976D2;
+}
+
+.refresh-duration-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.duration-status {
+    margin-top: 8px;
+    font-size: 12px;
+}
+
+.duration-status.success {
+    color: #4CAF50;
+}
+
+.duration-status.error {
+    color: #f44336;
+}
+
+.duration-status.loading {
+    color: #2196F3;
+}
+
 @media (max-width: 600px) {
     #queue-panel {
         margin-top: 1.5rem;
