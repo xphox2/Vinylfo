@@ -438,7 +438,7 @@ function createPlaylist(name) {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            session_id: name
+            name: name
         })
     })
     .then(response => {

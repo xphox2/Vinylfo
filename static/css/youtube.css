@@ -74,8 +74,8 @@
     border-radius: 4px;
     font-size: 1rem;
     cursor: pointer;
-    transition: background15s ease;
--color 0.}
+    transition: background-color 0.15s ease;
+}
 
 .youtube-action-btn:hover {
     background-color: #cc0000;

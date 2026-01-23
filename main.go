@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -32,6 +34,9 @@ import (
 	"vinylfo/utils"
 )
 
+//go:embed .env icons templates static
+var embeddedFiles embed.FS
+
 var db *gorm.DB
 var playbackController *controllers.PlaybackController
 var server *http.Server
@@ -43,9 +48,11 @@ var fileOpenMutex sync.Mutex
 func init() {
 	setupFileLogging()
 
-	data, err := os.ReadFile("icons/vinyl-icon.ico")
+	config.SetEmbeddedFS(embeddedFiles)
+
+	data, err := config.LoadEmbeddedIcon("icons/vinyl-icon.ico")
 	if err != nil {
-		data, err = os.ReadFile("icons/vinyl-icon.png")
+		data, err = config.LoadEmbeddedIcon("icons/vinyl-icon.png")
 		if err != nil {
 			log.Printf("Warning: No icon file found (tried icons/vinyl-icon.ico and icons/vinyl-icon.png)")
 			return
@@ -75,6 +82,10 @@ func setupFileLogging() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
+func serveEmbeddedStatic(embeddedFS embed.FS, subdir string) http.Handler {
+	return http.StripPrefix("/"+subdir+"/", http.FileServer(http.FS(embeddedFS)))
+}
+
 func cleanupLogsOnStartup(db *gorm.DB) {
 	var config models.AppConfig
 	result := db.First(&config)
@@ -95,9 +106,10 @@ func cleanupLogsOnStartup(db *gorm.DB) {
 
 func main() {
 	log.Println("Vinylfo starting...")
+	config.LoadEmbeddedEnv()
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("Warning: No .env file found. Using default configuration.")
+		log.Println("Warning: No .env file found. Using embedded configuration.")
 	}
 
 	db, err = database.InitDB()
@@ -128,10 +140,13 @@ func main() {
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 
-	r.Static("/static", "./static")
-	r.Static("/icons", "./icons")
+	staticFS, _ := fs.Sub(embeddedFiles, "static")
+	r.GET("/static/*filepath", gin.WrapH(http.StripPrefix("/static/", http.FileServer(http.FS(staticFS)))))
 
-	tmpl := template.Must(template.ParseFiles(
+	iconsFS, _ := fs.Sub(embeddedFiles, "icons")
+	r.GET("/icons/*filepath", gin.WrapH(http.StripPrefix("/icons/", http.FileServer(http.FS(iconsFS)))))
+
+	tmpl := template.Must(template.ParseFS(embeddedFiles,
 		"templates/header.html",
 		"templates/index.html",
 		"templates/search.html",
@@ -231,13 +246,9 @@ func main() {
 		log.Printf("Server forced to shutdown: %v", err)
 	}
 
-	sqlDB, err := db.DB()
-	if err != nil {
-		log.Printf("Error getting database connection: %v", err)
-	} else {
-		if err := sqlDB.Close(); err != nil {
-			log.Printf("Error closing database connection: %v", err)
-		}
+	// Graceful database shutdown (includes WAL checkpoint for SQLite)
+	if err := database.ShutdownDB(); err != nil {
+		log.Printf("Error during database shutdown: %v", err)
 	}
 
 	log.Println("Server exited")

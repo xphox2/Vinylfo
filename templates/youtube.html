@@ -6,195 +6,79 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube Playlist Manager - Vinylfo</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/youtube.css">
     <link rel="icon" type="image/x-icon" href="/icons/vinyl-icon.ico">
-    <style>
-        .youtube-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .youtube-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-        }
-        .youtube-header h1 {
-            margin: 0;
-            font-size: 24px;
-        }
-        .playlist-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .playlist-item {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 15px;
-            background: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            transition: background 0.2s;
-        }
-        .playlist-item:hover {
-            background: #f5f5f5;
-        }
-        .playlist-item img {
-            width: 120px;
-            height: 68px;
-            object-fit: cover;
-            border-radius: 4px;
-        }
-        .playlist-item .playlist-info {
-            flex: 1;
-        }
-        .playlist-item .playlist-info h4 {
-            margin: 0;
-            font-size: 14px;
-        }
-        .playlist-item .playlist-info p {
-            margin: 5px 0 0;
-            color: #666;
-            font-size: 12px;
-        }
-        .playlist-item .playlist-actions {
-            display: flex;
-            gap: 8px;
-        }
-        .btn-delete {
-            background: #dc3545;
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            cursor: pointer;
-        }
-        .btn-delete:hover {
-            background: #c82333;
-        }
-        .error-message {
-            background: #fee;
-            border: 1px solid #fcc;
-            color: #c00;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #666;
-        }
-        .loading::after {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .btn-create-playlist {
-            background: #28a745;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-        }
-        .btn-create-playlist:hover {
-            background: #218838;
-        }
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #666;
-        }
-        .video-item {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 10px;
-            background: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            margin-bottom: 10px;
-        }
-        .video-item img {
-            width: 120px;
-            height: 68px;
-            object-fit: cover;
-            border-radius: 4px;
-        }
-        .video-item .video-info {
-            flex: 1;
-        }
-        .video-item .video-info h4 {
-            margin: 0;
-            font-size: 14px;
-        }
-        .video-item .video-info p {
-            margin: 5px 0 0;
-            color: #666;
-            font-size: 12px;
-        }
-        .back-btn {
-            background: #6c757d;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-bottom: 20px;
-        }
-        .back-btn:hover {
-            background: #5a6268;
-        }
-    </style>
 </head>
 <body>
 {{ template "header" }}
-<main class="youtube-container">
-    <div class="youtube-header">
-        <h1>YouTube Playlist Manager</h1>
-    </div>
+<main class="container">
+    <div class="view">
+        <div class="view-header">
+            <h2>YouTube Playlist Manager</h2>
+            <div>
+                <button id="create-playlist-btn" class="btn btn-primary" style="background-color: #007bff;">+ Create Playlist</button>
+            </div>
+        </div>
 
-    <div id="app-section">
-        <div style="display: flex; justify-content: flex-end; margin-bottom: 15px;">
-            <button id="create-playlist-btn" class="btn-create-playlist">+ Create Playlist</button>
-        </div>
-        
-        <!-- Playlists List View -->
-        <div id="playlists-view">
-            <div id="playlists-container" class="playlist-list">
-                <div class="loading">Loading playlists...</div>
+        <div id="app-section">
+            <div class="sync-status-section">
+                <h4>Connection Status</h4>
+                <div id="connection-status" class="loading">Loading status...</div>
             </div>
-        </div>
-        
-        <!-- Playlist Items View -->
-        <div id="playlist-items-view" style="display: none;">
-            <button id="back-to-playlists" class="back-btn">&larr; Back to Playlists</button>
-            <h2 id="playlist-items-title">Playlist Videos</h2>
-            <div id="playlist-items-container" class="playlist-list">
-                <div class="loading">Loading videos...</div>
-            </div>
-        </div>
-    </div>
 
-    <div id="playlist-modal" class="modal hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
-        <div class="modal-content" style="background: white; padding: 30px; border-radius: 8px; min-width: 400px; max-width: 500px;">
-            <h2 style="margin-top: 0;">Create YouTube Playlist</h2>
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Title</label>
-                <input type="text" id="playlist-title" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+            <div id="stats-section" class="sync-status-section" style="display: none;">
+                <h4>Sync Statistics</h4>
+                <div class="sync-stats-large">
+                    <div class="stat-box stat-matched">
+                        <span class="stat-number" id="stat-matched">0</span>
+                        <span class="stat-label">Matched</span>
+                    </div>
+                    <div class="stat-box stat-review">
+                        <span class="stat-number" id="stat-review">0</span>
+                        <span class="stat-label">Needs Review</span>
+                    </div>
+                    <div class="stat-box stat-unavailable">
+                        <span class="stat-number" id="stat-unavailable">0</span>
+                        <span class="stat-label">Unavailable</span>
+                    </div>
+                    <div class="stat-box stat-pending">
+                        <span class="stat-number" id="stat-pending">0</span>
+                        <span class="stat-label">Pending</span>
+                    </div>
+                </div>
             </div>
-            <div style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Description</label>
-                <textarea id="playlist-description" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; min-height: 80px;"></textarea>
+
+            <div id="sync-actions" class="sync-actions-section" style="display: none;">
+                <button id="sync-all-btn" class="youtube-action-btn">Sync All Playlists</button>
+                <div class="sync-options">
+                    <label class="radio-label">
+                        <input type="checkbox" id="api-fallback" checked>
+                        <span>Use YouTube API as fallback</span>
+                    </label>
+                </div>
             </div>
-            <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                <button id="cancel-playlist" class="btn btn-secondary">Cancel</button>
-                <button id="save-playlist" class="btn btn-primary" style="background: #ff0000; border: none; color: white; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Create</button>
+        
+            <div id="playlists-view">
+                <div id="playlists-container" class="playlist-list">
+                    <div class="loading">Loading playlists...</div>
+                </div>
+            </div>
+            
+            <div id="playlist-items-view" style="display: none;">
+                <button id="back-to-playlists" class="back-btn">&larr; Back to Playlists</button>
+                <h3 id="playlist-items-title">Playlist Videos</h3>
+                <div class="sync-actions-section" id="playlist-sync-actions" style="display: none;">
+                    <button id="sync-playlist-btn" class="youtube-action-btn">Sync This Playlist</button>
+                    <div class="sync-options">
+                        <label class="radio-label">
+                            <input type="checkbox" id="playlist-api-fallback" checked>
+                            <span>Use YouTube API as fallback</span>
+                        </label>
+                    </div>
+                </div>
+                <div id="playlist-items-container" class="playlist-list">
+                    <div class="loading">Loading videos...</div>
+                </div>
             </div>
         </div>
     </div>
@@ -204,26 +88,83 @@
     <p><img src="/icons/vinyl-icon.svg" alt="Vinylfo" class="footer-icon">Vinylfo - Vinyl Music Player</p>
 </footer>
 
+<div id="playlist-modal" class="modal hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000;">
+    <div class="modal-content youtube-sync-modal-content" style="background: white; padding: 1.5rem; border-radius: 8px; max-width: 500px;">
+        <h3 style="margin-top: 0;">Create YouTube Playlist</h3>
+        <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Title</label>
+            <input type="text" id="playlist-title" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+        </div>
+        <div style="margin-bottom: 1.5rem;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Description</label>
+            <textarea id="playlist-description" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; min-height: 80px;"></textarea>
+        </div>
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <button id="cancel-playlist" class="btn btn-secondary">Cancel</button>
+            <button id="save-playlist" class="btn" style="background-color: #dc3545; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Create</button>
+        </div>
+    </div>
+</div>
+
 <script>
 const API_BASE = '/api/youtube';
 
 async function loadYouTubeData() {
     const statusResponse = await fetch(`${API_BASE}/status`);
     const status = await statusResponse.json();
-    const container = document.getElementById('playlists-container');
+    const connectionStatus = document.getElementById('connection-status');
+    const statsSection = document.getElementById('stats-section');
+    const syncActions = document.getElementById('sync-actions');
 
-    if (!container) {
+    if (!connectionStatus) {
         return;
     }
-
-    container.innerHTML = '<div class="loading">Loading playlists...</div>';
 
     if (!status.db_connected || !status.connected) {
-        container.innerHTML = '<p class="empty-state"><strong>YouTube Not Connected</strong><br>Please connect your YouTube account in Settings.</p>';
+        connectionStatus.innerHTML = '<p class="error-message"><strong>YouTube Not Connected</strong><br>Please connect your YouTube account in Settings.</p>';
+        statsSection.style.display = 'none';
+        syncActions.style.display = 'none';
         return;
     }
 
-    await loadPlaylists(container);
+    connectionStatus.innerHTML = '<p class="empty-state"><strong>Connected to YouTube</strong></p>';
+    statsSection.style.display = 'block';
+    syncActions.style.display = 'block';
+
+    await loadSyncStats();
+    await loadPlaylists();
+}
+
+async function loadSyncStats() {
+    try {
+        const response = await fetch(`${API_BASE}/playlists`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        if (!data.items) return;
+
+        let matched = 0, review = 0, unavailable = 0, pending = 0;
+
+        for (const playlist of data.items) {
+            const matchesResponse = await fetch(`${API_BASE}/matches/${playlist.id}`);
+            if (matchesResponse.ok) {
+                const matchesData = await matchesResponse.json();
+                for (const track of matchesData.tracks || []) {
+                    if (track.match_status === 'matched') matched++;
+                    else if (track.match_status === 'review') review++;
+                    else if (track.match_status === 'unavailable') unavailable++;
+                    else pending++;
+                }
+            }
+        }
+
+        document.getElementById('stat-matched').textContent = matched;
+        document.getElementById('stat-review').textContent = review;
+        document.getElementById('stat-unavailable').textContent = unavailable;
+        document.getElementById('stat-pending').textContent = pending;
+    } catch (err) {
+        console.error('Failed to load sync stats:', err);
+    }
 }
 
 async function loadPlaylists(container) {
@@ -248,7 +189,6 @@ async function loadPlaylists(container) {
             data.items.forEach(item => {
                 const playlistItem = document.createElement('div');
                 playlistItem.className = 'playlist-item';
-                playlistItem.style.cursor = 'pointer';
                 playlistItem.dataset.playlistId = item.id;
                 playlistItem.dataset.playlistTitle = item.title || 'Untitled';
                 const thumbnailUrl = item.id 
@@ -267,7 +207,6 @@ async function loadPlaylists(container) {
                 playlistItem.addEventListener('click', () => loadPlaylistItems(item.id, item.title));
                 container.appendChild(playlistItem);
 
-                // Fetch actual item count
                 fetch(`${API_BASE}/playlists/${item.id}`, { method: 'GET' })
                     .then(response => response.json())
                     .then(data => {
@@ -295,11 +234,13 @@ async function loadPlaylistItems(playlistId, playlistTitle) {
     const playlistsView = document.getElementById('playlists-view');
     const playlistItemsView = document.getElementById('playlist-items-view');
     const titleElement = document.getElementById('playlist-items-title');
+    const playlistSyncActions = document.getElementById('playlist-sync-actions');
 
     if (!container) return;
 
     playlistsView.style.display = 'none';
     playlistItemsView.style.display = 'block';
+    playlistSyncActions.style.display = 'block';
     titleElement.textContent = playlistTitle;
     container.innerHTML = '<div class="loading">Loading videos...</div>';
 
@@ -374,7 +315,7 @@ async function deletePlaylist(playlistId, playlistTitle) {
 
 async function createPlaylist() {
     const modal = document.getElementById('playlist-modal');
-    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
     document.getElementById('playlist-title').value = '';
     document.getElementById('playlist-description').value = '';
     document.getElementById('playlist-title').focus();
@@ -402,7 +343,7 @@ async function saveNewPlaylist() {
 
         if (response.ok) {
             showNotification('Playlist created successfully', 'success');
-            document.getElementById('playlist-modal').classList.add('hidden');
+            document.getElementById('playlist-modal').style.display = 'none';
 
             const container = document.getElementById('playlists-container');
             if (container) {
@@ -439,6 +380,53 @@ async function saveNewPlaylist() {
     }
 }
 
+async function syncAllPlaylists() {
+    const apiFallback = document.getElementById('api-fallback').checked;
+    
+    try {
+        const response = await fetch(`${API_BASE}/playlists`);
+        const data = await response.json();
+        
+        if (!data.items || data.items.length === 0) {
+            showNotification('No playlists to sync', 'info');
+            return;
+        }
+
+        showNotification('Starting sync of all playlists...', 'info');
+        
+        for (const playlist of data.items) {
+            await fetch(`${API_BASE}/match-playlist/${playlist.id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ youtube_api_fallback: apiFallback })
+            });
+        }
+
+        showNotification('Sync started for all playlists', 'success');
+        setTimeout(loadSyncStats, 2000);
+    } catch (err) {
+        console.error('Failed to sync playlists:', err);
+        showNotification('Failed to start sync', 'error');
+    }
+}
+
+async function syncPlaylist(playlistId) {
+    const apiFallback = document.getElementById('playlist-api-fallback').checked;
+    
+    try {
+        await fetch(`${API_BASE}/match-playlist/${playlistId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ youtube_api_fallback: apiFallback })
+        });
+        showNotification('Sync started for playlist', 'success');
+        setTimeout(loadSyncStats, 2000);
+    } catch (err) {
+        console.error('Failed to sync playlist:', err);
+        showNotification('Failed to start sync', 'error');
+    }
+}
+
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
@@ -460,7 +448,6 @@ function escapeHtml(text) {
 
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
-        // Check if we have a playlist_id in the URL
         const urlParams = new URLSearchParams(window.location.search);
         const playlistId = urlParams.get('playlist_id');
         const playlistTitle = urlParams.get('playlist_title');
@@ -482,11 +469,30 @@ document.addEventListener('DOMContentLoaded', () => {
         backBtn.addEventListener('click', showPlaylistsList);
     }
 
+    const syncAllBtn = document.getElementById('sync-all-btn');
+    if (syncAllBtn) {
+        syncAllBtn.addEventListener('click', syncAllPlaylists);
+    }
+
+    const syncPlaylistBtn = document.getElementById('sync-playlist-btn');
+    if (syncPlaylistBtn) {
+        syncPlaylistBtn.addEventListener('click', () => {
+            const titleElement = document.getElementById('playlist-items-title');
+            if (titleElement) {
+                const playlistId = document.querySelector('#playlist-items-view')?.style.display !== 'none' 
+                    ? document.querySelector('.playlist-item')?.dataset?.playlistId : null;
+                if (playlistId) {
+                    syncPlaylist(playlistId);
+                }
+            }
+        });
+    }
+
     const cancelBtn = document.getElementById('cancel-playlist');
     if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
             const modal = document.getElementById('playlist-modal');
-            if (modal) modal.classList.add('hidden');
+            if (modal) modal.style.display = 'none';
         });
     }
 
@@ -499,7 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (modal) {
         modal.addEventListener('click', (e) => {
             if (e.target.id === 'playlist-modal') {
-                modal.classList.add('hidden');
+                modal.style.display = 'none';
             }
         });
     }

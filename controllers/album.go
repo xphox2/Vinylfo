@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"log"
 	"strconv"
 	"strings"
 
@@ -108,10 +109,16 @@ func (c *AlbumController) SearchAlbums(ctx *gin.Context) {
 }
 
 func (c *AlbumController) GetAlbumByID(ctx *gin.Context) {
-	id := ctx.Param("id")
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "Invalid album ID"})
+		return
+	}
 	var album models.Album
 	result := c.db.First(&album, id)
 	if result.Error != nil {
+		log.Printf("GetAlbumByID DB error: %v", result.Error)
 		ctx.JSON(404, gin.H{"error": "Album not found"})
 		return
 	}
@@ -119,10 +126,16 @@ func (c *AlbumController) GetAlbumByID(ctx *gin.Context) {
 }
 
 func (c *AlbumController) GetAlbumImage(ctx *gin.Context) {
-	id := ctx.Param("id")
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "Invalid album ID"})
+		return
+	}
 	var album models.Album
 	result := c.db.First(&album, id)
 	if result.Error != nil {
+		log.Printf("GetAlbumImage DB error: %v", result.Error)
 		ctx.JSON(404, gin.H{"error": "Album not found"})
 		return
 	}
@@ -188,10 +201,16 @@ func (c *AlbumController) CreateAlbum(ctx *gin.Context) {
 }
 
 func (c *AlbumController) UpdateAlbum(ctx *gin.Context) {
-	id := ctx.Param("id")
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "Invalid album ID"})
+		return
+	}
 	var album models.Album
 	result := c.db.First(&album, id)
 	if result.Error != nil {
+		log.Printf("UpdateAlbum DB error: %v", result.Error)
 		ctx.JSON(404, gin.H{"error": "Album not found"})
 		return
 	}
@@ -203,6 +222,7 @@ func (c *AlbumController) UpdateAlbum(ctx *gin.Context) {
 
 	result = c.db.Save(&album)
 	if result.Error != nil {
+		log.Printf("UpdateAlbum save error: %v", result.Error)
 		ctx.JSON(500, gin.H{"error": "Failed to update album"})
 		return
 	}
@@ -210,10 +230,16 @@ func (c *AlbumController) UpdateAlbum(ctx *gin.Context) {
 }
 
 func (c *AlbumController) DeleteAlbum(ctx *gin.Context) {
-	id := ctx.Param("id")
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "Invalid album ID"})
+		return
+	}
 	var album models.Album
 	result := c.db.First(&album, id)
 	if result.Error != nil {
+		log.Printf("DeleteAlbum DB error: %v", result.Error)
 		ctx.JSON(404, gin.H{"error": "Album not found"})
 		return
 	}

@@ -115,9 +115,9 @@ func (c *YouTubeCache) SetNotFound(title, artist, album string) error {
 
 	key := c.generateKey(title, artist, album)
 	entry := YouTubeCacheEntry{
-		Query:      title + " - " + artist,
-		Duration:   -1, // Sentinel value for "not found"
-		CachedAt:   time.Now(),
+		Query:    title + " - " + artist,
+		Duration: -1, // Sentinel value for "not found"
+		CachedAt: time.Now(),
 	}
 
 	data, err := json.MarshalIndent(entry, "", "  ")

@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+#### Discogs Sync Rate Limiting and Stall Issues
+
+- **Fixed sync not auto-resuming after rate limit**: Implemented proper rate limit pause/resume functionality
+  - Added global rate limiter singleton with `IsRateLimited()` and `ClearRateLimit()` methods
+  - Added callback mechanism that triggers when Discogs API returns 429 (Too Many Requests)
+  - Sync worker sets up callback to pause sync state when rate limited
+  - Backend now reports `is_rate_limited` flag in progress response
+  - Frontend automatically resumes sync when rate limit clears
+  - Files: `discogs/rate_limiter.go`, `discogs/client.go`, `services/sync_worker.go`, `controllers/discogs_sync_progress.go`, `static/js/sync.js`
+
+- **Fixed sync slowing down due to request pileup**: Implemented request deduplication for progress polling
+  - Added `pollInProgress` flag to prevent multiple concurrent polling requests
+  - Polling now skips if previous request is still in flight
+  - Prevents backlog of requests when server responses are slow
+  - Fixes issue with multiple "pollProgress called" messages without corresponding "received" messages
+  - File: `static/js/sync.js`
+
+- **Fixed false stall detection during slow operations**: Updated activity timestamp during album processing
+  - `LastActivity` now updates after each album is processed (not just per batch)
+  - Prevents stall detection during slow image downloads
+  - More accurate progress tracking
+  - Files: `services/sync_worker.go`, `controllers/discogs_sync_progress.go`
+
+- **Increased stall detection timeout**: Adjusted timing for better accuracy
+  - Backend stall timeout increased from 90 seconds to 180 seconds
+  - Frontend stall detection count increased from 3 to 6 iterations
+  - Gives more time for slow operations like cover image processing
+  - Files: `controllers/discogs_sync_progress.go`, `static/js/sync.js`
+
+- **Rate limit aware stall detection**: Won't mark as stalled if rate limiter is active
+  - Backend checks `discogs.GetGlobalRateLimiter().IsRateLimited()` before marking stalled
+  - Prevents confusing "stalled" status when actually waiting on rate limits
+  - File: `controllers/discogs_sync_progress.go`
+
+- **Added adaptive polling intervals**: Reduces API calls during slow periods
+  - Normal polling: 1 second interval
+  - Stalled detection: 5 second interval
+  - Automatically switches back to normal when sync resumes
+  - File: `static/js/sync.js`
+
+- **Added `resumeSync()` method**: Programmatic resume capability for auto-resume logic
+  - Separate method for auto-resume functionality
+  - Properly updates UI state and restarts polling
+  - File: `static/js/sync.js`
+
+- **Updated frontend validation test**: Added sync.js to JavaScript syntax validation
+  - Ensures sync.js is checked for syntax errors in test suite
+  - File: `tests/syntax/frontend_validation_test.go`
+
+---
+
 ## [0.2.9-alpha] - 2026-01-22
 
 ### Fixed

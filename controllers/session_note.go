@@ -1,6 +1,9 @@
 package controllers
 
 import (
+	"log"
+	"strconv"
+
 	"vinylfo/models"
 
 	"github.com/gin-gonic/gin"
@@ -48,10 +51,16 @@ func (c *SessionNoteController) GetSessionNotes(ctx *gin.Context) {
 
 // GetSessionNote retrieves a specific session note by ID
 func (c *SessionNoteController) GetSessionNote(ctx *gin.Context) {
-	id := ctx.Param("id")
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "Invalid session note ID"})
+		return
+	}
 	var sessionNote models.SessionNote
 	result := c.db.First(&sessionNote, id)
 	if result.Error != nil {
+		log.Printf("GetSessionNote DB error: %v", result.Error)
 		ctx.JSON(404, gin.H{"error": "Session note not found"})
 		return
 	}
@@ -60,10 +69,16 @@ func (c *SessionNoteController) GetSessionNote(ctx *gin.Context) {
 
 // UpdateSessionNote updates a session note
 func (c *SessionNoteController) UpdateSessionNote(ctx *gin.Context) {
-	id := ctx.Param("id")
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "Invalid session note ID"})
+		return
+	}
 	var sessionNote models.SessionNote
 	result := c.db.First(&sessionNote, id)
 	if result.Error != nil {
+		log.Printf("UpdateSessionNote DB error: %v", result.Error)
 		ctx.JSON(404, gin.H{"error": "Session note not found"})
 		return
 	}
@@ -75,6 +90,7 @@ func (c *SessionNoteController) UpdateSessionNote(ctx *gin.Context) {
 
 	result = c.db.Save(&sessionNote)
 	if result.Error != nil {
+		log.Printf("UpdateSessionNote save error: %v", result.Error)
 		ctx.JSON(500, gin.H{"error": "Failed to update session note"})
 		return
 	}
@@ -83,16 +99,23 @@ func (c *SessionNoteController) UpdateSessionNote(ctx *gin.Context) {
 
 // DeleteSessionNote deletes a session note
 func (c *SessionNoteController) DeleteSessionNote(ctx *gin.Context) {
-	id := ctx.Param("id")
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "Invalid session note ID"})
+		return
+	}
 	var sessionNote models.SessionNote
 	result := c.db.First(&sessionNote, id)
 	if result.Error != nil {
+		log.Printf("DeleteSessionNote DB error: %v", result.Error)
 		ctx.JSON(404, gin.H{"error": "Session note not found"})
 		return
 	}
 
 	result = c.db.Delete(&sessionNote)
 	if result.Error != nil {
+		log.Printf("DeleteSessionNote delete error: %v", result.Error)
 		ctx.JSON(500, gin.H{"error": "Failed to delete session note"})
 		return
 	}

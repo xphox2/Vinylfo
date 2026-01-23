@@ -10,6 +10,7 @@ import (
 	"vinylfo/models"
 	"vinylfo/services"
 	"vinylfo/sync"
+	"vinylfo/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,12 +18,19 @@ import (
 func (c *DiscogsController) StartSync(ctx *gin.Context) {
 	log.Printf("StartSync: called")
 	state := getSyncState()
-	log.Printf("StartSync: IsRunning=%v, IsPaused=%v", state.IsRunning(), state.IsPaused())
+	log.Printf("StartSync: IsRunning=%v, IsPaused=%v, WorkerID=%s", state.IsRunning(), state.IsPaused(), state.WorkerID)
 
 	if state.IsRunning() {
-		log.Printf("StartSync: sync already in progress")
-		ctx.JSON(400, gin.H{"error": "Sync already in progress"})
-		return
+		if state.WorkerID != "" && sync.IsWorkerRunning(state.WorkerID) {
+			log.Printf("StartSync: sync already in progress with active worker")
+			ctx.JSON(400, gin.H{"error": "Sync already in progress"})
+			return
+		}
+		log.Printf("StartSync: state shows running but worker not active, clearing state")
+		updateSyncState(func(s *sync.SyncState) {
+			s.Status = sync.SyncStatusIdle
+			s.WorkerID = ""
+		})
 	}
 
 	if state.IsPaused() {
@@ -119,13 +127,35 @@ func (c *DiscogsController) StartSync(ctx *gin.Context) {
 
 	if config.DiscogsUsername == "" {
 		log.Printf("StartSync: Username is empty, fetching from Discogs...")
+
+		// Decrypt the stored tokens
+		accessToken, err := utils.Decrypt(config.DiscogsAccessToken)
+		if err != nil {
+			updateSyncState(func(s *sync.SyncState) {
+				s.Status = sync.SyncStatusIdle
+			})
+			log.Printf("StartSync: Failed to decrypt access token: %v", err)
+			ctx.JSON(500, gin.H{"error": "Failed to decrypt access token"})
+			return
+		}
+
+		accessSecret, err := utils.Decrypt(config.DiscogsAccessSecret)
+		if err != nil {
+			updateSyncState(func(s *sync.SyncState) {
+				s.Status = sync.SyncStatusIdle
+			})
+			log.Printf("StartSync: Failed to decrypt access secret: %v", err)
+			ctx.JSON(500, gin.H{"error": "Failed to decrypt access secret"})
+			return
+		}
+
 		consumerKey := os.Getenv("DISCOGS_CONSUMER_KEY")
 		consumerSecret := os.Getenv("DISCOGS_CONSUMER_SECRET")
 		oauth := &discogs.OAuthConfig{
 			ConsumerKey:    consumerKey,
 			ConsumerSecret: consumerSecret,
-			AccessToken:    config.DiscogsAccessToken,
-			AccessSecret:   config.DiscogsAccessSecret,
+			AccessToken:    accessToken,
+			AccessSecret:   accessSecret,
 		}
 		client := discogs.NewClientWithOAuth("", oauth)
 		username, err := client.GetUserIdentity()

@@ -57,7 +57,7 @@ func NewClient(apiKey string) *Client {
 	return &Client{
 		APIKey:      apiKey,
 		HTTPClient:  config.DiscogsClient(),
-		RateLimiter: NewRateLimiter(),
+		RateLimiter: GetGlobalRateLimiter(),
 	}
 }
 
@@ -65,7 +65,7 @@ func NewClientWithOAuth(apiKey string, oauth *OAuthConfig) *Client {
 	client := &Client{
 		APIKey:      apiKey,
 		HTTPClient:  config.DiscogsClient(),
-		RateLimiter: NewRateLimiter(),
+		RateLimiter: GetGlobalRateLimiter(),
 		OAuth:       oauth,
 	}
 	return client
@@ -96,7 +96,11 @@ func (c *Client) makeRequest(method, requestURL string, body url.Values) (*http.
 	isAuth := c.APIKey != ""
 	logToFile("API REQUEST [%s]: %s %s", map[bool]string{true: "auth", false: "anon"}[isAuth], method, requestURL)
 
-	c.RateLimiter.Wait(isAuth)
+	// Check rate limit before making request - returns error if we need to wait
+	if err := c.RateLimiter.Wait(isAuth); err != nil {
+		logToFile("API REQUEST: Rate limit triggered in Wait(), returning error")
+		return nil, err
+	}
 
 	req, err := http.NewRequest(method, requestURL, strings.NewReader(body.Encode()))
 	if err != nil {
@@ -133,8 +137,12 @@ func (c *Client) makeRequest(method, requestURL string, body url.Values) (*http.
 			resp.Header.Get("X-Discogs-Ratelimit-Auth"),
 			resp.Header.Get("X-Discogs-Ratelimit-Auth-Remaining"))
 
-		c.RateLimiter.WaitForReset(retryAfter)
-		return c.makeRequest(method, requestURL, body)
+		// Set rate limit state and return error - don't block here
+		// The sync worker will handle pausing and waiting
+		rateLimitErr := c.RateLimiter.SetRateLimitState(retryAfter)
+		// Start async countdown in a goroutine
+		go c.RateLimiter.StartRateLimitCountdown(retryAfter)
+		return nil, rateLimitErr
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != 201 {
@@ -162,7 +170,11 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 		return nil, fmt.Errorf("makeOAuthRequest: OAuth AccessToken is empty")
 	}
 
-	c.RateLimiter.Wait(true)
+	// Check rate limit before making request - returns error if we need to wait
+	if err := c.RateLimiter.Wait(true); err != nil {
+		logToFile("makeOAuthRequest: Rate limit triggered in Wait(), returning error")
+		return nil, err
+	}
 
 	if body == nil {
 		body = url.Values{}
@@ -275,8 +287,12 @@ func (c *Client) makeOAuthRequest(method, requestURL string, body url.Values) (*
 			resp.Header.Get("X-Discogs-Ratelimit-Auth"),
 			resp.Header.Get("X-Discogs-Ratelimit-Auth-Remaining"))
 
-		c.RateLimiter.WaitForReset(retryAfter)
-		return c.makeOAuthRequest(method, requestURL, nil)
+		// Set rate limit state and return error - don't block here
+		// The sync worker will handle pausing and waiting
+		rateLimitErr := c.RateLimiter.SetRateLimitState(retryAfter)
+		// Start async countdown in a goroutine
+		go c.RateLimiter.StartRateLimitCountdown(retryAfter)
+		return nil, rateLimitErr
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != 201 {
@@ -481,13 +497,16 @@ func (c *Client) GetUserCollection(username string, page, perPage int) ([]map[st
 			InstanceID       int    `json:"instance_id"`
 			DateAdded        string `json:"date_added"`
 			BasicInformation struct {
-				Title   string `json:"title"`
-				Year    int    `json:"year"`
-				Artists []struct {
+				Title      string `json:"title"`
+				Year       int    `json:"year"`
+				CoverImage string `json:"cover_image"`
+				Thumb      string `json:"thumb"`
+				Artists    []struct {
 					Name string `json:"name"`
 				} `json:"artists"`
 				Images []struct {
-					URI string `json:"uri"`
+					URI  string `json:"uri"`
+					Type string `json:"type"`
 				} `json:"images"`
 			} `json:"basic_information"`
 		} `json:"releases"`
@@ -510,9 +529,30 @@ func (c *Client) GetUserCollection(username string, page, perPage int) ([]map[st
 			artistName = r.BasicInformation.Artists[0].Name
 		}
 
+		// Try multiple sources for cover image (in order of preference)
 		coverImage := ""
-		if len(r.BasicInformation.Images) > 0 {
-			coverImage = r.BasicInformation.Images[0].URI
+		if r.BasicInformation.CoverImage != "" {
+			coverImage = r.BasicInformation.CoverImage
+		} else if len(r.BasicInformation.Images) > 0 {
+			// Prefer "primary" type image if available
+			for _, img := range r.BasicInformation.Images {
+				if img.Type == "primary" && img.URI != "" {
+					coverImage = img.URI
+					break
+				}
+			}
+			// Fall back to first image if no primary found
+			if coverImage == "" && r.BasicInformation.Images[0].URI != "" {
+				coverImage = r.BasicInformation.Images[0].URI
+			}
+		} else if r.BasicInformation.Thumb != "" {
+			coverImage = r.BasicInformation.Thumb
+		}
+
+		// Log when cover image is missing for debugging
+		if coverImage == "" {
+			logToFile("DISCOGS_API: WARNING - No cover image found for release %d (%s - %s)",
+				r.ID, artistName, r.BasicInformation.Title)
 		}
 
 		releases = append(releases, map[string]interface{}{
@@ -565,13 +605,16 @@ func (c *Client) GetUserCollectionByFolder(username string, folderID int, page, 
 			InstanceID       int    `json:"instance_id"`
 			DateAdded        string `json:"date_added"`
 			BasicInformation struct {
-				Title   string `json:"title"`
-				Year    int    `json:"year"`
-				Artists []struct {
+				Title      string `json:"title"`
+				Year       int    `json:"year"`
+				CoverImage string `json:"cover_image"`
+				Thumb      string `json:"thumb"`
+				Artists    []struct {
 					Name string `json:"name"`
 				} `json:"artists"`
 				Images []struct {
-					URI string `json:"uri"`
+					URI  string `json:"uri"`
+					Type string `json:"type"`
 				} `json:"images"`
 			} `json:"basic_information"`
 		} `json:"releases"`
@@ -594,9 +637,30 @@ func (c *Client) GetUserCollectionByFolder(username string, folderID int, page, 
 			artistName = r.BasicInformation.Artists[0].Name
 		}
 
+		// Try multiple sources for cover image (in order of preference)
 		coverImage := ""
-		if len(r.BasicInformation.Images) > 0 {
-			coverImage = r.BasicInformation.Images[0].URI
+		if r.BasicInformation.CoverImage != "" {
+			coverImage = r.BasicInformation.CoverImage
+		} else if len(r.BasicInformation.Images) > 0 {
+			// Prefer "primary" type image if available
+			for _, img := range r.BasicInformation.Images {
+				if img.Type == "primary" && img.URI != "" {
+					coverImage = img.URI
+					break
+				}
+			}
+			// Fall back to first image if no primary found
+			if coverImage == "" && r.BasicInformation.Images[0].URI != "" {
+				coverImage = r.BasicInformation.Images[0].URI
+			}
+		} else if r.BasicInformation.Thumb != "" {
+			coverImage = r.BasicInformation.Thumb
+		}
+
+		// Log when cover image is missing for debugging
+		if coverImage == "" {
+			logToFile("DISCOGS_API: WARNING - No cover image found for release %d (%s - %s)",
+				r.ID, artistName, r.BasicInformation.Title)
 		}
 
 		releases = append(releases, map[string]interface{}{
@@ -840,6 +904,7 @@ func parseAlbumResponse(resp *http.Response) (map[string]interface{}, error) {
 		Country  string   `json:"country"`
 		Label    string   `json:"label"`
 		Released string   `json:"released"`
+		MasterID int      `json:"master_id"`
 		Genres   []string `json:"genres"`
 		Styles   []string `json:"styles"`
 		Images   []struct {
@@ -896,6 +961,7 @@ func parseAlbumResponse(resp *http.Response) (map[string]interface{}, error) {
 		"country":      discogsAlbum.Country,
 		"label":        discogsAlbum.Label,
 		"release_date": discogsAlbum.Released,
+		"master_id":    discogsAlbum.MasterID,
 		"genre":        genre,
 		"style":        styles,
 		"cover_image":  coverImage,
@@ -1119,21 +1185,39 @@ func maskValue(s string) string {
 }
 
 func (c *Client) GetTracksForAlbum(id int) ([]map[string]interface{}, error) {
+	tracks, _, err := c.GetTracksForAlbumWithMaster(id)
+	return tracks, err
+}
+
+// GetTracksForAlbumWithMaster returns tracks and the master_id (if any) for a release
+func (c *Client) GetTracksForAlbumWithMaster(id int) ([]map[string]interface{}, int, error) {
 	url := fmt.Sprintf("%s/releases/%d", APIURL, id)
 	resp, err := c.makeAuthenticatedRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	album, err := parseAlbumResponse(resp)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return album["tracklist"].([]map[string]interface{}), nil
+	masterID := 0
+	if mid, ok := album["master_id"].(int); ok {
+		masterID = mid
+	}
+
+	return album["tracklist"].([]map[string]interface{}), masterID, nil
 }
 
+// CrossReferenceTimestamps finds track durations from alternative releases
+// It first checks the master release's main release (if masterID provided), then falls back to search
 func (c *Client) CrossReferenceTimestamps(title, artist string, currentTracks []map[string]interface{}) ([]map[string]interface{}, error) {
+	return c.CrossReferenceTimestampsWithMaster(title, artist, currentTracks, 0)
+}
+
+// CrossReferenceTimestampsWithMaster finds track durations, checking master release first if provided
+func (c *Client) CrossReferenceTimestampsWithMaster(title, artist string, currentTracks []map[string]interface{}, masterID int) ([]map[string]interface{}, error) {
 	hasDurations := false
 	for _, track := range currentTracks {
 		if dur, ok := track["duration"].(int); ok && dur > 0 {
@@ -1147,11 +1231,59 @@ func (c *Client) CrossReferenceTimestamps(title, artist string, currentTracks []
 		return currentTracks, nil
 	}
 
-	logToFile("CrossReferenceTimestamps: No durations found for %s - %s, searching for alternative releases", artist, title)
+	logToFile("CrossReferenceTimestamps: No durations found for %s - %s, looking for alternative releases", artist, title)
+
+	// Step 1: If we have a master_id, check the master's main release first (1-2 API calls)
+	if masterID > 0 {
+		logToFile("CrossReferenceTimestamps: Checking master release %d for %s - %s", masterID, artist, title)
+
+		mainReleaseID, err := c.GetMainReleaseFromMaster(masterID)
+		if err == nil && mainReleaseID > 0 {
+			logToFile("CrossReferenceTimestamps: Found main release %d from master %d", mainReleaseID, masterID)
+
+			altTracks, err := c.GetTracksForAlbum(mainReleaseID)
+			if err == nil && len(altTracks) > 0 {
+				altHasDurations := false
+				for _, track := range altTracks {
+					if dur, _ := track["duration"].(int); dur > 0 {
+						altHasDurations = true
+						break
+					}
+				}
+
+				if altHasDurations {
+					logToFile("CrossReferenceTimestamps: Main release %d has durations, matching tracks", mainReleaseID)
+					matchedTracks := matchTracksByName(currentTracks, altTracks)
+
+					matchedWithDurations := 0
+					for _, track := range matchedTracks {
+						if dur, _ := track["duration"].(int); dur > 0 {
+							matchedWithDurations++
+						}
+					}
+
+					if matchedWithDurations > 0 {
+						logToFile("CrossReferenceTimestamps: SUCCESS - matched %d tracks from master's main release %d", matchedWithDurations, mainReleaseID)
+						return matchedTracks, nil
+					}
+				} else {
+					logToFile("CrossReferenceTimestamps: Main release %d also has no durations", mainReleaseID)
+				}
+			}
+		} else if err != nil {
+			logToFile("CrossReferenceTimestamps: Failed to get main release from master %d: %v", masterID, err)
+		}
+	}
+
+	// Step 2: Fall back to search (limited to 1 page + max 3 releases = max 4 API calls)
+	logToFile("CrossReferenceTimestamps: Falling back to search for %s - %s", artist, title)
+
+	const maxSearchPages = 1
+	const maxReleasesToCheck = 3
 
 	var allResults []map[string]interface{}
 
-	for page := 1; page <= 3; page++ {
+	for page := 1; page <= maxSearchPages; page++ {
 		searchQuery := fmt.Sprintf("%s %s", artist, title)
 		searchQuery = strings.ReplaceAll(searchQuery, "/", " ")
 		logToFile("CrossReferenceTimestamps: Searching page %d with query: %q", page, searchQuery)
@@ -1183,7 +1315,15 @@ func (c *Client) CrossReferenceTimestamps(title, artist string, currentTracks []
 	normalizedTitle := normalizeStringForCompare(title)
 	normalizedArtist := normalizeStringForCompare(artist)
 
+	releasesChecked := 0
+
 	for i, result := range allResults {
+		// Stop if we've checked enough releases (to limit API calls)
+		if releasesChecked >= maxReleasesToCheck {
+			logToFile("CrossReferenceTimestamps: Reached max releases to check (%d), stopping", maxReleasesToCheck)
+			break
+		}
+
 		resultTitle, _ := result["title"].(string)
 		resultArtist, _ := result["artist"].(string)
 		resultID, _ := result["discogs_id"].(int)
@@ -1239,13 +1379,14 @@ func (c *Client) CrossReferenceTimestamps(title, artist string, currentTracks []
 			}
 			logToFile("CrossReferenceTimestamps: Found %s MATCH release %d", matchType, resultID)
 
+			releasesChecked++
 			altTracks, err := c.GetTracksForAlbum(resultID)
 			if err != nil {
 				logToFile("CrossReferenceTimestamps: Failed to fetch tracks for release %d: %v", resultID, err)
 				continue
 			}
 
-			logToFile("CrossReferenceTimestamps: Fetched %d tracks from release %d", len(altTracks), resultID)
+			logToFile("CrossReferenceTimestamps: Fetched %d tracks from release %d (checked %d/%d releases)", len(altTracks), resultID, releasesChecked, maxReleasesToCheck)
 
 			altHasDurations := false
 			for j, track := range altTracks {
@@ -1288,6 +1429,6 @@ func (c *Client) CrossReferenceTimestamps(title, artist string, currentTracks []
 		}
 	}
 
-	logToFile("CrossReferenceTimestamps: No suitable alternative release found for %s - %s after searching %d results", artist, title, len(allResults))
+	logToFile("CrossReferenceTimestamps: No suitable alternative release found for %s - %s after checking %d releases", artist, title, releasesChecked)
 	return currentTracks, nil
 }

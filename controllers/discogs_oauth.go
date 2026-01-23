@@ -1,10 +1,12 @@
 package controllers
 
 import (
+	"log"
 	"os"
 
 	"vinylfo/discogs"
 	"vinylfo/models"
+	"vinylfo/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -37,9 +39,24 @@ func (c *DiscogsController) GetOAuthURL(ctx *gin.Context) {
 		return
 	}
 
+	// Encrypt the temporary request token and secret before storing
+	encryptedToken, err := utils.Encrypt(token)
+	if err != nil {
+		log.Printf("OAUTH: Failed to encrypt request token: %v", err)
+		ctx.JSON(500, gin.H{"error": "Failed to secure request token"})
+		return
+	}
+
+	encryptedSecret, err := utils.Encrypt(secret)
+	if err != nil {
+		log.Printf("OAUTH: Failed to encrypt request secret: %v", err)
+		ctx.JSON(500, gin.H{"error": "Failed to secure request secret"})
+		return
+	}
+
 	c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(map[string]interface{}{
-		"discogs_access_token":  token,
-		"discogs_access_secret": secret,
+		"discogs_access_token":  encryptedToken,
+		"discogs_access_secret": encryptedSecret,
 	})
 
 	ctx.JSON(200, gin.H{
@@ -61,22 +78,40 @@ func (c *DiscogsController) OAuthCallback(ctx *gin.Context) {
 		return
 	}
 
+	// Decrypt the temporary request token and secret
+	requestToken, err := utils.Decrypt(config.DiscogsAccessToken)
+	if err != nil {
+		log.Printf("OAUTH: Failed to decrypt request token: %v", err)
+		ctx.String(500, "Failed to decrypt request token")
+		return
+	}
+
+	requestSecret, err := utils.Decrypt(config.DiscogsAccessSecret)
+	if err != nil {
+		log.Printf("OAUTH: Failed to decrypt request secret: %v", err)
+		ctx.String(500, "Failed to decrypt request secret")
+		return
+	}
+
 	consumerKey := os.Getenv("DISCOGS_CONSUMER_KEY")
 	consumerSecret := os.Getenv("DISCOGS_CONSUMER_SECRET")
 
 	oauth := &discogs.OAuthConfig{
 		ConsumerKey:    consumerKey,
 		ConsumerSecret: consumerSecret,
-		AccessToken:    config.DiscogsAccessToken,
-		AccessSecret:   config.DiscogsAccessSecret,
+		AccessToken:    requestToken,
+		AccessSecret:   requestSecret,
 	}
 	client := discogs.NewClientWithOAuth("", oauth)
 
-	accessToken, accessSecret, username, err := client.GetAccessToken(config.DiscogsAccessToken, config.DiscogsAccessSecret, ctx.Query("oauth_verifier"))
+	accessToken, accessSecret, username, err := client.GetAccessToken(requestToken, requestSecret, ctx.Query("oauth_verifier"))
 	if err != nil {
 		ctx.String(500, "Failed to get access token: %v", err)
 		return
 	}
+
+	client.OAuth.AccessToken = accessToken
+	client.OAuth.AccessSecret = accessSecret
 
 	if username == "" {
 		username, err = client.GetUserIdentity()
@@ -86,9 +121,24 @@ func (c *DiscogsController) OAuthCallback(ctx *gin.Context) {
 		}
 	}
 
+	// Encrypt the final access token and secret before storing
+	encryptedAccessToken, err := utils.Encrypt(accessToken)
+	if err != nil {
+		log.Printf("OAUTH: Failed to encrypt access token: %v", err)
+		ctx.String(500, "Failed to secure access token")
+		return
+	}
+
+	encryptedAccessSecret, err := utils.Encrypt(accessSecret)
+	if err != nil {
+		log.Printf("OAUTH: Failed to encrypt access secret: %v", err)
+		ctx.String(500, "Failed to secure access secret")
+		return
+	}
+
 	c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(map[string]interface{}{
-		"discogs_access_token":  accessToken,
-		"discogs_access_secret": accessSecret,
+		"discogs_access_token":  encryptedAccessToken,
+		"discogs_access_secret": encryptedAccessSecret,
 		"discogs_username":      username,
 		"is_discogs_connected":  true,
 	})

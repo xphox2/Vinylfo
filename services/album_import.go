@@ -5,8 +5,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"vinylfo/config"
 	"vinylfo/discogs"
@@ -57,44 +59,122 @@ type TrackInput struct {
 
 // DownloadCoverImage downloads a cover image from a URL
 func (i *AlbumImporter) DownloadCoverImage(imageURL string) ([]byte, string, error) {
+	return i.DownloadCoverImageWithRetry(imageURL, 1) // Default: no retries for backward compatibility
+}
+
+// DownloadCoverImageWithRetry downloads a cover image from a URL with configurable retries
+func (i *AlbumImporter) DownloadCoverImageWithRetry(imageURL string, maxAttempts int) ([]byte, string, error) {
 	if imageURL == "" {
+		logCoverDownload("SKIP", imageURL, "empty URL provided")
 		return nil, "", nil
 	}
+
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		data, contentType, err := i.downloadCoverImageOnce(imageURL, attempt, maxAttempts)
+		if err == nil {
+			return data, contentType, nil
+		}
+		lastErr = err
+
+		// Don't retry on certain errors
+		if strings.Contains(err.Error(), "empty URL") ||
+			strings.Contains(err.Error(), "invalid content type") ||
+			strings.Contains(err.Error(), "status 404") ||
+			strings.Contains(err.Error(), "status 403") {
+			logCoverDownload("FAIL_NO_RETRY", imageURL, "error not retryable: %v", err)
+			return nil, "", err
+		}
+
+		if attempt < maxAttempts {
+			backoff := time.Duration(attempt) * 2 * time.Second
+			logCoverDownload("RETRY_WAIT", imageURL, "attempt %d/%d failed, waiting %v before retry: %v",
+				attempt, maxAttempts, backoff, err)
+			time.Sleep(backoff)
+		}
+	}
+
+	logCoverDownload("FAIL_EXHAUSTED", imageURL, "all %d attempts failed, last error: %v", maxAttempts, lastErr)
+	return nil, "", lastErr
+}
+
+// downloadCoverImageOnce performs a single download attempt
+func (i *AlbumImporter) downloadCoverImageOnce(imageURL string, attempt, maxAttempts int) ([]byte, string, error) {
+	logCoverDownload("START", imageURL, "attempt %d/%d", attempt, maxAttempts)
 
 	client := config.DefaultClient()
 
 	req, err := http.NewRequest("GET", imageURL, nil)
 	if err != nil {
+		logCoverDownload("ERROR", imageURL, "failed to create request: %v", err)
 		return nil, "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("User-Agent", "Vinylfo/1.0")
 
+	startTime := time.Now()
 	resp, err := client.Do(req)
+	elapsed := time.Since(startTime)
+
 	if err != nil {
+		logCoverDownload("ERROR", imageURL, "HTTP request failed after %v: %v", elapsed, err)
 		return nil, "", fmt.Errorf("failed to download image: %w", err)
 	}
 	defer resp.Body.Close()
 
+	logCoverDownload("RESPONSE", imageURL, "status=%d, content-length=%s, elapsed=%v",
+		resp.StatusCode, resp.Header.Get("Content-Length"), elapsed)
+
 	if resp.StatusCode != http.StatusOK {
+		logCoverDownload("ERROR", imageURL, "bad status code: %d", resp.StatusCode)
 		return nil, "", fmt.Errorf("failed to download image: status %d", resp.StatusCode)
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
+		logCoverDownload("ERROR", imageURL, "failed to read response body: %v", err)
 		return nil, "", fmt.Errorf("failed to read image data: %w", err)
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "image/jpeg"
+		logCoverDownload("WARN", imageURL, "no Content-Type header, defaulting to image/jpeg")
 	}
 
 	if !strings.HasPrefix(contentType, "image/") {
+		logCoverDownload("ERROR", imageURL, "invalid content type: %s (body preview: %.100s)",
+			contentType, string(data))
 		return nil, "", fmt.Errorf("invalid content type: %s", contentType)
 	}
 
+	logCoverDownload("SUCCESS", imageURL, "downloaded %d bytes, type=%s", len(data), contentType)
 	return data, contentType, nil
+}
+
+// logCoverDownload logs cover download events to the sync debug log
+func logCoverDownload(event, imageURL, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	// Truncate URL for readability in logs
+	shortURL := imageURL
+	if len(shortURL) > 80 {
+		shortURL = shortURL[:77] + "..."
+	}
+	fullMsg := fmt.Sprintf("COVER_DOWNLOAD [%s] url=%s: %s", event, shortURL, msg)
+
+	// Log to sync debug file
+	f, err := os.OpenFile(discogs.SyncDebugLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		defer f.Close()
+		f.WriteString(fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), fullMsg))
+	}
+
+	// Also log to standard log for visibility
+	log.Print(fullMsg)
 }
 
 // CreateAlbumWithTracks creates an album with its tracks in the database
@@ -151,7 +231,8 @@ func (i *AlbumImporter) CreateAlbumWithTracks(input AlbumInput, tracks []TrackIn
 
 // FetchAndSaveTracks fetches tracks from Discogs and saves them to the database
 func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID int, albumTitle, artist string) (bool, string) {
-	tracks, err := i.client.GetTracksForAlbum(discogsID)
+	// Get tracks and master_id in one API call
+	tracks, masterID, err := i.client.GetTracksForAlbumWithMaster(discogsID)
 
 	// Handle deleted/private releases or server errors - try to get from master release
 	if err != nil && (strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "500") || strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "Internal Server Error")) {
@@ -160,14 +241,15 @@ func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID 
 		// Try to get master release info
 		masterData, masterErr := i.client.GetMasterRelease(discogsID)
 		if masterErr == nil && masterData != nil {
-			if masterID, ok := masterData["id"].(int); ok && masterID > 0 {
+			if mid, ok := masterData["id"].(int); ok && mid > 0 {
+				masterID = mid
 				log.Printf("FetchAndSaveTracks: Found master release %d for %s - %s", masterID, artist, albumTitle)
 
 				// Get the main release from the master
 				mainReleaseID, mainErr := i.client.GetMainReleaseFromMaster(masterID)
 				if mainErr == nil && mainReleaseID > 0 {
 					log.Printf("FetchAndSaveTracks: Fetching tracks from main release %d (from master %d)", mainReleaseID, masterID)
-					tracks, err = i.client.GetTracksForAlbum(mainReleaseID)
+					tracks, _, err = i.client.GetTracksForAlbumWithMaster(mainReleaseID)
 					if err == nil {
 						log.Printf("FetchAndSaveTracks: Successfully fetched tracks from main release %d", mainReleaseID)
 					}
@@ -209,8 +291,9 @@ func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID 
 	}
 
 	if !hasDurations {
-		log.Printf("FetchAndSaveTracks: No durations found for %s - %s (release %d), attempting cross-reference", artist, albumTitle, discogsID)
-		crossRefTracks, crossErr := i.client.CrossReferenceTimestamps(albumTitle, artist, tracks)
+		log.Printf("FetchAndSaveTracks: No durations found for %s - %s (release %d, master %d), attempting cross-reference", artist, albumTitle, discogsID, masterID)
+		// Use master_id to check master's main release first before falling back to search
+		crossRefTracks, crossErr := i.client.CrossReferenceTimestampsWithMaster(albumTitle, artist, tracks, masterID)
 		if crossErr == nil && len(crossRefTracks) > 0 {
 			hasDurations = false
 			for _, track := range crossRefTracks {
@@ -246,9 +329,10 @@ func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID 
 		if v, ok := fullAlbumData["cover_image"].(string); ok && v != "" {
 			updates["cover_image_url"] = v
 
-			imageData, imageType, imageErr := i.DownloadCoverImage(v)
+			imageData, imageType, imageErr := i.DownloadCoverImageWithRetry(v, 3)
 			if imageErr != nil {
 				updates["cover_image_failed"] = true
+				log.Printf("FetchAndSaveTracks: failed to download cover image after 3 attempts: %v", imageErr)
 			} else if len(imageData) > 0 {
 				updates["discogs_cover_image"] = imageData
 				updates["discogs_cover_image_type"] = imageType

@@ -1,10 +1,15 @@
 package utils
 
 import (
+	"os"
 	"testing"
 )
 
 func TestEncryptDecrypt(t *testing.T) {
+	if os.Getenv("ENCRYPTION_KEY") == "" {
+		t.Skip("ENCRYPTION_KEY not set - skipping encryption test")
+	}
+
 	original := "test-access-token-12345"
 
 	encrypted, err := Encrypt(original)
@@ -27,6 +32,10 @@ func TestEncryptDecrypt(t *testing.T) {
 }
 
 func TestEncryptProducesDifferentCiphertext(t *testing.T) {
+	if os.Getenv("ENCRYPTION_KEY") == "" {
+		t.Skip("ENCRYPTION_KEY not set - skipping encryption test")
+	}
+
 	original := "same-text"
 
 	encrypted1, err := Encrypt(original)
@@ -45,6 +54,10 @@ func TestEncryptProducesDifferentCiphertext(t *testing.T) {
 }
 
 func TestDecryptInvalidData(t *testing.T) {
+	if os.Getenv("ENCRYPTION_KEY") == "" {
+		t.Skip("ENCRYPTION_KEY not set - skipping encryption test")
+	}
+
 	_, err := Decrypt("invalid-hex-data")
 	if err == nil {
 		t.Fatal("Should fail with invalid hex data")
@@ -52,6 +65,10 @@ func TestDecryptInvalidData(t *testing.T) {
 }
 
 func TestEncryptEmptyString(t *testing.T) {
+	if os.Getenv("ENCRYPTION_KEY") == "" {
+		t.Skip("ENCRYPTION_KEY not set - skipping encryption test")
+	}
+
 	original := ""
 
 	encrypted, err := Encrypt(original)
@@ -70,6 +87,10 @@ func TestEncryptEmptyString(t *testing.T) {
 }
 
 func TestEncryptLongString(t *testing.T) {
+	if os.Getenv("ENCRYPTION_KEY") == "" {
+		t.Skip("ENCRYPTION_KEY not set - skipping encryption test")
+	}
+
 	original := "this-is-a-very-long-string-that-should-still-encrypt-correctly-and-decrypt-properly-without-any-issues"
 
 	encrypted, err := Encrypt(original)

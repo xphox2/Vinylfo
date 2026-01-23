@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"vinylfo/models"
@@ -15,54 +17,63 @@ import (
 // DB is the global database instance
 var DB *gorm.DB
 
+// DBType stores the current database type for use in other functions
+var DBType string
+
 // InitDB initializes the database connection
 func InitDB() (*gorm.DB, error) {
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		missingVars := []string{}
-		dbUser := os.Getenv("DB_USER")
-		dbPass := os.Getenv("DB_PASS")
-		dbHost := os.Getenv("DB_HOST")
-		dbPort := os.Getenv("DB_PORT")
-		dbName := os.Getenv("DB_NAME")
+	dbType := os.Getenv("DB_TYPE")
+	if dbType == "" {
+		dbType = "sqlite" // Default to SQLite for desktop deployment
+	}
+	DBType = dbType
 
-		if dbUser == "" {
-			missingVars = append(missingVars, "DB_USER")
-		}
-		if dbPass == "" {
-			missingVars = append(missingVars, "DB_PASS")
-		}
-		if dbHost == "" {
-			missingVars = append(missingVars, "DB_HOST")
-		}
-		if dbPort == "" {
-			missingVars = append(missingVars, "DB_PORT")
-		}
-		if dbName == "" {
-			missingVars = append(missingVars, "DB_NAME")
-		}
+	var db *gorm.DB
+	var err error
 
-		if len(missingVars) > 0 {
-			return nil, fmt.Errorf("missing required environment variables: %s. Either set DATABASE_URL or all of: DB_USER, DB_PASS, DB_HOST, DB_PORT, DB_NAME", strings.Join(missingVars, ", "))
-		}
-
-		dsn = dbUser + ":" + dbPass + "@tcp(" + dbHost + ":" + dbPort + ")/" + dbName + "?parseTime=true&allowNativePasswords=true"
+	if dbType == "sqlite" {
+		db, err = initSQLite()
+	} else {
+		db, err = initMySQL()
 	}
 
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
 		return nil, err
 	}
 
+	// Configure connection pool based on database type
 	sqlDB, err := db.DB()
 	if err != nil {
 		log.Fatal("Failed to get underlying sql.DB:", err)
 		return nil, err
 	}
-	sqlDB.SetMaxOpenConns(25)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	if dbType == "sqlite" {
+		// SQLite: allow a small pool for read concurrency
+		sqlDB.SetMaxOpenConns(5)
+		sqlDB.SetMaxIdleConns(2)
+		sqlDB.SetConnMaxLifetime(time.Hour)
+
+		// SQLite performance tuning
+		sqlDB.Exec("PRAGMA foreign_keys = ON")
+		sqlDB.Exec("PRAGMA journal_mode = WAL")
+		sqlDB.Exec("PRAGMA synchronous = NORMAL")
+		sqlDB.Exec("PRAGMA cache_size = -64000")   // 64MB cache
+		sqlDB.Exec("PRAGMA busy_timeout = 5000")   // 5 second wait for locks
+		sqlDB.Exec("PRAGMA mmap_size = 134217728") // 128MB memory-mapped I/O
+
+		// Run integrity check on startup
+		var integrityResult string
+		sqlDB.QueryRow("PRAGMA integrity_check").Scan(&integrityResult)
+		if integrityResult != "ok" {
+			log.Printf("WARNING: Database integrity check failed: %s", integrityResult)
+		}
+	} else {
+		// MySQL: connection pool for concurrent access
+		sqlDB.SetMaxOpenConns(25)
+		sqlDB.SetMaxIdleConns(5)
+		sqlDB.SetConnMaxLifetime(time.Hour)
+	}
 
 	// Run migrations for all models
 	err = db.AutoMigrate(
@@ -113,30 +124,33 @@ func InitDB() (*gorm.DB, error) {
 		}
 	}
 
-	// Migration: Add YouTube OAuth columns if they don't exist
-	var columnCount int64
-	db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'app_configs' AND column_name = 'youtube_access_token'").Scan(&columnCount)
-	if columnCount == 0 {
-		log.Println("Adding YouTube OAuth columns to app_configs table...")
-		if err := db.Exec(`
-			ALTER TABLE app_configs
-			ADD COLUMN youtube_access_token TEXT DEFAULT NULL,
-			ADD COLUMN youtube_refresh_token TEXT DEFAULT NULL,
-			ADD COLUMN youtube_token_expiry DATETIME(3) DEFAULT NULL,
-			ADD COLUMN youtube_connected TINYINT(1) DEFAULT 0
-		`).Error; err != nil {
-			log.Printf("Warning: Failed to add YouTube OAuth columns: %v", err)
+	// Migration: Add YouTube OAuth columns if they don't exist (MySQL only)
+	// SQLite handles this through AutoMigrate; MySQL needs explicit column checks
+	if dbType != "sqlite" {
+		var columnCount int64
+		db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'app_configs' AND column_name = 'youtube_access_token'").Scan(&columnCount)
+		if columnCount == 0 {
+			log.Println("Adding YouTube OAuth columns to app_configs table...")
+			if err := db.Exec(`
+				ALTER TABLE app_configs
+				ADD COLUMN youtube_access_token TEXT DEFAULT NULL,
+				ADD COLUMN youtube_refresh_token TEXT DEFAULT NULL,
+				ADD COLUMN youtube_token_expiry DATETIME(3) DEFAULT NULL,
+				ADD COLUMN youtube_connected TINYINT(1) DEFAULT 0
+			`).Error; err != nil {
+				log.Printf("Warning: Failed to add YouTube OAuth columns: %v", err)
+			} else {
+				log.Println("YouTube OAuth columns added successfully")
+			}
 		} else {
-			log.Println("YouTube OAuth columns added successfully")
-		}
-	} else {
-		// Ensure columns are large enough for encrypted tokens
-		var existingSize int64
-		db.Raw("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_name = 'app_configs' AND column_name = 'youtube_access_token'").Scan(&existingSize)
-		if existingSize > 0 && existingSize < 1000 {
-			log.Println("Expanding YouTube OAuth columns to support encrypted tokens...")
-			db.Exec(`ALTER TABLE app_configs MODIFY COLUMN youtube_access_token TEXT DEFAULT NULL`)
-			db.Exec(`ALTER TABLE app_configs MODIFY COLUMN youtube_refresh_token TEXT DEFAULT NULL`)
+			// Ensure columns are large enough for encrypted tokens
+			var existingSize int64
+			db.Raw("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_name = 'app_configs' AND column_name = 'youtube_access_token'").Scan(&existingSize)
+			if existingSize > 0 && existingSize < 1000 {
+				log.Println("Expanding YouTube OAuth columns to support encrypted tokens...")
+				db.Exec(`ALTER TABLE app_configs MODIFY COLUMN youtube_access_token TEXT DEFAULT NULL`)
+				db.Exec(`ALTER TABLE app_configs MODIFY COLUMN youtube_refresh_token TEXT DEFAULT NULL`)
+			}
 		}
 	}
 
@@ -166,4 +180,96 @@ func InitDB() (*gorm.DB, error) {
 // GetDB returns the global database instance
 func GetDB() *gorm.DB {
 	return DB
+}
+
+// initSQLite initializes a SQLite database connection
+func initSQLite() (*gorm.DB, error) {
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "data/vinylfo.db"
+	}
+
+	// Ensure directory exists
+	dbDir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create database directory: %w", err)
+	}
+
+	log.Printf("Opening SQLite database at: %s", dbPath)
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		log.Fatal("Failed to connect to SQLite database:", err)
+		return nil, err
+	}
+
+	return db, nil
+}
+
+// initMySQL initializes a MySQL database connection
+func initMySQL() (*gorm.DB, error) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		missingVars := []string{}
+		dbUser := os.Getenv("DB_USER")
+		dbPass := os.Getenv("DB_PASS")
+		dbHost := os.Getenv("DB_HOST")
+		dbPort := os.Getenv("DB_PORT")
+		dbName := os.Getenv("DB_NAME")
+
+		if dbUser == "" {
+			missingVars = append(missingVars, "DB_USER")
+		}
+		if dbPass == "" {
+			missingVars = append(missingVars, "DB_PASS")
+		}
+		if dbHost == "" {
+			missingVars = append(missingVars, "DB_HOST")
+		}
+		if dbPort == "" {
+			missingVars = append(missingVars, "DB_PORT")
+		}
+		if dbName == "" {
+			missingVars = append(missingVars, "DB_NAME")
+		}
+
+		if len(missingVars) > 0 {
+			return nil, fmt.Errorf("missing required environment variables: %s. Either set DATABASE_URL or all of: DB_USER, DB_PASS, DB_HOST, DB_PORT, DB_NAME", strings.Join(missingVars, ", "))
+		}
+
+		dsn = dbUser + ":" + dbPass + "@tcp(" + dbHost + ":" + dbPort + ")/" + dbName + "?parseTime=true&allowNativePasswords=true"
+	}
+
+	log.Println("Opening MySQL database connection...")
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatal("Failed to connect to MySQL database:", err)
+		return nil, err
+	}
+
+	return db, nil
+}
+
+// ShutdownDB performs a clean shutdown of the database connection
+func ShutdownDB() error {
+	if DB == nil {
+		return nil
+	}
+
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return fmt.Errorf("error getting database connection: %w", err)
+	}
+
+	// Checkpoint WAL before closing (SQLite only)
+	if DBType == "sqlite" {
+		log.Println("Checkpointing SQLite WAL...")
+		sqlDB.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	}
+
+	if err := sqlDB.Close(); err != nil {
+		return fmt.Errorf("error closing database connection: %w", err)
+	}
+
+	log.Println("Database connection closed")
+	return nil
 }

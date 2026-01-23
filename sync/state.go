@@ -22,20 +22,23 @@ type SyncBatch struct {
 }
 
 type SyncState struct {
-	Status        SyncStatus               `json:"status"`
-	CurrentPage   int                      `json:"current_page"`
-	TotalPages    int                      `json:"total_pages"`
-	Processed     int                      `json:"processed"`
-	Total         int                      `json:"total"`
-	SyncMode      string                   `json:"sync_mode"`
-	CurrentFolder int                      `json:"current_folder"`
-	Folders       []map[string]interface{} `json:"folders,omitempty"`
-	FolderIndex   int                      `json:"folder_index"`
-	APIRemaining  int                      `json:"api_remaining"`
-	AnonRemaining int                      `json:"anon_remaining"`
-	LastBatch     *SyncBatch               `json:"last_batch,omitempty"`
-	LastReview    interface{}              `json:"last_review,omitempty"`
-	LastActivity  time.Time                `json:"last_activity"`
+	Status           SyncStatus               `json:"status"`
+	CurrentPage      int                      `json:"current_page"`
+	TotalPages       int                      `json:"total_pages"`
+	Processed        int                      `json:"processed"`
+	Total            int                      `json:"total"`
+	SyncMode         string                   `json:"sync_mode"`
+	CurrentFolder    int                      `json:"current_folder"`
+	Folders          []map[string]interface{} `json:"folders,omitempty"`
+	FolderIndex      int                      `json:"folder_index"`
+	APIRemaining     int                      `json:"api_remaining"`
+	AnonRemaining    int                      `json:"anon_remaining"`
+	LastBatch        *SyncBatch               `json:"last_batch,omitempty"`
+	LastReview       interface{}              `json:"last_review,omitempty"`
+	LastActivity     time.Time                `json:"last_activity"`
+	WorkerID         string                   `json:"worker_id"`
+	RateLimitRetryAt *time.Time               `json:"rate_limit_retry_at,omitempty"`
+	RateLimitMessage string                   `json:"rate_limit_message,omitempty"`
 }
 
 type StateManager struct {
@@ -57,7 +60,22 @@ var (
 		resumeCh: make(chan struct{}, 1),
 		cancelCh: make(chan struct{}, 1),
 	}
+	activeWorkers   = make(map[string]*sync.WaitGroup)
+	activeWorkersMu sync.RWMutex
 )
+
+// NewStateManager creates a new StateManager instance for testing or isolated use
+func NewStateManager() *StateManager {
+	return &StateManager{
+		state: SyncState{
+			Status: SyncStatusIdle,
+		},
+		statusCh: make(chan SyncStatus, 1),
+		pauseCh:  make(chan struct{}, 1),
+		resumeCh: make(chan struct{}, 1),
+		cancelCh: make(chan struct{}, 1),
+	}
+}
 
 func (m *StateManager) GetState() SyncState {
 	m.mu.RLock()
@@ -227,6 +245,61 @@ func (s *SyncState) IsIdle() bool {
 	return s.Status == SyncStatusIdle
 }
 
+func RegisterWorker(workerID string) {
+	activeWorkersMu.Lock()
+	defer activeWorkersMu.Unlock()
+	activeWorkers[workerID] = &sync.WaitGroup{}
+	activeWorkers[workerID].Add(1)
+}
+
+func UnregisterWorker(workerID string) {
+	activeWorkersMu.Lock()
+	defer activeWorkersMu.Unlock()
+	if wg, ok := activeWorkers[workerID]; ok {
+		wg.Done()
+		delete(activeWorkers, workerID)
+	}
+}
+
+func IsWorkerRunning(workerID string) bool {
+	activeWorkersMu.RLock()
+	defer activeWorkersMu.RUnlock()
+	_, ok := activeWorkers[workerID]
+	return ok
+}
+
+func WaitForWorker(workerID string, timeout time.Duration) bool {
+	activeWorkersMu.RLock()
+	wg, ok := activeWorkers[workerID]
+	activeWorkersMu.RUnlock()
+
+	if !ok {
+		return true
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+func TerminateAllWorkers() {
+	activeWorkersMu.Lock()
+	defer activeWorkersMu.Unlock()
+	for workerID, wg := range activeWorkers {
+		wg.Done()
+		delete(activeWorkers, workerID)
+	}
+}
+
 func RemoveFirstAlbumFromBatch(s *SyncState) {
 	if s.LastBatch != nil && len(s.LastBatch.Albums) > 0 {
 		s.LastBatch.Albums = s.LastBatch.Albums[1:]
@@ -234,4 +307,18 @@ func RemoveFirstAlbumFromBatch(s *SyncState) {
 			s.LastBatch = nil
 		}
 	}
+}
+
+func (m *StateManager) ClearRateLimitState() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.state.RateLimitRetryAt = nil
+	m.state.RateLimitMessage = ""
+}
+
+func (m *StateManager) SetRateLimitState(retryAt time.Time, message string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.state.RateLimitRetryAt = &retryAt
+	m.state.RateLimitMessage = message
 }

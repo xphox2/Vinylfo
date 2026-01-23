@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"vinylfo/sync"
 	"vinylfo/utils"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -25,6 +27,7 @@ type SyncWorker struct {
 	config          SyncConfig
 	ctx             context.Context
 	cancel          context.CancelFunc
+	workerID        string
 }
 
 // SyncConfig holds configuration for the sync worker
@@ -38,7 +41,7 @@ type SyncConfig struct {
 
 // NewSyncWorker creates a new SyncWorker instance
 func NewSyncWorker(db *gorm.DB, client *discogs.Client, stateManager *sync.StateManager, config SyncConfig, ctx context.Context, cancel context.CancelFunc) *SyncWorker {
-	return &SyncWorker{
+	w := &SyncWorker{
 		db:              db,
 		client:          client,
 		importer:        NewAlbumImporter(db, client),
@@ -47,7 +50,37 @@ func NewSyncWorker(db *gorm.DB, client *discogs.Client, stateManager *sync.State
 		config:          config,
 		ctx:             ctx,
 		cancel:          cancel,
+		workerID:        uuid.New().String(),
 	}
+
+	w.client.RateLimiter.SetRateLimitCallback(func(retryAfter int) {
+		retryAt := time.Now().Add(time.Duration(retryAfter) * time.Second)
+		w.stateManager.UpdateState(func(s *sync.SyncState) {
+			s.RateLimitRetryAt = &retryAt
+			s.RateLimitMessage = fmt.Sprintf("API rate limit - retry after %d seconds", retryAfter)
+		})
+		w.logToFile("Sync: RATE LIMITED - pausing sync, will retry at %v", retryAt)
+		// Only set to paused if currently running - avoid state conflicts
+		state := w.stateManager.GetState()
+		if state.IsRunning() {
+			w.stateManager.SetStatus(sync.SyncStatusPaused)
+		}
+	})
+
+	w.client.RateLimiter.SetRateLimitClearedCallback(func() {
+		w.logToFile("Sync: RATE LIMIT CLEARED - resuming sync")
+		w.stateManager.ClearRateLimitState()
+		// Only resume if currently paused (not if user manually cancelled)
+		state := w.stateManager.GetState()
+		if state.IsPaused() {
+			w.stateManager.RequestResume()
+			w.logToFile("Sync: RATE LIMIT CLEARED - RequestResume() called successfully")
+		} else {
+			w.logToFile("Sync: RATE LIMIT CLEARED - not resuming, state is %s", state.Status)
+		}
+	})
+
+	return w
 }
 
 // Run executes the main sync loop with context support for cancellation
@@ -57,13 +90,21 @@ func (w *SyncWorker) Run() {
 			w.logToFile("Sync: PANIC in SyncWorker.Run: %v", r)
 			w.stateManager.UpdateState(func(s *sync.SyncState) {
 				s.Status = sync.SyncStatusIdle
+				s.WorkerID = ""
 			})
 		}
+		sync.UnregisterWorker(w.workerID)
+		w.logToFile("Sync: SyncWorker.Run ENDED, workerID=%s", w.workerID)
 	}()
 
-	w.logToFile("Sync: SyncWorker.Run STARTING with context")
+	w.logToFile("Sync: SyncWorker.Run STARTING with workerID=%s", w.workerID)
+	sync.RegisterWorker(w.workerID)
 
 	go w.monitorContextCancellation()
+
+	w.stateManager.UpdateState(func(s *sync.SyncState) {
+		s.WorkerID = w.workerID
+	})
 
 	initialState := w.stateManager.GetState()
 	w.logToFile("Sync: initial state - IsRunning=%v, IsPaused=%v, Processed=%d, Total=%d",
@@ -82,6 +123,21 @@ func (w *SyncWorker) Run() {
 
 		w.logToFile("Sync: ========== LOOP ITERATION START ==========")
 
+		// Check for expired rate limit state and auto-recover
+		if w.client.RateLimiter.IsRateLimited() {
+			secondsLeft := w.client.RateLimiter.GetSecondsUntilReset()
+			if secondsLeft <= 0 {
+				w.logToFile("Sync: detected expired rate limit, clearing and resuming")
+				w.client.RateLimiter.ClearRateLimit()
+				w.stateManager.ClearRateLimitState()
+				// If we're paused due to rate limit, resume
+				state := w.stateManager.GetState()
+				if state.IsPaused() {
+					w.stateManager.RequestResume()
+				}
+			}
+		}
+
 		// Update last activity timestamp
 		w.stateManager.UpdateState(func(s *sync.SyncState) {
 			s.LastActivity = time.Now()
@@ -96,9 +152,25 @@ func (w *SyncWorker) Run() {
 			state.IsRunning(), state.IsPaused(), state.Processed,
 			state.LastBatch != nil && lastBatchAlbums > 0, lastBatchAlbums)
 
-		if !state.IsRunning() {
-			w.logToFile("Sync: complete (not running), Processed=%d/%d", state.Processed, state.Total)
+		if !state.IsActive() {
+			w.logToFile("Sync: complete (idle), Processed=%d/%d", state.Processed, state.Total)
 			return
+		}
+
+		// If paused, wait for resume or cancellation
+		if state.IsPaused() {
+			// Check if this is a rate limit pause - get fresh rate limit state
+			isRateLimited := w.client.RateLimiter.IsRateLimited()
+			secondsLeft := w.client.RateLimiter.GetSecondsUntilReset()
+			w.logToFile("Sync: PAUSED - waiting for resume, Processed=%d/%d, isRateLimited=%v, secondsLeft=%d",
+				state.Processed, state.Total, isRateLimited, secondsLeft)
+
+			if err := w.stateManager.WaitForResume(w.ctx); err != nil {
+				w.logToFile("Sync: context cancelled while paused: %v", err)
+				return
+			}
+			w.logToFile("Sync: RESUMED - continuing processing, new state=%s", w.stateManager.GetState().Status)
+			continue
 		}
 
 		w.logToFile("Sync: NOT PAUSED - proceeding with batch processing, Processed=%d, LastBatch=%v, albums_in_batch=%d",
@@ -112,7 +184,7 @@ func (w *SyncWorker) Run() {
 
 		// Check if sync was stopped during processing
 		state = w.stateManager.GetState()
-		if !state.IsRunning() {
+		if !state.IsActive() {
 			return
 		}
 
@@ -134,8 +206,11 @@ func (w *SyncWorker) Run() {
 
 		// Re-check running state after potential API call delays
 		state = w.stateManager.GetState()
-		if !state.IsRunning() || state.IsPaused() {
+		if !state.IsActive() {
 			return
+		}
+		if state.IsPaused() {
+			continue // Go back to top of loop to wait for resume
 		}
 
 		if len(currentReleases) == 0 {
@@ -161,11 +236,19 @@ func (w *SyncWorker) Run() {
 			}
 
 			currentCheck := w.stateManager.GetState()
-			if !currentCheck.IsRunning() || currentCheck.IsPaused() {
+			if !currentCheck.IsActive() {
 				return
+			}
+			if currentCheck.IsPaused() {
+				w.logToFile("Sync: paused during album processing, waiting for resume")
+				break // Exit album loop, go back to main loop to wait
 			}
 
 			w.processAlbum(album, state)
+
+			w.stateManager.UpdateState(func(s *sync.SyncState) {
+				s.LastActivity = time.Now()
+			})
 		}
 
 		// Check if LastBatch is empty after processing
@@ -306,6 +389,15 @@ func (w *SyncWorker) fetchNextBatch(page, folderID int, state sync.SyncState) ([
 
 // handleFetchError handles errors during fetching
 func (w *SyncWorker) handleFetchError(err error, page int, state sync.SyncState) ([]map[string]interface{}, bool) {
+	// Check if this is a rate limit error - pause instead of stopping
+	if errors.Is(err, discogs.ErrRateLimited) {
+		w.logToFile("processSyncBatches: RATE LIMITED on page %d, pausing sync", page)
+		// The rate limiter callback already set the state to paused
+		// and started the countdown. Just return false to continue the loop
+		// which will wait for resume in the main loop.
+		return nil, false
+	}
+
 	errStr := err.Error()
 	if strings.Contains(errStr, "Page") && strings.Contains(errStr, "outside of valid range") {
 		w.logToFile("processSyncBatches: reached end of pagination (page %d doesn't exist)", page)
@@ -410,6 +502,35 @@ func (w *SyncWorker) processAlbum(album map[string]interface{}, state sync.SyncS
 	}
 }
 
+func (w *SyncWorker) fetchTracksWithRetry(albumID uint, discogsID int, title, artist string) (bool, string) {
+	const maxAttempts = 3
+	var lastErr string
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		select {
+		case <-w.ctx.Done():
+			return false, "context cancelled"
+		default:
+		}
+
+		success, errMsg := w.importer.FetchAndSaveTracks(w.db, albumID, discogsID, title, artist)
+		if success {
+			return true, ""
+		}
+		lastErr = errMsg
+		if attempt < maxAttempts {
+			backoff := time.Duration(attempt) * time.Second
+			w.logToFile("processSyncBatches: retrying track fetch for %s - %s after error: %s (attempt %d/%d)", artist, title, errMsg, attempt, maxAttempts)
+			select {
+			case <-w.ctx.Done():
+				return false, lastErr
+			case <-time.After(backoff):
+			}
+		}
+	}
+
+	return false, lastErr
+}
+
 // createNewAlbum creates a new album in the database with context-aware retry backoff
 func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage string, discogsID, albumFolderID int) {
 	maxRetries := 3
@@ -417,10 +538,10 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 	var tx *gorm.DB
 	var createErr error
 
-	imageData, imageType, imageErr := w.importer.DownloadCoverImage(coverImage)
+	imageData, imageType, imageErr := w.importer.DownloadCoverImageWithRetry(coverImage, 3)
 	imageFailed := imageErr != nil
 	if imageErr != nil {
-		w.logToFile("processSyncBatches: failed to download image for %s - %s: %v", artist, title, imageErr)
+		w.logToFile("processSyncBatches: failed to download image for %s - %s after 3 attempts: %v", artist, title, imageErr)
 	}
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -495,16 +616,6 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 
 		w.logToFile("processSyncBatches: Created album: %s - %s (folder: %d)", artist, title, albumFolderID)
 
-		if discogsID > 0 {
-			success, errMsg := w.importer.FetchAndSaveTracks(tx, newAlbum.ID, discogsID, title, artist)
-			if !success {
-				w.logToFile("processSyncBatches: Failed to fetch tracks for album %s - %s: %s", artist, title, errMsg)
-				tx.Rollback()
-				break
-			}
-			w.logToFile("processSyncBatches: Successfully synced album with tracks: %s - %s", artist, title)
-		}
-
 		if err := tx.Commit().Error; err != nil {
 			if attempt < maxRetries && w.isLockTimeout(err) {
 				backoffTime := time.Duration(attempt+1) * 500 * time.Millisecond
@@ -519,6 +630,27 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 			w.logToFile("processSyncBatches: failed to commit album: %s - %s: %v", artist, title, err)
 			w.progressService.Save(w.stateManager.GetState())
 			break
+		}
+
+		if discogsID > 0 {
+			success, errMsg := w.fetchTracksWithRetry(newAlbum.ID, discogsID, title, artist)
+			if !success {
+				w.logToFile("processSyncBatches: Failed to fetch tracks for album %s - %s: %s", artist, title, errMsg)
+				if deleteErr := w.db.Delete(&models.Album{}, newAlbum.ID).Error; deleteErr != nil {
+					w.logToFile("processSyncBatches: Failed to delete album after track fetch failure for %s - %s: %v", artist, title, deleteErr)
+				} else {
+					w.logToFile("processSyncBatches: Deleted album after track fetch failure for %s - %s", artist, title)
+					w.db.Create(&models.SyncLog{
+						DiscogsID:  discogsID,
+						AlbumTitle: title,
+						Artist:     artist,
+						ErrorType:  "tracks",
+						ErrorMsg:   "Deleted album after track fetch failure",
+					})
+				}
+			} else {
+				w.logToFile("processSyncBatches: Successfully synced album with tracks: %s - %s", artist, title)
+			}
 		}
 
 		w.stateManager.UpdateState(func(s *sync.SyncState) {
@@ -554,10 +686,13 @@ func (w *SyncWorker) updateExistingAlbum(existingAlbum *models.Album, title, art
 	// Update cover image if we have one and it's different or was missing
 	if coverImage != "" && existingAlbum.CoverImageURL != coverImage {
 		updates["cover_image_url"] = coverImage
-		if imageData, imageType, err := w.importer.DownloadCoverImage(coverImage); err == nil && imageData != nil {
+		if imageData, imageType, err := w.importer.DownloadCoverImageWithRetry(coverImage, 3); err == nil && imageData != nil {
 			updates["discogs_cover_image"] = imageData
 			updates["discogs_cover_image_type"] = imageType
 			updates["cover_image_failed"] = false
+		} else if err != nil {
+			updates["cover_image_failed"] = true
+			w.logToFile("Sync: failed to download cover image for %s - %s after 3 attempts: %v", artist, title, err)
 		}
 		updated = true
 	}

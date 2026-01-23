@@ -2,14 +2,19 @@ package routes
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"vinylfo/controllers"
 	"vinylfo/database"
 	"vinylfo/duration"
+	"vinylfo/utils"
 
 	"github.com/gin-gonic/gin"
 )
+
+// Version is set at build time using: go build -ldflags "-X vinylfo/routes.Version=v0.1.0-alpha"
+var Version = "dev"
 
 func CSPMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -56,6 +61,15 @@ func SetupRoutes(r *gin.Engine) {
 		c.File("./icons/vinyl-icon.ico")
 	})
 
+	// Version endpoint for bug reports and diagnostics
+	r.GET("/version", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"version":   Version,
+			"db_type":   database.DBType,
+			"timestamp": time.Now().Unix(),
+		})
+	})
+
 	r.GET("/health", func(c *gin.Context) {
 		sqlDB, err := db.DB()
 		if err != nil {
@@ -82,6 +96,7 @@ func SetupRoutes(r *gin.Engine) {
 		c.JSON(200, gin.H{
 			"status":    "healthy",
 			"database":  "connected",
+			"db_type":   database.DBType,
 			"timestamp": time.Now().Unix(),
 		})
 	})
@@ -197,8 +212,111 @@ func SetupRoutes(r *gin.Engine) {
 	r.PUT("/api/settings/logs", settingsController.UpdateLogSettings)
 	r.POST("/api/settings/logs/cleanup", settingsController.CleanupLogs)
 
+	// Log export endpoint for bug reports
+	r.GET("/api/logs/export", func(c *gin.Context) {
+		zipPath, err := utils.ExportLogsToZip("logs", 5)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.FileAttachment(zipPath, "vinylfo_logs.zip")
+
+		// Clean up temp file after sending (deferred cleanup)
+		go func() {
+			time.Sleep(5 * time.Second)
+			os.Remove(zipPath)
+		}()
+	})
+
+	r.GET("/api/logs/list", func(c *gin.Context) {
+		logs, err := utils.GetLogFiles("logs")
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"logs":  logs,
+			"count": len(logs),
+		})
+	})
+
 	r.GET("/api/audit/logs", settingsController.GetAuditLogs)
 	r.POST("/api/audit/cleanup", settingsController.CleanupAuditLogs)
+
+	// Database backup endpoints (SQLite only)
+	r.POST("/api/database/backup", func(c *gin.Context) {
+		if database.DBType != "sqlite" {
+			c.JSON(400, gin.H{"error": "Backup is only available for SQLite databases"})
+			return
+		}
+
+		dbPath := os.Getenv("DB_PATH")
+		result, err := utils.BackupDatabase(db, dbPath)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"message":     "Backup created successfully",
+			"backup_path": result.BackupPath,
+			"size":        result.Size,
+			"created_at":  result.CreatedAt,
+		})
+	})
+
+	r.GET("/api/database/backups", func(c *gin.Context) {
+		if database.DBType != "sqlite" {
+			c.JSON(400, gin.H{"error": "Backup listing is only available for SQLite databases"})
+			return
+		}
+
+		dbPath := os.Getenv("DB_PATH")
+		backups, err := utils.ListBackups(dbPath)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+
+		count, totalSize, oldest, newest, _ := utils.GetBackupStats(dbPath)
+
+		c.JSON(200, gin.H{
+			"backups":       backups,
+			"count":         count,
+			"total_size":    totalSize,
+			"oldest_backup": oldest,
+			"newest_backup": newest,
+		})
+	})
+
+	r.POST("/api/database/backups/cleanup", func(c *gin.Context) {
+		if database.DBType != "sqlite" {
+			c.JSON(400, gin.H{"error": "Backup cleanup is only available for SQLite databases"})
+			return
+		}
+
+		var req struct {
+			Keep int `json:"keep"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			req.Keep = 5 // Default
+		}
+
+		dbPath := os.Getenv("DB_PATH")
+		deleted, err := utils.CleanupOldBackups(dbPath, req.Keep)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"message": "Backup cleanup completed",
+			"deleted": deleted,
+			"kept":    req.Keep,
+		})
+	})
 
 	durationController := controllers.NewDurationController(db)
 	durationReviewController := controllers.NewDurationReviewController(db)

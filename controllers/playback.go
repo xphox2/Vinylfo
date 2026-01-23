@@ -99,10 +99,8 @@ func (pm *PlaybackManager) IsPlaying(playlistID string) bool {
 	pm.RLock()
 	defer pm.RUnlock()
 	if sess, ok := pm.sessions[playlistID]; ok {
-		log.Printf("[DEBUG] IsPlaying(%s): found session, returning %v\n", playlistID, sess.IsPlaying)
 		return sess.IsPlaying
 	}
-	log.Printf("[DEBUG] IsPlaying(%s): no session found, sessions=%v\n", playlistID, len(pm.sessions))
 	return false
 }
 

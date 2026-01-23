@@ -41,14 +41,33 @@ func (c *DiscogsController) getDiscogsClientWithOAuth() *discogs.Client {
 		return nil
 	}
 
+	// Check if tokens exist before trying to decrypt
+	if config.DiscogsAccessToken == "" || config.DiscogsAccessSecret == "" {
+		log.Printf("OAUTH: No tokens stored - Discogs not connected")
+		return nil
+	}
+
+	// Decrypt the stored tokens
+	accessToken, err := utils.Decrypt(config.DiscogsAccessToken)
+	if err != nil {
+		log.Printf("OAUTH: ERROR decrypting access token: %v", err)
+		return nil
+	}
+
+	accessSecret, err := utils.Decrypt(config.DiscogsAccessSecret)
+	if err != nil {
+		log.Printf("OAUTH: ERROR decrypting access secret: %v", err)
+		return nil
+	}
+
 	consumerKey := os.Getenv("DISCOGS_CONSUMER_KEY")
 	consumerSecret := os.Getenv("DISCOGS_CONSUMER_SECRET")
 
 	oauth := &discogs.OAuthConfig{
 		ConsumerKey:    consumerKey,
 		ConsumerSecret: consumerSecret,
-		AccessToken:    config.DiscogsAccessToken,
-		AccessSecret:   config.DiscogsAccessSecret,
+		AccessToken:    accessToken,
+		AccessSecret:   accessSecret,
 	}
 	return discogs.NewClientWithOAuth("", oauth)
 }

@@ -7,28 +7,40 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"os"
+	"sync"
 )
 
 const (
 	encryptionKeyEnv = "ENCRYPTION_KEY"
 )
 
-var encryptionKey []byte
+var (
+	encryptionKey     []byte
+	encryptionKeyOnce sync.Once
+	loadKeyErr        error
+)
 
-func init() {
-	key := os.Getenv(encryptionKeyEnv)
-	if key == "" {
-		log.Fatal("ENCRYPTION_KEY environment variable is not set. Please add it to your .env file.")
-	}
-	encryptionKey = []byte(key)
-	if len(encryptionKey) != 32 {
-		log.Fatal("ENCRYPTION_KEY must be exactly 32 bytes (256 bits)")
-	}
+func loadEncryptionKey() {
+	encryptionKeyOnce.Do(func() {
+		key := os.Getenv(encryptionKeyEnv)
+		if key == "" {
+			loadKeyErr = fmt.Errorf("ENCRYPTION_KEY environment variable is not set")
+			return
+		}
+		if len(key) != 32 {
+			loadKeyErr = fmt.Errorf("ENCRYPTION_KEY must be exactly 32 bytes (256 bits)")
+			return
+		}
+		encryptionKey = []byte(key)
+	})
 }
 
 func Encrypt(plaintext string) (string, error) {
+	loadEncryptionKey()
+	if loadKeyErr != nil {
+		return "", loadKeyErr
+	}
 	block, err := aes.NewCipher(encryptionKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to create cipher: %w", err)
@@ -49,6 +61,10 @@ func Encrypt(plaintext string) (string, error) {
 }
 
 func Decrypt(encryptedText string) (string, error) {
+	loadEncryptionKey()
+	if loadKeyErr != nil {
+		return "", loadKeyErr
+	}
 	ciphertext, err := hex.DecodeString(encryptedText)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode hex: %w", err)
@@ -78,11 +94,12 @@ func Decrypt(encryptedText string) (string, error) {
 	return string(plaintext), nil
 }
 
-func SetEncryptionKey(key string) {
+func SetEncryptionKey(key string) error {
 	if len(key) != 32 {
-		log.Fatal("Encryption key must be exactly 32 bytes (256 bits)")
+		return fmt.Errorf("encryption key must be exactly 32 bytes (256 bits)")
 	}
 	encryptionKey = []byte(key)
+	return nil
 }
 
 func GetEncryptionKey() []byte {

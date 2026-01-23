@@ -119,7 +119,7 @@ func TestRateLimiterWaitWithLowRemaining(t *testing.T) {
 func TestRateLimiterThreshold(t *testing.T) {
 	// Test that exactly at threshold (5) triggers wait behavior
 	rl := NewRateLimiter()
-	rl.authRemaining = 5 // At threshold
+	rl.authRemaining = 5                                            // At threshold
 	rl.windowStart = time.Now().Add(-RateLimitWindow - time.Second) // Expired window
 
 	ch := make(chan bool, 1)

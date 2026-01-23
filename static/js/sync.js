@@ -5,12 +5,23 @@ class SyncManager {
         this.isRunning = false;
         this.isPaused = false;
         this.pollInterval = null;
+        this.pollingActive = false;
         this.folders = [];
         this.processedCount = 0;
         this.lastProcessedAt = null;
         this.albumsPerMinute = 0;
         this.retryCount = 0;
-        this.maxRetries = 3;
+        this.maxRetries = 5;
+        this.basePollInterval = 5000;
+        this.stalledPollInterval = 10000;
+        this.stalePollTimeout = 45000;
+        this.pollRequestTimeout = 12000;
+        this.stallDetectionCount = 0;
+        this.wasRateLimited = false;
+        this.pollInProgress = false;
+        this.lastPollStart = null;
+        this.rateLimitSecondsLeft = 0;
+        this.countdownInterval = null;
         this.init();
     }
 
@@ -41,17 +52,40 @@ class SyncManager {
                         this.isRunning = true;
                         this.isPaused = progress.is_paused || false;
                         if (this.isPaused) {
-                            this.showSyncPaused();
+                            // If rate-limited, start polling to detect when it clears
+                            const shouldPoll = progress.is_rate_limited || false;
+                            if (progress.is_rate_limited) {
+                                this.wasRateLimited = true;
+                                this.rateLimitSecondsLeft = progress.rate_limit_seconds_left || 60;
+                            }
+                            this.showSyncPaused(shouldPoll);
+                            // If rate-limited, update the UI to show countdown
+                            if (progress.is_rate_limited) {
+                                this.startRateLimitCountdown(progress.processed || 0, progress.total || 0);
+                                document.getElementById('pause-sync').textContent = 'Cancel';
+                                document.getElementById('pause-sync').classList.remove('btn-success');
+                                document.getElementById('pause-sync').classList.add('btn-danger');
+                            }
                         } else {
                             this.showSyncRunning();
                         }
-                        this.pollProgress();
+                    } else if (progress.is_paused && progress.is_rate_limited) {
+                        // Backend paused due to rate limit but is_running is false - sync will auto-resume
+                        console.log('checkConnection: rate-limited pause detected, starting polling');
+                        this.isRunning = true;
+                        this.isPaused = true;
+                        this.wasRateLimited = true;
+                        this.rateLimitSecondsLeft = progress.rate_limit_seconds_left || 60;
+                        this.showSyncPaused(true); // Start polling to detect resume
+                        this.startRateLimitCountdown(progress.processed || 0, progress.total || 0);
+                        document.getElementById('pause-sync').textContent = 'Cancel';
+                        document.getElementById('pause-sync').classList.remove('btn-success');
+                        document.getElementById('pause-sync').classList.add('btn-danger');
                     } else if (progress.has_saved_progress) {
                         console.log('checkConnection: has saved progress, showing paused state');
                         this.isRunning = true;
                         this.isPaused = true;
                         this.showSyncPaused();
-                        this.pollProgress();
                     } else {
                         this.showSyncReady();
                     }
@@ -68,7 +102,6 @@ class SyncManager {
                                 this.isRunning = true;
                                 this.isPaused = true;
                                 this.showSyncPaused();
-                                this.pollProgress();
                                 return;
                             }
                         }
@@ -91,7 +124,6 @@ class SyncManager {
                         this.showSyncPaused();
                         this.isRunning = true;
                         this.isPaused = true;
-                        this.pollProgress();
                     } else {
                         this.showNotConnected();
                     }
@@ -113,7 +145,6 @@ class SyncManager {
                         this.showSyncPaused();
                         this.isRunning = true;
                         this.isPaused = true;
-                        this.pollProgress();
                         return;
                     }
                 }
@@ -217,7 +248,7 @@ class SyncManager {
         this.startPolling();
     }
 
-    showSyncPaused() {
+    showSyncPaused(startPolling = false) {
         this.hideAll();
         document.getElementById('sync-running').classList.remove('hidden');
         document.getElementById('pause-sync').textContent = 'Resume';
@@ -225,7 +256,11 @@ class SyncManager {
         document.getElementById('pause-sync').classList.add('btn-success');
         this.isPaused = true;
         this.isRunning = true;
-        this.pollProgress();
+        // Start polling if requested (e.g., for rate-limited pauses that will auto-resume)
+        if (startPolling && !this.pollingActive) {
+            console.log('showSyncPaused: starting polling for auto-resume detection');
+            this.startPolling();
+        }
     }
 
     showSyncComplete(processed) {
@@ -261,6 +296,8 @@ class SyncManager {
         this.albumsPerMinute = 0;
         this.lastProcessedAt = null;
         this.retryCount = 0;
+        this.stallDetectionCount = 0;
+        this.currentPollInterval = this.basePollInterval;
 
         try {
             const response = await fetch(`${API_BASE}/discogs/sync/start`, {
@@ -275,34 +312,31 @@ class SyncManager {
 
             if (response.ok) {
                 const data = await response.json();
-                if (data.has_progress) {
-                    if (data.total_albums === 0 && data.processed === 0) {
-                        if (confirm('There is sync progress saved, but no albums have been synced yet. Would you like to start a fresh sync?')) {
-                            await this.startSync(true);
+                    if (data.has_progress) {
+                        if (data.total_albums === 0 && data.processed === 0) {
+                            if (confirm('There is sync progress saved, but no albums have been synced yet. Would you like to start a fresh sync?')) {
+                                await this.startSync(true);
+                            } else {
+                                this.isRunning = true;
+                                this.isPaused = false;
+                                this.showSyncRunning();
+                            }
                         } else {
                             this.isRunning = true;
                             this.isPaused = false;
                             this.showSyncRunning();
-                            this.pollProgress();
                         }
                     } else {
                         this.isRunning = true;
                         this.isPaused = false;
                         this.showSyncRunning();
-                        this.pollProgress();
                     }
-                } else {
-                    this.isRunning = true;
-                    this.isPaused = false;
-                    this.showSyncRunning();
-                }
             } else {
                 const error = await response.json();
                 if (error.error === 'Sync already in progress') {
                     this.isRunning = true;
                     this.isPaused = false;
                     this.showSyncRunning();
-                    this.pollProgress();
                 } else {
                     alert(error.error || 'Failed to start sync');
                 }
@@ -323,6 +357,8 @@ class SyncManager {
             this.stopPolling();
             this.processedCount = 0;
             this.albumsPerMinute = 0;
+            this.stallDetectionCount = 0;
+            this.retryCount = 0;
             document.getElementById('pause-sync').textContent = 'Pause';
             document.getElementById('pause-sync').classList.remove('btn-success');
             document.getElementById('pause-sync').classList.add('btn-warning');
@@ -346,12 +382,14 @@ class SyncManager {
                     const data = await response.json();
                     console.log('togglePause: Resume succeeded:', data);
                     this.isPaused = false;
+                    this.stallDetectionCount = 0;
+                    this.currentPollInterval = this.basePollInterval;
                     document.getElementById('pause-sync').textContent = 'Pause';
                     document.getElementById('pause-sync').classList.remove('btn-success');
                     document.getElementById('pause-sync').classList.add('btn-warning');
                     this.stopPolling();
                     this.isRunning = true;
-                    this.pollProgress();
+                    this.startPolling();
                 } else {
                     const error = await response.json();
                     console.error('togglePause: Resume failed:', error);
@@ -374,7 +412,7 @@ class SyncManager {
                     document.getElementById('pause-sync').textContent = 'Resume';
                     document.getElementById('pause-sync').classList.remove('btn-warning');
                     document.getElementById('pause-sync').classList.add('btn-success');
-                    this.pollProgress();
+                    this.stopPolling();
                 } else {
                     const error = await response.json();
                     console.error('togglePause: Pause failed:', error);
@@ -387,33 +425,151 @@ class SyncManager {
         console.log('togglePause: END, this.isPaused:', this.isPaused);
     }
 
+    async resumeSync() {
+        console.log('resumeSync: START');
+        try {
+            console.log('resumeSync: Fetching /api/discogs/sync/resume-pause...');
+            const response = await fetch(`${API_BASE}/discogs/sync/resume-pause`, { method: 'POST' });
+            console.log('resumeSync: Response status:', response.status);
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('resumeSync: Success:', data);
+                this.isPaused = false;
+                this.wasRateLimited = false;
+                document.getElementById('pause-sync').textContent = 'Pause';
+                document.getElementById('pause-sync').classList.remove('btn-success');
+                document.getElementById('pause-sync').classList.add('btn-warning');
+                this.stopPolling();
+                this.isRunning = true;
+                this.startPolling();
+            } else {
+                const error = await response.json();
+                console.error('resumeSync: Failed:', error);
+            }
+        } catch (error) {
+            console.error('resumeSync: Error:', error);
+        }
+        console.log('resumeSync: END');
+    }
+
     refreshStatus() {
         this.pollProgress();
     }
 
     startPolling() {
-        this.pollInterval = setInterval(() => this.pollProgress(), 500);
-        this.pollProgress();
+        if (this.pollingActive) {
+            console.log('startPolling: polling already active, not starting again');
+            return;
+        }
+        this.pollingActive = true;
+        this.currentPollInterval = this.basePollInterval;
+        this.stallDetectionCount = 0;
+        this.pollInProgress = false;
+        this.scheduleNextPoll(0);
+        console.log('startPolling: scheduled polling at', this.currentPollInterval, 'ms');
     }
 
     stopPolling() {
+        this.pollingActive = false;
         if (this.pollInterval) {
-            clearInterval(this.pollInterval);
+            clearTimeout(this.pollInterval);
             this.pollInterval = null;
+        }
+        this.stallDetectionCount = 0;
+        this.pollInProgress = false;
+        this.stopRateLimitCountdown();
+        console.log('stopPolling: stopped polling');
+    }
+
+    scheduleNextPoll(delay) {
+        if (!this.pollingActive) {
+            return;
+        }
+        if (this.pollInterval) {
+            clearTimeout(this.pollInterval);
+        }
+        this.pollInterval = setTimeout(() => {
+            this.pollInterval = null;
+            this.pollProgress();
+        }, delay);
+    }
+
+    startRateLimitCountdown(processed, total) {
+        this.stopRateLimitCountdown();
+        // Store the values for the countdown display
+        this.countdownProcessed = processed;
+        this.countdownTotal = total;
+        this.updateRateLimitDisplay(processed, total);
+
+        this.countdownInterval = setInterval(() => {
+            this.rateLimitSecondsLeft--;
+            if (this.rateLimitSecondsLeft <= 0) {
+                this.stopRateLimitCountdown();
+                document.getElementById('sync-progress-text').textContent = `Rate limit clearing... (${this.countdownProcessed}/${this.countdownTotal})`;
+            } else {
+                this.updateRateLimitDisplay(this.countdownProcessed, this.countdownTotal);
+            }
+        }, 1000);
+    }
+
+    stopRateLimitCountdown() {
+        if (this.countdownInterval) {
+            clearInterval(this.countdownInterval);
+            this.countdownInterval = null;
         }
     }
 
+    updateRateLimitDisplay(processed, total) {
+        const seconds = this.rateLimitSecondsLeft;
+        const minutes = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        const timeStr = minutes > 0
+            ? `${minutes}m ${secs}s`
+            : `${secs}s`;
+        document.getElementById('sync-progress-text').textContent =
+            `API rate limit - resuming in ${timeStr} (${processed}/${total} albums)`;
+    }
+
     async pollProgress() {
+        const now = Date.now();
+        if (this.pollInProgress && this.lastPollStart && (now - this.lastPollStart > this.stalePollTimeout)) {
+            console.log('pollProgress: stale poll detected, resetting flag');
+            this.pollInProgress = false;
+        }
+        if (this.pollInProgress) {
+            console.log('pollProgress: skipping, request already in progress');
+            // Schedule next poll anyway to prevent getting stuck
+            if (this.pollingActive) {
+                this.scheduleNextPoll(this.currentPollInterval);
+            }
+            return;
+        }
+        this.pollInProgress = true;
+        this.lastPollStart = now;
         console.log('pollProgress called, isRunning:', this.isRunning, 'isPaused:', this.isPaused);
+        
+        let response;
+        let progress;
         try {
-            const response = await fetch(`${API_BASE}/discogs/sync/progress`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), this.pollRequestTimeout);
+            try {
+                response = await fetch(`${API_BASE}/discogs/sync/progress`, { signal: controller.signal });
+            } finally {
+                clearTimeout(timeoutId);
+            }
             if (!response.ok) {
                 throw new Error('Failed to fetch progress: HTTP ' + response.status);
             }
-            const progress = await response.json();
-            console.log('pollProgress received:', { is_running: progress.is_running, is_paused: progress.is_paused, processed: progress.processed, total: progress.total });
+            progress = await response.json();
+            console.log('pollProgress received:', { is_running: progress.is_running, is_paused: progress.is_paused, processed: progress.processed, total: progress.total, is_stalled: progress.is_stalled, is_rate_limited: progress.is_rate_limited });
+            
+            // Reset retry count on successful poll
+            this.retryCount = 0;
 
-            if (this.isRunning && !progress.is_running && !this.isPaused) {
+            if (this.isRunning && !progress.is_running && !this.isPaused && !progress.is_rate_limited) {
+                // Sync stopped and NOT rate-limited - this is a real stop
                 const processed = progress.processed || 0;
                 const total = progress.total || 0;
 
@@ -422,6 +578,7 @@ class SyncManager {
                     this.isRunning = false;
                     this.stopPolling();
                     this.showSyncReady();
+                    this.pollInProgress = false;
                     return;
                 }
 
@@ -429,6 +586,7 @@ class SyncManager {
                     document.getElementById('sync-progress-text').textContent = `Sync stopped at ${processed}/${total} albums`;
                     this.isRunning = false;
                     this.stopPolling();
+                    this.pollInProgress = false;
                     return;
                 }
             }
@@ -450,26 +608,108 @@ class SyncManager {
             document.getElementById('sync-progress').style.width = `${progressPercent}%`;
 
             if (progress.is_stalled && this.isRunning) {
-                console.log('pollProgress: sync appears stalled, but continuing to poll');
-                document.getElementById('sync-progress-text').textContent = `Waiting for API rate limit reset... (${processed}/${total})`;
+                this.stallDetectionCount++;
+                if (this.stallDetectionCount >= 6) {
+                    console.log('pollProgress: sync is stalled, increasing poll interval to', this.stalledPollInterval, 'ms');
+                    this.currentPollInterval = this.stalledPollInterval;
+                }
+                console.log('pollProgress: sync appears stalled, continuing to poll (count:', this.stallDetectionCount, ')');
+                document.getElementById('sync-progress-text').textContent = `Waiting for API... (${processed}/${total})`;
             } else {
+                this.stallDetectionCount = 0;
+                if (this.currentPollInterval !== this.basePollInterval && !progress.is_stalled) {
+                    console.log('pollProgress: sync resumed, decreasing poll interval to', this.basePollInterval, 'ms');
+                    this.currentPollInterval = this.basePollInterval;
+                }
                 document.getElementById('sync-progress-text').textContent = progressText;
             }
 
             if (progress.is_paused && !this.isPaused) {
+                // Backend just paused (either user-initiated or rate-limited)
                 this.isPaused = true;
-                document.getElementById('pause-sync').textContent = 'Resume';
-                document.getElementById('pause-sync').classList.remove('btn-warning');
-                document.getElementById('pause-sync').classList.add('btn-success');
-                document.getElementById('sync-progress-text').textContent = `Paused at ${processed}/${total} albums`;
+                this.wasRateLimited = progress.is_rate_limited || false;
+                if (progress.is_rate_limited) {
+                    this.rateLimitSecondsLeft = progress.rate_limit_seconds_left || 60;
+                    this.startRateLimitCountdown(processed, total);
+                    document.getElementById('pause-sync').textContent = 'Cancel';
+                    document.getElementById('pause-sync').classList.remove('btn-warning');
+                    document.getElementById('pause-sync').classList.add('btn-danger');
+                    // CRITICAL: Keep polling active during rate limit to detect when it clears
+                    if (!this.pollingActive) {
+                        console.log('pollProgress: rate limited - ensuring polling stays active');
+                        this.pollingActive = true;
+                    }
+                } else {
+                    document.getElementById('pause-sync').textContent = 'Resume';
+                    document.getElementById('pause-sync').classList.remove('btn-warning');
+                    document.getElementById('pause-sync').classList.add('btn-success');
+                    document.getElementById('sync-progress-text').textContent = `Paused at ${processed}/${total} albums`;
+                }
+            } else if (progress.is_paused && this.isPaused && progress.is_rate_limited) {
+                // Still rate limited - update countdown with fresh values from server
+                this.wasRateLimited = true;
+                const serverSecondsLeft = progress.rate_limit_seconds_left || 0;
+                // Only restart countdown if server has a significantly different value
+                // This prevents countdown jitter from server/client time differences
+                if (Math.abs(serverSecondsLeft - this.rateLimitSecondsLeft) > 3) {
+                    this.rateLimitSecondsLeft = serverSecondsLeft;
+                }
+                this.updateRateLimitDisplay(processed, total);
+                // Ensure polling stays active
+                if (!this.pollingActive) {
+                    console.log('pollProgress: rate limited - restarting polling');
+                    this.pollingActive = true;
+                }
             } else if (!progress.is_paused && this.isPaused && progress.is_running) {
+                // Backend resumed (either user-initiated or rate limit cleared)
                 this.isPaused = false;
+                this.wasRateLimited = false;
+                this.stopRateLimitCountdown();
                 document.getElementById('pause-sync').textContent = 'Pause';
-                document.getElementById('pause-sync').classList.remove('btn-success');
+                document.getElementById('pause-sync').classList.remove('btn-success', 'btn-danger');
                 document.getElementById('pause-sync').classList.add('btn-warning');
             }
 
-            if (!progress.is_running && !this.isPaused) {
+            // Check for rate limit cleared state - multiple conditions for robustness
+            if (this.wasRateLimited && this.isPaused) {
+                // Rate limit cleared if: not rate limited anymore, OR seconds left is 0 or negative
+                const rateLimitCleared = !progress.is_rate_limited || 
+                    (progress.rate_limit_seconds_left !== undefined && progress.rate_limit_seconds_left <= 0);
+                
+                if (rateLimitCleared) {
+                    console.log('pollProgress: rate limit cleared detected, is_running:', progress.is_running, 'is_paused:', progress.is_paused);
+                    this.stopRateLimitCountdown();
+                    
+                    if (progress.is_running) {
+                        // Backend already resumed automatically, just update UI
+                        console.log('pollProgress: backend already resumed, updating UI');
+                        this.isPaused = false;
+                        this.wasRateLimited = false;
+                        document.getElementById('pause-sync').textContent = 'Pause';
+                        document.getElementById('pause-sync').classList.remove('btn-success', 'btn-danger');
+                        document.getElementById('pause-sync').classList.add('btn-warning');
+                    } else if (progress.is_paused) {
+                        // Backend is still paused but rate limit cleared - call resume API
+                        console.log('pollProgress: rate limit cleared but still paused, calling resumeSync');
+                        this.wasRateLimited = false;
+                        this.resumeSync();
+                    }
+                }
+            }
+            
+            // Also handle case where backend resumed but we missed the transition
+            if (progress.is_running && this.isPaused && !progress.is_paused) {
+                console.log('pollProgress: detected running state while frontend thought paused, updating UI');
+                this.isPaused = false;
+                this.wasRateLimited = false;
+                this.stopRateLimitCountdown();
+                document.getElementById('pause-sync').textContent = 'Pause';
+                document.getElementById('pause-sync').classList.remove('btn-success', 'btn-danger');
+                document.getElementById('pause-sync').classList.add('btn-warning');
+            }
+
+            if (!progress.is_running && !this.isPaused && !progress.is_rate_limited) {
+                // Sync truly stopped (not just rate-limited pause)
                 this.isRunning = false;
                 this.isPaused = false;
                 this.stopPolling();
@@ -486,7 +726,7 @@ class SyncManager {
                 this.isRunning = true;
                 document.getElementById('sync-running').classList.remove('hidden');
 
-                if (!this.pollInterval) {
+                if (!this.pollingActive) {
                     this.startPolling();
                 }
 
@@ -500,17 +740,35 @@ class SyncManager {
             }
 
             this.updateEstimatedTime(processed, total);
+            this.pollInProgress = false;
+            this.scheduleNextPoll(this.currentPollInterval);
 
         } catch (error) {
-            console.error('Failed to poll progress:', error);
-            this.retryCount++;
-            if (this.retryCount <= this.maxRetries) {
-                console.log(`Retrying progress fetch (${this.retryCount}/${this.maxRetries})...`);
-                setTimeout(() => this.pollProgress(), 1000);
+            if (error.name === 'AbortError') {
+                console.warn('Failed to poll progress: request timed out');
             } else {
-                document.getElementById('sync-progress-text').textContent = 'Connection error - sync may have stopped. Please refresh the page.';
-                this.retryCount = 0;
+                console.error('Failed to poll progress:', error);
             }
+            // Always reset pollInProgress to prevent getting stuck
+            this.pollInProgress = false;
+            this.retryCount++;
+            
+            if (this.retryCount <= this.maxRetries) {
+                if (!this.pollingActive) {
+                    return;
+                }
+                const retryDelay = Math.min(1000 * Math.pow(2, this.retryCount - 1), 10000);
+                console.log(`Retrying progress fetch (${this.retryCount}/${this.maxRetries}) in ${retryDelay}ms...`);
+                this.scheduleNextPoll(retryDelay);
+            } else {
+                document.getElementById('sync-progress-text').textContent = 'Connection error - sync may have stopped. Click Refresh Status to check.';
+                this.retryCount = 0;
+                // Don't stop polling completely - just slow it down significantly
+                // This allows recovery if the server comes back
+                this.currentPollInterval = 15000; // 15 second interval
+                this.scheduleNextPoll(this.currentPollInterval);
+            }
+            return;
         }
     }
 

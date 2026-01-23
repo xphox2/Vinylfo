@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -363,29 +364,41 @@ func TestTokenStateTransitions(t *testing.T) {
 		initialState  string
 		action        string
 		expectedState string
+		shouldError   bool
 	}{
-		{"Connected to Disconnected", "connected", "revoke", "disconnected"},
-		{"Disconnected to Connected", "disconnected", "connect", "connected"},
-		{"Connected to Expired", "connected", "expire", "expired"},
-		{"Expired to Connected", "expired", "refresh", "connected"},
+		{"Connected to Disconnected", "connected", "revoke", "disconnected", false},
+		{"Disconnected to Connected", "disconnected", "connect", "connected", false},
+		{"Connected to Expired", "connected", "expire", "expired", false},
+		{"Expired to Connected", "expired", "refresh", "connected", false},
+		{"Invalid Action", "connected", "invalid_action", "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			state := tt.initialState
+			var err error
 
-			if tt.action == "revoke" {
+			switch tt.action {
+			case "revoke":
 				state = "disconnected"
-			} else if tt.action == "connect" {
+			case "connect":
 				state = "connected"
-			} else if tt.action == "expire" {
+			case "expire":
 				state = "expired"
-			} else if tt.action == "refresh" {
+			case "refresh":
 				state = "connected"
+			default:
+				err = fmt.Errorf("unknown action: %s", tt.action)
 			}
 
-			if state != tt.expectedState {
-				t.Fatalf("Expected state %s, got %s", tt.expectedState, state)
+			if tt.shouldError && err == nil {
+				t.Error("Expected error but got none")
+			}
+			if !tt.shouldError && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+			if !tt.shouldError && state != tt.expectedState {
+				t.Errorf("Expected state %s, got %s", tt.expectedState, state)
 			}
 		})
 	}

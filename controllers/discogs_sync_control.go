@@ -180,7 +180,7 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 		return
 	}
 
-	if state.IsRunning() && state.IsPaused() {
+	if state.IsPaused() {
 		progress := c.progressService.Load(state)
 		if progress == nil {
 			ctx.JSON(400, gin.H{"error": "No paused sync to resume"})
@@ -200,6 +200,24 @@ func (c *DiscogsController) ResumeSyncFromPause(ctx *gin.Context) {
 			return
 		}
 
+		if state.WorkerID != "" && sync.IsWorkerRunning(state.WorkerID) {
+			log.Printf("ResumeSyncFromPause: worker %s still active, resuming it", state.WorkerID)
+			resumeSuccess := syncManager.RequestResume()
+			log.Printf("ResumeSyncFromPause: RequestResume() returned %v", resumeSuccess)
+
+			updateSyncState(func(s *sync.SyncState) {
+				s.Status = sync.SyncStatusRunning
+			})
+
+			newState := getSyncState()
+			ctx.JSON(200, gin.H{
+				"message":    "Sync resumed",
+				"sync_state": newState,
+			})
+			return
+		}
+
+		log.Printf("ResumeSyncFromPause: worker %s not active, starting new worker", state.WorkerID)
 		log.Printf("ResumeSyncFromPause: calling RequestResume()...")
 		resumeSuccess := syncManager.RequestResume()
 		log.Printf("ResumeSyncFromPause: RequestResume() returned %v, restarting worker...", resumeSuccess)
