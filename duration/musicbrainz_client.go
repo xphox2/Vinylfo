@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,7 +13,7 @@ import (
 
 const (
 	musicBrainzBaseURL   = "https://musicbrainz.org/ws/2"
-	musicBrainzRateLimit = 50
+	musicBrainzRateLimit = 50 // requests per minute (~1/sec, MusicBrainz allows 1/sec for unregistered apps)
 )
 
 type MusicBrainzClient struct {
@@ -87,7 +87,8 @@ func (c *MusicBrainzClient) SearchTrack(ctx context.Context, title, artist, albu
 		url.QueryEscape(query),
 	)
 
-	c.RateLimiter.Wait()
+	log.Printf("MB: Querying MusicBrainz for '%s' by '%s' (album: '%s')", title, artist, album)
+	log.Printf("MB: Query string: %s", query)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
@@ -98,23 +99,15 @@ func (c *MusicBrainzClient) SearchTrack(ctx context.Context, title, artist, albu
 	req.Header.Set("Accept", "application/json")
 
 	startTime := time.Now()
-	resp, err := c.HTTPClient.Do(req)
+	resp, body, err := c.DoWithRetry(ctx, req)
 	queryDuration := time.Since(startTime)
 
 	if err != nil {
+		log.Printf("MB: Request failed for '%s': %v", title, err)
 		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusServiceUnavailable {
-			return nil, fmt.Errorf("rate limited by MusicBrainz (503), slow down requests")
-		}
 		return nil, fmt.Errorf("API error: %d - %s", resp.StatusCode, string(body))
 	}
 
@@ -123,10 +116,16 @@ func (c *MusicBrainzClient) SearchTrack(ctx context.Context, title, artist, albu
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	log.Printf("MB: Got %d recordings for '%s'", len(searchResp.Recordings), title)
+
 	result := c.findBestMatch(searchResp.Recordings, title, artist, album)
 	if result == nil {
+		log.Printf("MB: No suitable match found for '%s' (all recordings had low match scores)", title)
 		return nil, nil
 	}
+
+	log.Printf("MB: Best match for '%s': '%s' by '%s' - duration %ds, match score %.2f, MB score %.2f",
+		title, result.Title, result.Artist, result.Duration, result.MatchScore, result.Confidence)
 
 	result.RawResponse = string(body)
 	_ = queryDuration
@@ -229,7 +228,7 @@ func (c *MusicBrainzClient) findBestMatch(recordings []mbRecording, searchTitle,
 		}
 	}
 
-	if bestResult != nil && bestResult.MatchScore < 0.5 {
+	if bestResult != nil && bestResult.MatchScore < 0.3 {
 		return nil
 	}
 

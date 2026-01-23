@@ -145,9 +145,9 @@ export const discogsAPI = {
 // Duration resolution API
 export const durationAPI = {
     getStats: () => api.get('/duration/stats'),
-    getReviewQueue: (page = 1, limit = 20) => api.get('/duration/review', { page, limit }),
-    getUnprocessed: (page = 1, limit = 20) => api.get('/duration/tracks', { page, limit }),
-    getResolved: (page = 1, limit = 20) => api.get('/duration/review/resolved', { page, limit }),
+    getReviewQueue: (page = 1, limit = 20, query = '') => api.get('/duration/review', { page, limit, q: query }),
+    getUnprocessed: (page = 1, limit = 20, query = '') => api.get('/duration/tracks', { page, limit, q: query }),
+    getResolved: (page = 1, limit = 20, query = '') => api.get('/duration/review/resolved', { page, limit, q: query }),
     getReviewDetails: (resolutionId) => api.get(`/duration/review/${resolutionId}`),
     submitReview: (resolutionId, action, duration, notes) =>
         api.post(`/duration/review/${resolutionId}`, { action, duration, notes }),

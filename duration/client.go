@@ -2,9 +2,15 @@ package duration
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"log"
+	"math/rand"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"vinylfo/config"
 )
@@ -60,6 +66,24 @@ type BaseClient struct {
 	UserAgent   string
 }
 
+// RetryConfig holds configuration for retry behavior
+type RetryConfig struct {
+	MaxRetries     int           // Maximum number of retry attempts
+	InitialBackoff time.Duration // Initial backoff duration
+	MaxBackoff     time.Duration // Maximum backoff duration
+	BackoffFactor  float64       // Multiplier for exponential backoff
+}
+
+// DefaultRetryConfig returns sensible defaults for retry behavior
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxRetries:     3,
+		InitialBackoff: 500 * time.Millisecond,
+		MaxBackoff:     30 * time.Second,
+		BackoffFactor:  2.0,
+	}
+}
+
 // NewBaseClient creates a base client with sensible defaults
 func NewBaseClient(userAgent string, requestsPerMinute int) *BaseClient {
 	return &BaseClient{
@@ -67,6 +91,137 @@ func NewBaseClient(userAgent string, requestsPerMinute int) *BaseClient {
 		RateLimiter: NewRateLimiter(requestsPerMinute),
 		UserAgent:   userAgent,
 	}
+}
+
+// DoWithRetry executes an HTTP request with automatic retry on rate limits and transient errors
+// It handles 429 (Too Many Requests) and 503 (Service Unavailable) status codes
+// and respects Retry-After headers when present
+func (c *BaseClient) DoWithRetry(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
+	return c.DoWithRetryConfig(ctx, req, DefaultRetryConfig())
+}
+
+// DoWithRetryConfig executes an HTTP request with configurable retry behavior
+func (c *BaseClient) DoWithRetryConfig(ctx context.Context, req *http.Request, cfg RetryConfig) (*http.Response, []byte, error) {
+	var lastErr error
+	var lastResp *http.Response
+
+	backoff := cfg.InitialBackoff
+
+	for attempt := 0; attempt <= cfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			log.Printf("Retry attempt %d/%d after %v", attempt, cfg.MaxRetries, backoff)
+
+			// Add jitter to prevent thundering herd
+			jitter := time.Duration(rand.Int63n(int64(backoff / 4)))
+			sleepTime := backoff + jitter
+
+			select {
+			case <-ctx.Done():
+				return nil, nil, ctx.Err()
+			case <-time.After(sleepTime):
+			}
+
+			// Increase backoff for next attempt
+			backoff = time.Duration(float64(backoff) * cfg.BackoffFactor)
+			if backoff > cfg.MaxBackoff {
+				backoff = cfg.MaxBackoff
+			}
+		}
+
+		// Wait for rate limiter before making request
+		c.RateLimiter.Wait()
+
+		// Clone the request for retry (body needs special handling)
+		reqCopy := req.Clone(ctx)
+		if req.Body != nil {
+			// For requests with body, we need the original body
+			// Most of our API calls are GET requests without body
+			reqCopy.Body = req.Body
+		}
+
+		resp, err := c.HTTPClient.Do(reqCopy)
+		if err != nil {
+			lastErr = fmt.Errorf("request failed: %w", err)
+			log.Printf("HTTP request error (attempt %d): %v", attempt+1, err)
+			continue
+		}
+
+		// Read the body
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response body: %w", err)
+			continue
+		}
+
+		// Check for rate limit responses
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+			retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+			log.Printf("Rate limit response %d from %s (Retry-After: %d seconds)",
+				resp.StatusCode, req.URL.Host, retryAfter)
+
+			if retryAfter > 0 {
+				// Use the server's Retry-After value
+				c.RateLimiter.WaitForRetryAfter(retryAfter)
+				backoff = cfg.InitialBackoff // Reset backoff after explicit wait
+			}
+
+			lastErr = fmt.Errorf("rate limited: status %d", resp.StatusCode)
+			lastResp = resp
+			continue
+		}
+
+		// Success or non-retryable error
+		return resp, body, nil
+	}
+
+	// All retries exhausted
+	if lastResp != nil {
+		return lastResp, nil, fmt.Errorf("max retries exceeded: %w", lastErr)
+	}
+	return nil, nil, fmt.Errorf("max retries exceeded: %w", lastErr)
+}
+
+// parseRetryAfter parses the Retry-After header value
+// It handles both integer seconds and HTTP-date formats
+func parseRetryAfter(value string) int {
+	if value == "" {
+		return 0
+	}
+
+	// Try parsing as integer seconds first
+	if seconds, err := strconv.Atoi(value); err == nil {
+		return seconds
+	}
+
+	// Try parsing as HTTP-date
+	formats := []string{
+		time.RFC1123,
+		time.RFC1123Z,
+		time.RFC850,
+		time.ANSIC,
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, value); err == nil {
+			seconds := int(time.Until(t).Seconds())
+			if seconds > 0 {
+				return seconds
+			}
+			return 0
+		}
+	}
+
+	return 0
+}
+
+// IsRetryableStatusCode returns true if the status code indicates a retryable error
+func IsRetryableStatusCode(statusCode int) bool {
+	return statusCode == http.StatusTooManyRequests ||
+		statusCode == http.StatusServiceUnavailable ||
+		statusCode == http.StatusBadGateway ||
+		statusCode == http.StatusGatewayTimeout ||
+		statusCode == http.StatusRequestTimeout
 }
 
 // CalculateMatchScore calculates how well a result matches the search query

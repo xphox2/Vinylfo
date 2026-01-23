@@ -24,6 +24,11 @@ class SettingsManager {
             const settings = await settingsRes.json();
             this.renderYouTubeAPIKey(settings.youtube_api_key);
             this.renderLastFMAPIKey(settings.lastfm_api_key);
+            this.renderLogRetention(settings.log_retention_count);
+
+            const logSettingsRes = await fetch(`${API_BASE}/settings/logs`);
+            const logSettings = await logSettingsRes.json();
+            this.renderLogSettings(logSettings);
         } catch (error) {
             console.error('Failed to load settings:', error);
             this.showNotification('Failed to load settings', 'error');
@@ -88,6 +93,20 @@ class SettingsManager {
         }
     }
 
+    renderLogRetention(count) {
+        const input = document.getElementById('log-retention');
+        if (input && count) {
+            input.value = count;
+        }
+    }
+
+    renderLogSettings(settings) {
+        const countSpan = document.getElementById('current-log-count');
+        if (countSpan) {
+            countSpan.textContent = settings.current_log_files || 0;
+        }
+    }
+
     renderDiscogsStatus(status) {
         const statusCard = document.getElementById('discogs-status');
         const indicator = statusCard.querySelector('.status-indicator');
@@ -122,6 +141,8 @@ class SettingsManager {
         const seedDatabase = document.getElementById('seed-database');
         const saveYouTubeKey = document.getElementById('save-youtube-key');
         const saveLastFMKey = document.getElementById('save-lastfm-key');
+        const saveLogRetention = document.getElementById('save-log-retention');
+        const cleanupLogs = document.getElementById('cleanup-logs');
 
         if (connectDiscogs) connectDiscogs.addEventListener('click', () => this.connectDiscogs());
         if (disconnectDiscogs) disconnectDiscogs.addEventListener('click', () => this.disconnectDiscogs());
@@ -131,6 +152,8 @@ class SettingsManager {
         if (seedDatabase) seedDatabase.addEventListener('click', () => this.seedDatabase());
         if (saveYouTubeKey) saveYouTubeKey.addEventListener('click', () => this.saveYouTubeAPIKey());
         if (saveLastFMKey) saveLastFMKey.addEventListener('click', () => this.saveLastFMAPIKey());
+        if (saveLogRetention) saveLogRetention.addEventListener('click', () => this.saveLogRetention());
+        if (cleanupLogs) cleanupLogs.addEventListener('click', () => this.cleanupLogs());
     }
 
     async saveYouTubeAPIKey() {
@@ -198,6 +221,61 @@ class SettingsManager {
             console.error('Failed to save Last.fm API key:', error);
             status.textContent = 'Failed to save API key';
             status.className = 'status-message error';
+        }
+    }
+
+    async saveLogRetention() {
+        const input = document.getElementById('log-retention');
+        const status = document.getElementById('log-retention-status');
+        const retentionCount = parseInt(input.value, 10);
+
+        if (isNaN(retentionCount) || retentionCount < 1 || retentionCount > 100) {
+            status.textContent = 'Please enter a value between 1 and 100';
+            status.className = 'status-message error';
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/settings/logs`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ log_retention_count: retentionCount })
+            });
+
+            if (response.ok) {
+                status.textContent = 'Log retention saved';
+                status.className = 'status-message success';
+                this.showNotification('Log retention setting saved', 'success');
+            } else {
+                const data = await response.json();
+                status.textContent = data.error || 'Failed to save';
+                status.className = 'status-message error';
+            }
+        } catch (error) {
+            console.error('Failed to save log retention:', error);
+            status.textContent = 'Failed to save';
+            status.className = 'status-message error';
+        }
+    }
+
+    async cleanupLogs() {
+        try {
+            const response = await fetch(`${API_BASE}/settings/logs/cleanup`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                this.showNotification(`Cleaned up ${data.deleted_count} log files`, 'success');
+                const logSettingsRes = await fetch(`${API_BASE}/settings/logs`);
+                const logSettings = await logSettingsRes.json();
+                this.renderLogSettings(logSettings);
+            } else {
+                this.showNotification(data.error || 'Failed to cleanup logs', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to cleanup logs:', error);
+            this.showNotification('Failed to cleanup logs', 'error');
         }
     }
 

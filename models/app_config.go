@@ -19,6 +19,7 @@ type AppConfig struct {
 	YouTubeRefreshToken string    `gorm:"column:youtube_refresh_token;type:text" json:"-"`
 	YouTubeTokenExpiry  time.Time `gorm:"column:youtube_token_expiry" json:"-"`
 	YouTubeConnected    bool      `gorm:"column:youtube_connected;default:false" json:"youtube_connected"`
+	LogRetentionCount   int       `gorm:"default:10" json:"log_retention_count"`
 	CreatedAt           time.Time `json:"created_at"`
 	UpdatedAt           time.Time `json:"updated_at"`
 }

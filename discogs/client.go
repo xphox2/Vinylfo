@@ -17,11 +17,18 @@ import (
 	"time"
 
 	"vinylfo/config"
+	"vinylfo/utils"
 )
+
+var SyncDebugLogPath string
+
+func init() {
+	SyncDebugLogPath = utils.GetTimestampedLogPath("logs", "sync_debug")
+}
 
 func logToFile(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	f, _ := os.OpenFile("sync_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, _ := os.OpenFile(SyncDebugLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	defer f.Close()
 	f.WriteString(fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), msg))
 }

@@ -110,7 +110,8 @@ func (w *DurationWorker) Run() {
 			w.progressService.Save(state)
 		}
 
-		time.Sleep(1200 * time.Millisecond)
+		// Small delay for context switching - rate limiters handle API pacing
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	w.stateManager.SetStatus(duration.ResolverStatusCompleted)

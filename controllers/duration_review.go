@@ -29,6 +29,7 @@ func NewDurationReviewController(db *gorm.DB) *DurationReviewController {
 func (c *DurationReviewController) GetReviewQueue(ctx *gin.Context) {
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	searchQuery := ctx.Query("q")
 
 	if page < 1 {
 		page = 1
@@ -38,15 +39,24 @@ func (c *DurationReviewController) GetReviewQueue(ctx *gin.Context) {
 	}
 	offset := (page - 1) * limit
 
+	baseQuery := c.db.Model(&models.DurationResolution{}).Where("status = ?", "needs_review")
+
+	if searchQuery != "" {
+		searchPattern := "%" + searchQuery + "%"
+		trackSubQuery := "(SELECT id FROM tracks WHERE title LIKE ?)"
+		albumSubQuery := "(SELECT id FROM albums WHERE title LIKE ? OR artist LIKE ?)"
+		baseQuery = baseQuery.Where("(duration_resolutions.track_id IN "+trackSubQuery+" OR duration_resolutions.album_id IN "+albumSubQuery+")", searchPattern, searchPattern, searchPattern)
+	}
+
 	var total int64
-	c.db.Model(&models.DurationResolution{}).Where("status = ?", "needs_review").Count(&total)
+	baseQuery.Count(&total)
 
 	var resolutions []models.DurationResolution
-	if err := c.db.
-		Where("status = ?", "needs_review").
+	query := baseQuery.
 		Order("created_at DESC").
-		Offset(offset).Limit(limit).
-		Find(&resolutions).Error; err != nil {
+		Offset(offset).Limit(limit)
+
+	if err := query.Find(&resolutions).Error; err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
@@ -111,6 +121,7 @@ func (c *DurationReviewController) GetReviewQueue(ctx *gin.Context) {
 func (c *DurationReviewController) GetResolvedQueue(ctx *gin.Context) {
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	searchQuery := ctx.Query("q")
 
 	if page < 1 {
 		page = 1
@@ -120,15 +131,24 @@ func (c *DurationReviewController) GetResolvedQueue(ctx *gin.Context) {
 	}
 	offset := (page - 1) * limit
 
+	baseQuery := c.db.Model(&models.DurationResolution{}).Where("status IN ?", []string{"resolved", "approved"})
+
+	if searchQuery != "" {
+		searchPattern := "%" + searchQuery + "%"
+		trackSubQuery := "(SELECT id FROM tracks WHERE title LIKE ?)"
+		albumSubQuery := "(SELECT id FROM albums WHERE title LIKE ? OR artist LIKE ?)"
+		baseQuery = baseQuery.Where("(duration_resolutions.track_id IN "+trackSubQuery+" OR duration_resolutions.album_id IN "+albumSubQuery+")", searchPattern, searchPattern, searchPattern)
+	}
+
 	var total int64
-	c.db.Model(&models.DurationResolution{}).Where("status IN ?", []string{"resolved", "approved"}).Count(&total)
+	baseQuery.Count(&total)
 
 	var resolutions []models.DurationResolution
-	if err := c.db.
-		Where("status IN ?", []string{"resolved", "approved"}).
+	query := baseQuery.
 		Order("updated_at DESC").
-		Offset(offset).Limit(limit).
-		Find(&resolutions).Error; err != nil {
+		Offset(offset).Limit(limit)
+
+	if err := query.Find(&resolutions).Error; err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

@@ -680,7 +680,7 @@ func (w *SyncWorker) isLockTimeout(err error) bool {
 // logToFile writes a log message to the sync debug log file
 func (w *SyncWorker) logToFile(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	f, _ := os.OpenFile("sync_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, _ := os.OpenFile(discogs.SyncDebugLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	defer f.Close()
 	f.WriteString(fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), msg))
 }

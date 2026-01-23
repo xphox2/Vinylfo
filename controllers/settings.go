@@ -32,6 +32,10 @@ func (c *SettingsController) Get(ctx *gin.Context) {
 		return
 	}
 
+	if config.LogRetentionCount == 0 {
+		config.LogRetentionCount = 10
+	}
+
 	ctx.JSON(200, gin.H{
 		"discogs_connected":     config.IsDiscogsConnected,
 		"discogs_username":      config.DiscogsUsername,
@@ -41,12 +45,14 @@ func (c *SettingsController) Get(ctx *gin.Context) {
 		"sync_folder_id":        config.SyncFolderID,
 		"youtube_connected":     c.youtube.IsAuthenticated(),
 		"youtube_is_configured": c.youtube.IsConfigured(),
+		"log_retention_count":   config.LogRetentionCount,
 	})
 }
 
 func (c *SettingsController) Update(ctx *gin.Context) {
 	var input struct {
-		ItemsPerPage *int `json:"items_per_page"`
+		ItemsPerPage      *int `json:"items_per_page"`
+		LogRetentionCount *int `json:"log_retention_count"`
 	}
 
 	if err := ctx.ShouldBindJSON(&input); err != nil {
@@ -54,7 +60,7 @@ func (c *SettingsController) Update(ctx *gin.Context) {
 		return
 	}
 
-	if input.ItemsPerPage == nil {
+	if input.ItemsPerPage == nil && input.LogRetentionCount == nil {
 		ctx.JSON(400, gin.H{"error": "No valid fields to update"})
 		return
 	}
@@ -67,6 +73,14 @@ func (c *SettingsController) Update(ctx *gin.Context) {
 			return
 		}
 		updates["items_per_page"] = *input.ItemsPerPage
+	}
+
+	if input.LogRetentionCount != nil {
+		if *input.LogRetentionCount < 1 || *input.LogRetentionCount > 100 {
+			ctx.JSON(400, gin.H{"error": "Log retention count must be between 1 and 100"})
+			return
+		}
+		updates["log_retention_count"] = *input.LogRetentionCount
 	}
 
 	result := c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(updates)
@@ -286,5 +300,76 @@ func (c *SettingsController) CleanupAuditLogs(ctx *gin.Context) {
 		"message":       "Audit logs cleaned up successfully",
 		"deleted_count": deleted,
 		"days_retained": input.DaysRetained,
+	})
+}
+
+func (c *SettingsController) GetLogSettings(ctx *gin.Context) {
+	var config models.AppConfig
+	result := c.db.First(&config)
+	if result.Error != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch settings"})
+		return
+	}
+
+	logCount, err := utils.GetLogFileCount("logs")
+	if err != nil {
+		logCount = 0
+	}
+
+	if config.LogRetentionCount == 0 {
+		config.LogRetentionCount = 10
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"log_retention_count": config.LogRetentionCount,
+		"current_log_files":   logCount,
+	})
+}
+
+func (c *SettingsController) UpdateLogSettings(ctx *gin.Context) {
+	var input struct {
+		LogRetentionCount int `json:"log_retention_count"`
+	}
+
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		input.LogRetentionCount = 10
+	}
+
+	if input.LogRetentionCount < 1 || input.LogRetentionCount > 100 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Log retention count must be between 1 and 100"})
+		return
+	}
+
+	result := c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Update("log_retention_count", input.LogRetentionCount)
+	if result.Error != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update log settings"})
+		return
+	}
+
+	c.GetLogSettings(ctx)
+}
+
+func (c *SettingsController) CleanupLogs(ctx *gin.Context) {
+	var config models.AppConfig
+	result := c.db.First(&config)
+	if result.Error != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch settings"})
+		return
+	}
+
+	retentionCount := config.LogRetentionCount
+	if retentionCount <= 0 {
+		retentionCount = 10
+	}
+
+	deleted, err := utils.CleanupOldLogs(retentionCount, "logs")
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cleanup logs"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message":       "Logs cleaned up successfully",
+		"deleted_count": deleted,
 	})
 }

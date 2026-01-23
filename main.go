@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"vinylfo/controllers"
 	"vinylfo/database"
 	"vinylfo/discogs"
+	"vinylfo/models"
 	"vinylfo/routes"
 	"vinylfo/utils"
 )
@@ -63,7 +65,7 @@ func setupFileLogging() {
 		return
 	}
 
-	logPath := filepath.Join(logDir, "vinylfo.log")
+	logPath := utils.GetTimestampedLogPath(logDir, "vinylfo")
 	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return
@@ -71,6 +73,24 @@ func setupFileLogging() {
 
 	log.SetOutput(logFile)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
+func cleanupLogsOnStartup(db *gorm.DB) {
+	var config models.AppConfig
+	result := db.First(&config)
+	if result.Error != nil {
+		return
+	}
+
+	retentionCount := config.LogRetentionCount
+	if retentionCount <= 0 {
+		retentionCount = 10
+	}
+
+	deleted, err := utils.CleanupOldLogs(retentionCount, "logs")
+	if err == nil && deleted > 0 {
+		log.Printf("Cleaned up %d old log files (retention: %d)", deleted, retentionCount)
+	}
 }
 
 func main() {
@@ -96,6 +116,8 @@ func main() {
 
 	utils.InitPKCE(db)
 	utils.InitAuditLog(db)
+
+	cleanupLogsOnStartup(db)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -260,8 +282,20 @@ func runSystray() {
 }
 
 func openLogFile() {
-	logPath := filepath.Join("logs", "vinylfo.log")
-	openFile(logPath)
+	logDir := "logs"
+	files, _ := os.ReadDir(logDir)
+	var latestFile os.FileInfo
+	for _, f := range files {
+		info, _ := f.Info()
+		if strings.HasPrefix(info.Name(), "vinylfo_") && strings.HasSuffix(info.Name(), ".log") {
+			if latestFile == nil || info.ModTime().After(latestFile.ModTime()) {
+				latestFile = info
+			}
+		}
+	}
+	if latestFile != nil {
+		openFile(filepath.Join(logDir, latestFile.Name()))
+	}
 }
 
 func openBrowser() {

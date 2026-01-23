@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -134,8 +133,6 @@ func (c *WikipediaClient) SearchTrack(ctx context.Context, title, artist, album 
 }
 
 func (c *WikipediaClient) searchAlbumPage(ctx context.Context, album, artist string) (string, error) {
-	c.RateLimiter.Wait()
-
 	// Normalize artist name to remove disambiguation suffixes like "(2)"
 	normalizedArtist := NormalizeArtistName(artist)
 	// Normalize album to remove edition suffixes like "(Remastered)"
@@ -153,15 +150,13 @@ func (c *WikipediaClient) searchAlbumPage(ctx context.Context, album, artist str
 	}
 	req.Header.Set("User-Agent", c.UserAgent)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, body, err := c.DoWithRetry(ctx, req)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Wikipedia API error: status %d", resp.StatusCode)
 	}
 
 	var searchResp wpSearchResponse
@@ -235,8 +230,6 @@ func (c *WikipediaClient) searchAlbumPage(ctx context.Context, album, artist str
 }
 
 func (c *WikipediaClient) getPageContent(ctx context.Context, pageTitle string) (string, error) {
-	c.RateLimiter.Wait()
-
 	reqURL := fmt.Sprintf("%s?action=parse&page=%s&prop=wikitext&format=json",
 		wikipediaBaseURL,
 		url.QueryEscape(pageTitle),
@@ -248,15 +241,13 @@ func (c *WikipediaClient) getPageContent(ctx context.Context, pageTitle string) 
 	}
 	req.Header.Set("User-Agent", c.UserAgent)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, body, err := c.DoWithRetry(ctx, req)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Wikipedia API error: status %d", resp.StatusCode)
 	}
 
 	var pageResp wpPageResponse

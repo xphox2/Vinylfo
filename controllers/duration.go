@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"os"
 	"strconv"
 	"time"
 
@@ -20,8 +21,8 @@ type DurationController struct {
 func NewDurationController(db *gorm.DB) *DurationController {
 	config := services.DefaultDurationResolverConfig()
 	config.ContactEmail = "https://github.com/xphox2/Vinylfo"
-	config.YouTubeAPIKey = ""
-	config.LastFMAPIKey = ""
+	config.YouTubeAPIKey = os.Getenv("YOUTUBE_API_KEY")
+	config.LastFMAPIKey = os.Getenv("LASTFM_API_KEY")
 
 	return &DurationController{
 		db:              db,
@@ -33,6 +34,7 @@ func (c *DurationController) GetTracksNeedingResolution(ctx *gin.Context) {
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "50"))
 	albumID, _ := strconv.Atoi(ctx.Query("album_id"))
+	searchQuery := ctx.Query("q")
 
 	if page < 1 {
 		page = 1
@@ -42,13 +44,20 @@ func (c *DurationController) GetTracksNeedingResolution(ctx *gin.Context) {
 	}
 	offset := (page - 1) * limit
 
+	subQuery := "(SELECT track_id FROM duration_resolutions WHERE status != 'failed')"
 	query := c.db.Model(&models.Track{}).
 		Where("duration = 0 OR duration IS NULL").
-		Where("duration_needs_review = ?", false).
-		Where("id NOT IN (SELECT track_id FROM duration_resolutions WHERE status IN ('resolved', 'approved', 'needs_review'))")
+		Where("(duration_needs_review = ? OR tracks.id NOT IN "+subQuery+")", true)
 
 	if albumID > 0 {
 		query = query.Where("album_id = ?", albumID)
+	}
+
+	if searchQuery != "" {
+		searchPattern := "%" + searchQuery + "%"
+		trackSubQuery := "(SELECT id FROM tracks WHERE title LIKE ?)"
+		albumSubQuery := "(SELECT id FROM albums WHERE title LIKE ? OR artist LIKE ?)"
+		query = query.Where("(tracks.id IN "+trackSubQuery+" OR tracks.album_id IN "+albumSubQuery+")", searchPattern, searchPattern, searchPattern)
 	}
 
 	var total int64
@@ -98,7 +107,7 @@ func (c *DurationController) GetStatistics(ctx *gin.Context) {
 
 	c.db.Model(&models.Track{}).
 		Where("duration = 0 OR duration IS NULL").
-		Where("id NOT IN (SELECT track_id FROM duration_resolutions WHERE status IN ('resolved', 'approved', 'needs_review'))").
+		Where("(duration_needs_review = ? OR id NOT IN (SELECT track_id FROM duration_resolutions WHERE status != 'failed'))", true).
 		Count(&unprocessed)
 
 	var recentResolutions []models.DurationResolution
@@ -150,6 +159,34 @@ func (c *DurationController) ResolveTrack(ctx *gin.Context) {
 		"resolution": resolution,
 		"message":    "Track resolution completed",
 	})
+}
+
+func (c *DurationController) RetryFailedTrack(ctx *gin.Context) {
+	trackID, err := strconv.Atoi(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "invalid track ID"})
+		return
+	}
+
+	var track models.Track
+	if err := c.db.First(&track, trackID).Error; err != nil {
+		ctx.JSON(404, gin.H{"error": "track not found"})
+		return
+	}
+
+	var resolution models.DurationResolution
+	if err := c.db.Where("track_id = ? AND status = ?", trackID, "failed").First(&resolution).Error; err != nil {
+		ctx.JSON(404, gin.H{"error": "no failed resolution found for track"})
+		return
+	}
+
+	c.db.Where("resolution_id = ?", resolution.ID).Delete(&models.DurationSource{})
+	c.db.Delete(&resolution)
+
+	track.DurationNeedsReview = false
+	c.db.Save(&track)
+
+	c.ResolveTrack(ctx)
 }
 
 func (c *DurationController) SetManualDuration(ctx *gin.Context) {

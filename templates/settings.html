@@ -55,6 +55,23 @@
             <button id="reset-database" class="btn btn-danger">Reset Database</button>
         </div>
     </div>
+    <div class="settings-section">
+        <h2>Log Management</h2>
+        <div class="log-settings">
+            <h3>Log Files</h3>
+            <p>Manage application log files with automatic cleanup based on retention settings.</p>
+            <div class="form-group">
+                <label for="log-retention">Maximum Log Files (1-100)</label>
+                <input type="number" id="log-retention" min="1" max="100" value="10">
+                <button id="save-log-retention" class="btn btn-secondary">Save</button>
+                <span id="log-retention-status" class="status-message"></span>
+            </div>
+            <div class="log-info">
+                <p>Current Log Files: <span id="current-log-count">-</span></p>
+                <button id="cleanup-logs" class="btn btn-secondary">Clean Up Now</button>
+            </div>
+        </div>
+    </div>
 </main>
 <footer>
     <p><img src="/icons/vinyl-icon.svg" alt="Vinylfo" class="footer-icon">Vinylfo - Vinyl Music Player</p>

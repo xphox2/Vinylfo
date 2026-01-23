@@ -7,6 +7,7 @@
     <title>Resolution Center - Vinylfo</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="icon" type="image/x-icon" href="/icons/vinyl-icon.ico">
+    <link rel="stylesheet" href="/static/css/settings.css">
     <link rel="stylesheet" href="/static/css/resolution-center.css">
 </head>
 <body>
@@ -62,10 +63,16 @@
     <div class="review-queue" id="review-section">
         <div class="queue-header">
             <h2 id="queue-title">Needs Review</h2>
-            <div class="pagination" id="review-pagination">
-                <button id="prev-page" class="btn btn-small">&lt; Prev</button>
-                <span id="page-info">Page 1 of 1</span>
-                <button id="next-page" class="btn btn-small">Next &gt;</button>
+            <div class="queue-header-actions">
+                <div class="search-wrapper">
+                    <input type="text" id="review-search" class="local-search" placeholder="Search tracks, albums, artists...">
+                    <button type="button" class="search-clear" id="review-search-clear" title="Clear search">&times;</button>
+                </div>
+                <div class="pagination" id="review-pagination">
+                    <button id="prev-page" class="btn btn-small">&lt; Prev</button>
+                    <span id="page-info">Page 1 of 1</span>
+                    <button id="next-page" class="btn btn-small">Next &gt;</button>
+                </div>
             </div>
         </div>
 
@@ -77,10 +84,16 @@
     <div class="unprocessed-queue hidden" id="unprocessed-section">
         <div class="queue-header">
             <h2 id="unprocessed-queue-title">Unprocessed Tracks</h2>
-            <div class="pagination" id="unprocessed-pagination">
-                <button id="unprocessed-prev-page" class="btn btn-small">&lt; Prev</button>
-                <span id="unprocessed-page-info">Page 1 of 1</span>
-                <button id="unprocessed-next-page" class="btn btn-small">Next &gt;</button>
+            <div class="queue-header-actions">
+                <div class="search-wrapper">
+                    <input type="text" id="unprocessed-search" class="local-search" placeholder="Search tracks, albums, artists...">
+                    <button type="button" class="search-clear" id="unprocessed-search-clear" title="Clear search">&times;</button>
+                </div>
+                <div class="pagination" id="unprocessed-pagination">
+                    <button id="unprocessed-prev-page" class="btn btn-small">&lt; Prev</button>
+                    <span id="unprocessed-page-info">Page 1 of 1</span>
+                    <button id="unprocessed-next-page" class="btn btn-small">Next &gt;</button>
+                </div>
             </div>
         </div>
 
@@ -92,10 +105,16 @@
     <div class="resolved-queue hidden" id="resolved-section">
         <div class="queue-header">
             <h2 id="resolved-queue-title">Resolved Queue</h2>
-            <div class="pagination" id="resolved-pagination">
-                <button id="resolved-prev-page" class="btn btn-small">&lt; Prev</button>
-                <span id="resolved-page-info">Page 1 of 1</span>
-                <button id="resolved-next-page" class="btn btn-small">Next &gt;</button>
+            <div class="queue-header-actions">
+                <div class="search-wrapper">
+                    <input type="text" id="resolved-search" class="local-search" placeholder="Search tracks, albums, artists...">
+                    <button type="button" class="search-clear" id="resolved-search-clear" title="Clear search">&times;</button>
+                </div>
+                <div class="pagination" id="resolved-pagination">
+                    <button id="resolved-prev-page" class="btn btn-small">&lt; Prev</button>
+                    <span id="resolved-page-info">Page 1 of 1</span>
+                    <button id="resolved-next-page" class="btn btn-small">Next &gt;</button>
+                </div>
             </div>
         </div>
 

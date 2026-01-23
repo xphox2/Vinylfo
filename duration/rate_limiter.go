@@ -1,16 +1,18 @@
 package duration
 
 import (
+	"log"
 	"sync"
 	"time"
 )
 
-// RateLimiter implements a simple sliding window rate limiter
+// RateLimiter implements a simple sliding window rate limiter with retry-after support
 type RateLimiter struct {
 	mu               sync.Mutex
 	requestsPerMin   int
 	windowStart      time.Time
 	requestsInWindow int
+	blockedUntil     time.Time // When set, all requests wait until this time
 }
 
 // NewRateLimiter creates a rate limiter with the specified requests per minute
@@ -28,13 +30,23 @@ func (rl *RateLimiter) Wait() {
 	defer rl.mu.Unlock()
 
 	now := time.Now()
+
+	// First check if we're blocked due to a rate limit response
+	if rl.blockedUntil.After(now) {
+		sleepTime := rl.blockedUntil.Sub(now)
+		rl.mu.Unlock()
+		log.Printf("Waiting %v due to rate limit block", sleepTime)
+		time.Sleep(sleepTime)
+		rl.mu.Lock()
+		now = time.Now()
+	}
+
 	elapsed := now.Sub(rl.windowStart)
 
 	// Reset window if minute has passed
 	if elapsed >= time.Minute {
 		rl.windowStart = now
-		requestsInWindow := 0
-		rl.requestsInWindow = requestsInWindow
+		rl.requestsInWindow = 0
 	}
 
 	// If at limit, wait for window to reset
@@ -63,4 +75,39 @@ func (rl *RateLimiter) GetRemaining() int {
 	}
 
 	return rl.requestsPerMin - rl.requestsInWindow
+}
+
+// SetBlockedUntil sets a time until which all requests should wait
+// This is used when an API returns a rate limit response with Retry-After
+func (rl *RateLimiter) SetBlockedUntil(until time.Time) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	// Only extend the block, never shorten it
+	if until.After(rl.blockedUntil) {
+		rl.blockedUntil = until
+		log.Printf("Rate limiter blocked until %v", until)
+	}
+}
+
+// WaitForRetryAfter blocks for the specified number of seconds
+// This should be called when an API returns 429 or 503 with Retry-After header
+func (rl *RateLimiter) WaitForRetryAfter(seconds int) {
+	if seconds <= 0 {
+		seconds = 60 // Default to 60 seconds if not specified
+	}
+
+	waitDuration := time.Duration(seconds) * time.Second
+	until := time.Now().Add(waitDuration)
+
+	rl.SetBlockedUntil(until)
+
+	log.Printf("Rate limit hit - waiting %d seconds before retry", seconds)
+	time.Sleep(waitDuration)
+
+	// Reset the window after waiting
+	rl.mu.Lock()
+	rl.windowStart = time.Now()
+	rl.requestsInWindow = 0
+	rl.mu.Unlock()
 }

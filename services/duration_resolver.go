@@ -28,7 +28,7 @@ func DefaultDurationResolverConfig() DurationResolverConfig {
 		ConsensusThreshold:   2,
 		ToleranceSeconds:     3,
 		AutoApplyOnConsensus: true,
-		MinMatchScore:        0.6,
+		MinMatchScore:        0.4,
 		ContactEmail:         "https://github.com/xphox2/Vinylfo",
 	}
 }
@@ -120,14 +120,17 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 	for _, client := range s.clients {
 		if !client.IsConfigured() {
 			resolution.TotalSourcesQueried--
+			log.Printf("DEBUG: Skipping %s - not configured", client.Name())
 			continue
 		}
+
+		log.Printf("DEBUG: Querying %s for track '%s' by '%s'", client.Name(), track.Title, artist)
 
 		// Skip expensive sources (YouTube) if we already have consensus from free sources
 		if client.Name() == "youtube" && len(allDurations) >= s.config.ConsensusThreshold {
 			_, consensusCount := s.findConsensus(allDurations)
 			if consensusCount >= s.config.ConsensusThreshold {
-				log.Printf("Skipping YouTube API - consensus already reached with %d sources", consensusCount)
+				log.Printf("DEBUG: Skipping YouTube API - consensus already reached with %d sources", consensusCount)
 				skippedExpensiveSources = append(skippedExpensiveSources, client.Name())
 				resolution.TotalSourcesQueried--
 				continue
@@ -136,6 +139,7 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 
 		result, err := client.SearchTrack(ctx, track.Title, artist, albumTitle)
 		if err != nil {
+			log.Printf("DEBUG: %s error: %v", client.Name(), err)
 			source := models.DurationSource{
 				ResolutionID: resolution.ID,
 				SourceName:   client.Name(),
@@ -147,6 +151,7 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 		}
 
 		successfulQueries++
+		log.Printf("DEBUG: %s result: %+v", client.Name(), result)
 
 		// Always create a source record so the UI can show what was queried
 		source := models.DurationSource{
@@ -170,6 +175,7 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 		} else {
 			// No result found - still save the source record to show it was queried
 			source.ErrorMessage = "No matching track found"
+			log.Printf("DEBUG: %s returned no results", client.Name())
 		}
 
 		s.db.Create(&source)
@@ -184,6 +190,13 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 
 	if len(allDurations) == 0 {
 		resolution.Status = "failed"
+		log.Printf("DEBUG: Track '%s' FAILED - no durations found from %d sources. Match threshold: %.2f",
+			track.Title, successfulQueries, s.config.MinMatchScore)
+
+		var track models.Track
+		s.db.First(&track, track.ID)
+		track.DurationNeedsReview = true
+		s.db.Save(&track)
 	} else {
 		resolvedDuration, consensusCount := s.findConsensus(allDurations)
 		resolution.ConsensusCount = consensusCount
@@ -191,20 +204,28 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 		if consensusCount >= s.config.ConsensusThreshold {
 			resolution.Status = "resolved"
 			resolution.ResolvedDuration = &resolvedDuration
+			log.Printf("DEBUG: Track '%s' RESOLVED - duration %d seconds (%d sources agreed)",
+				track.Title, resolvedDuration, consensusCount)
 
 			if s.config.AutoApplyOnConsensus {
 				s.applyResolution(resolution, track)
 			}
 		} else if successfulQueries > 0 {
 			resolution.Status = "needs_review"
+			log.Printf("DEBUG: Track '%s' NEEDS REVIEW - %d durations found, %d agreed (need %d for consensus)",
+				track.Title, len(allDurations), consensusCount, s.config.ConsensusThreshold)
 		} else {
 			resolution.Status = "failed"
+			log.Printf("DEBUG: Track '%s' FAILED - no successful queries", track.Title)
 		}
 	}
 
 	if err := s.db.Save(resolution).Error; err != nil {
 		log.Printf("Failed to save resolution: %v", err)
 	}
+
+	log.Printf("DEBUG: Completed track %d '%s' - Status: %s, Duration: %v, Sources queried: %d, Successful: %d",
+		track.ID, track.Title, resolution.Status, resolution.ResolvedDuration, resolution.TotalSourcesQueried, successfulQueries)
 
 	return resolution, nil
 }

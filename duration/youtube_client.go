@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -123,8 +123,10 @@ func (c *YouTubeClient) SearchTrack(ctx context.Context, title, artist, album st
 		if entry, found := c.cache.Get(title, artist, album); found {
 			if entry.Duration == -1 {
 				// Cached "not found" result
+				log.Printf("YT: Cache shows '%s' by '%s' not found", title, artist)
 				return nil, nil
 			}
+			log.Printf("YT: Cache hit for '%s' by '%s' - duration %ds", title, artist, entry.Duration)
 			return &TrackSearchResult{
 				ExternalID:  entry.VideoID,
 				ExternalURL: fmt.Sprintf("https://www.youtube.com/watch?v=%s", entry.VideoID),
@@ -137,7 +139,15 @@ func (c *YouTubeClient) SearchTrack(ctx context.Context, title, artist, album st
 		}
 	}
 
+	if c.apiKey == "" {
+		log.Printf("YT: YouTube API key not configured, skipping")
+		return nil, nil
+	}
+
 	searchQuery := c.buildSearchQuery(title, artist, album)
+
+	log.Printf("YT: Searching YouTube for '%s' by '%s' (album: '%s')", title, artist, album)
+	log.Printf("YT: Query: %s", searchQuery)
 
 	searchURL := fmt.Sprintf("%s/search?part=snippet&type=video&q=%s&maxResults=10&key=%s",
 		youtubeBaseURL,
@@ -145,27 +155,20 @@ func (c *YouTubeClient) SearchTrack(ctx context.Context, title, artist, album st
 		c.apiKey,
 	)
 
-	c.RateLimiter.Wait()
-
 	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, body, err := c.DoWithRetry(ctx, req)
 	if err != nil {
+		log.Printf("YT: Request failed for '%s': %v", title, err)
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		log.Printf("YT: YouTube API error for '%s': %d - %s", title, resp.StatusCode, string(body))
 		return nil, fmt.Errorf("YouTube API error: %d - %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var searchResp youtubeSearchResponse
@@ -173,7 +176,10 @@ func (c *YouTubeClient) SearchTrack(ctx context.Context, title, artist, album st
 		return nil, fmt.Errorf("failed to parse search response: %w", err)
 	}
 
+	log.Printf("YT: Got %d search results for '%s'", len(searchResp.Items), title)
+
 	if len(searchResp.Items) == 0 {
+		log.Printf("YT: No results found on YouTube for '%s'", title)
 		return nil, nil
 	}
 
@@ -185,6 +191,7 @@ func (c *YouTubeClient) SearchTrack(ctx context.Context, title, artist, album st
 	}
 
 	if len(videoIDs) == 0 {
+		log.Printf("YT: No valid video IDs for '%s'", title)
 		// Cache the "not found" result
 		if c.cache != nil {
 			c.cache.SetNotFound(title, artist, album)
@@ -194,17 +201,21 @@ func (c *YouTubeClient) SearchTrack(ctx context.Context, title, artist, album st
 
 	videoResp, err := c.getVideoDetails(ctx, videoIDs)
 	if err != nil {
+		log.Printf("YT: Failed to get video details for '%s': %v", title, err)
 		return nil, err
 	}
 
 	result := c.findBestMatch(searchResp.Items, videoResp.Items, title, artist, album)
 	if result != nil {
+		log.Printf("YT: Best match for '%s': '%s' - duration %ds, match score %.2f",
+			title, result.Title, result.Duration, result.MatchScore)
 		result.RawResponse = string(body)
 		// Cache the successful result
 		if c.cache != nil {
 			c.cache.Set(title, artist, album, result)
 		}
 	} else {
+		log.Printf("YT: No suitable match found for '%s' on YouTube", title)
 		// Cache the "not found" result
 		if c.cache != nil {
 			c.cache.SetNotFound(title, artist, album)
@@ -239,27 +250,18 @@ func (c *YouTubeClient) getVideoDetails(ctx context.Context, videoIDs []string) 
 		c.apiKey,
 	)
 
-	c.RateLimiter.Wait()
-
 	req, err := http.NewRequestWithContext(ctx, "GET", videoURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create video request: %w", err)
 	}
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, body, err := c.DoWithRetry(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("video request failed: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("YouTube videos API error: %d - %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read video response: %w", err)
 	}
 
 	var videoResp youtubeVideoResponse
@@ -315,7 +317,7 @@ func (c *YouTubeClient) findBestMatch(searchItems []youtubeSearchItem, videoItem
 		}
 	}
 
-	if bestResult != nil && bestResult.MatchScore < 0.4 {
+	if bestResult != nil && bestResult.MatchScore < 0.3 {
 		return nil
 	}
 

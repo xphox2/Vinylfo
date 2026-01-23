@@ -193,6 +193,10 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/api/database/reset", settingsController.ResetDatabase)
 	r.POST("/api/database/seed", settingsController.SeedDatabase)
 
+	r.GET("/api/settings/logs", settingsController.GetLogSettings)
+	r.PUT("/api/settings/logs", settingsController.UpdateLogSettings)
+	r.POST("/api/settings/logs/cleanup", settingsController.CleanupLogs)
+
 	r.GET("/api/audit/logs", settingsController.GetAuditLogs)
 	r.POST("/api/audit/cleanup", settingsController.CleanupAuditLogs)
 
@@ -206,6 +210,7 @@ func SetupRoutes(r *gin.Engine) {
 
 		duration.POST("/track/:id/manual", durationController.SetManualDuration)
 		duration.POST("/resolve/track/:id", durationController.ResolveTrack)
+		duration.POST("/resolve/track/:id/retry", durationController.RetryFailedTrack)
 		duration.POST("/resolve/album/:id", durationController.ResolveAlbum)
 		duration.GET("/resolve/track/:id", durationController.GetResolutionStatus)
 
