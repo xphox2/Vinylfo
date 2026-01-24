@@ -1,12 +1,11 @@
 // YouTube integration for playlist management
 // This file is loaded after playlist.js and uses its shared functions
 
+import { normalizeArtistName } from './modules/utils.js';
+
 function cleanArtistNameYT(artistName) {
     if (!artistName) return 'Unknown Artist';
-    if (typeof window.normalizeArtistName === 'function') {
-        return window.normalizeArtistName(artistName) || 'Unknown Artist';
-    }
-    return artistName;
+    return normalizeArtistName(artistName) || 'Unknown Artist';
 }
 
 // Review state variables
@@ -386,3 +385,13 @@ function closeYouTubeSyncModal() {
 function closeYouTubeReviewModal() {
     document.getElementById('youtube-review-modal').style.display = 'none';
 }
+
+// Expose functions globally for non-module scripts
+window.openYouTubeSyncModal = openYouTubeSyncModal;
+window.closeYouTubeSyncModal = closeYouTubeSyncModal;
+window.closeYouTubeReviewModal = closeYouTubeReviewModal;
+window.matchPlaylistTracks = matchPlaylistTracks;
+window.syncToYouTube = syncToYouTube;
+window.clearWebCache = clearWebCache;
+window.loadYouTubeSyncStatus = loadYouTubeSyncStatus;
+window.loadYouTubePlaylist = loadYouTubePlaylist;

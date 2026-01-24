@@ -894,6 +894,46 @@ func (c *Client) GetMainReleaseFromMaster(masterID int) (int, error) {
 	return 0, fmt.Errorf("no releases found for master %d", masterID)
 }
 
+// GetAllReleasesFromMaster returns all releases for a master release
+// This is used to find releases with track durations when the main release lacks them
+func (c *Client) GetAllReleasesFromMaster(masterID int) ([]map[string]interface{}, error) {
+	url := fmt.Sprintf("%s/masters/%d/releases?per_page=50", APIURL, masterID)
+	resp, err := c.makeAuthenticatedRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var respData struct {
+		Releases []struct {
+			ID     int    `json:"id"`
+			Title  string `json:"title"`
+			Year   int    `json:"year"`
+			Format string `json:"format"`
+		} `json:"releases"`
+		Pagination struct {
+			Items int `json:"items"`
+		} `json:"pagination"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+		return nil, err
+	}
+
+	releases := make([]map[string]interface{}, 0, len(respData.Releases))
+	for _, r := range respData.Releases {
+		releases = append(releases, map[string]interface{}{
+			"id":     r.ID,
+			"title":  r.Title,
+			"year":   r.Year,
+			"format": r.Format,
+		})
+	}
+
+	logToFile("GetAllReleasesFromMaster: Found %d releases for master %d (total items: %d)", len(releases), masterID, respData.Pagination.Items)
+	return releases, nil
+}
+
 func parseAlbumResponse(resp *http.Response) (map[string]interface{}, error) {
 	defer resp.Body.Close()
 
@@ -1271,15 +1311,102 @@ func (c *Client) CrossReferenceTimestampsWithMaster(title, artist string, curren
 				}
 			}
 		} else if err != nil {
-			logToFile("CrossReferenceTimestamps: Failed to get main release from master %d: %v", masterID, err)
+			// 404 means master was deleted/private - this is normal, just skip quietly
+			if !strings.Contains(err.Error(), "404") {
+				logToFile("CrossReferenceTimestamps: Failed to get main release from master %d: %v", masterID, err)
+			}
 		}
 	}
 
-	// Step 2: Fall back to search (limited to 1 page + max 3 releases = max 4 API calls)
-	logToFile("CrossReferenceTimestamps: Falling back to search for %s - %s", artist, title)
+	// Step 2: NEW APPROACH - Get ALL releases from master and check each one for durations
+	// This is more reliable than searching because all these releases ARE the same album
+	if masterID > 0 {
+		logToFile("CrossReferenceTimestamps: Checking ALL releases from master %d for %s - %s", masterID, artist, title)
 
-	const maxSearchPages = 1
-	const maxReleasesToCheck = 3
+		masterReleases, err := c.GetAllReleasesFromMaster(masterID)
+		if err != nil {
+			// 404 means master was deleted/private - this is normal, just skip quietly
+			if !strings.Contains(err.Error(), "404") {
+				logToFile("CrossReferenceTimestamps: Master %d no longer available (deleted/private), skipping duration lookup", masterID)
+			}
+		} else if len(masterReleases) > 0 {
+			// Check each release until we find one with durations
+			releasesChecked := 0
+			for _, release := range masterReleases {
+				releaseID, _ := release["id"].(int)
+				releaseTitle, _ := release["title"].(string)
+				releaseYear, _ := release["year"].(int)
+				releaseFormat, _ := release["format"].(string)
+
+				if releaseID == 0 {
+					continue
+				}
+
+				logToFile("CrossReferenceTimestamps: Checking master release %d (%s, %d, %s)", releaseID, releaseTitle, releaseYear, releaseFormat)
+
+				altTracks, err := c.GetTracksForAlbum(releaseID)
+				if err != nil {
+					logToFile("CrossReferenceTimestamps: Failed to fetch tracks for release %d: %v", releaseID, err)
+					continue
+				}
+
+				// Check if this release has any durations
+				altHasDurations := false
+				for j, track := range altTracks {
+					dur, _ := track["duration"].(int)
+					trackTitle, _ := track["title"].(string)
+					if dur > 0 {
+						altHasDurations = true
+						logToFile("CrossReferenceTimestamps: Master release %d track %d: %q duration=%d (HAS DATA)", releaseID, j, trackTitle, dur)
+					} else {
+						logToFile("CrossReferenceTimestamps: Master release %d track %d: %q duration=%d", releaseID, j, trackTitle, dur)
+					}
+				}
+
+				releasesChecked++
+
+				if !altHasDurations {
+					logToFile("CrossReferenceTimestamps: Master release %d has no durations, trying next release", releaseID)
+					continue
+				}
+
+				// Found a release with durations! Match tracks by name
+				logToFile("CrossReferenceTimestamps: Master release %d has durations, matching tracks (%d/%d checked)", releaseID, releasesChecked, len(masterReleases))
+
+				matchedTracks := matchTracksByName(currentTracks, altTracks)
+
+				matchedWithDurations := 0
+				for j, track := range matchedTracks {
+					dur, _ := track["duration"].(int)
+					trackTitle, _ := track["title"].(string)
+					logToFile("CrossReferenceTimestamps: Matched track %d: %q duration=%d", j, trackTitle, dur)
+					if dur > 0 {
+						matchedWithDurations++
+					}
+				}
+
+				logToFile("CrossReferenceTimestamps: Matched %d/%d tracks with durations from master release %d",
+					matchedWithDurations, len(matchedTracks), releaseID)
+
+				if matchedWithDurations > 0 {
+					logToFile("CrossReferenceTimestamps: SUCCESS - matched %d tracks from master release %d (%d/%d releases checked)",
+						len(matchedTracks), releaseID, releasesChecked, len(masterReleases))
+					return matchedTracks, nil
+				}
+			}
+
+			logToFile("CrossReferenceTimestamps: No releases from master %d had durations after checking %d releases", masterID, releasesChecked)
+		}
+	}
+
+	logToFile("CrossReferenceTimestamps: Failed to find durations for %s - %s from master releases", artist, title)
+
+	// Step 3: Fallback to search when master is not available (deleted/private)
+	// This helps find alternative releases with durations when the master is gone
+	logToFile("CrossReferenceTimestamps: Master unavailable, searching for alternative releases of %s - %s", artist, title)
+
+	const maxSearchPages = 4
+	const maxReleasesToCheck = 10
 
 	var allResults []map[string]interface{}
 
@@ -1318,7 +1445,6 @@ func (c *Client) CrossReferenceTimestampsWithMaster(title, artist string, curren
 	releasesChecked := 0
 
 	for i, result := range allResults {
-		// Stop if we've checked enough releases (to limit API calls)
 		if releasesChecked >= maxReleasesToCheck {
 			logToFile("CrossReferenceTimestamps: Reached max releases to check (%d), stopping", maxReleasesToCheck)
 			break
@@ -1423,7 +1549,7 @@ func (c *Client) CrossReferenceTimestampsWithMaster(title, artist string, curren
 				matchedWithDurations, len(matchedTracks), resultID)
 
 			if matchedWithDurations > 0 {
-				logToFile("CrossReferenceTimestamps: SUCCESS - matched %d tracks from release %d", len(matchedTracks), resultID)
+				logToFile("CrossReferenceTimestamps: SUCCESS - matched %d tracks from release %d (found via search)", len(matchedTracks), resultID)
 				return matchedTracks, nil
 			}
 		}

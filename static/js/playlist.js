@@ -1,11 +1,15 @@
 // Playlist management JavaScript
 
+import { normalizeArtistName, normalizeTitle } from './modules/utils.js';
+
 function cleanArtistName(artistName) {
     if (!artistName) return 'Unknown Artist';
-    if (typeof window.normalizeArtistName === 'function') {
-        return window.normalizeArtistName(artistName) || 'Unknown Artist';
-    }
-    return artistName;
+    return normalizeArtistName(artistName) || 'Unknown Artist';
+}
+
+function cleanTrackTitle(trackTitle) {
+    if (!trackTitle) return 'Unknown Track';
+    return normalizeTitle(trackTitle) || 'Unknown Track';
 }
 
 window.currentPlaylistId = null;
@@ -218,7 +222,7 @@ function createTrackListItem(track, index, sessionId) {
     item.innerHTML = `
         <span class="drag-handle">☰</span>
         <div class="track-info">
-            <div class="track-title">${escapeHtml(track.title || 'Unknown Track')}</div>
+            <div class="track-title">${escapeHtml(cleanTrackTitle(track.title) || 'Unknown Track')}</div>
             <div class="track-artist">${escapeHtml(displayAlbumTitle)}</div>
         </div>
         <span class="track-duration">${formatDuration(track.duration)}</span>
@@ -402,7 +406,7 @@ function renderAvailableTracks() {
                             <img src="/albums/${track.album_id}/image" alt="" class="track-cover-img" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'track-cover-placeholder-small\\'>♪</div>';">
                         </div>
                         <div class="track-info">
-                            <h3>${track.title || 'Unknown Title'}</h3>
+                            <h3>${escapeHtml(cleanTrackTitle(track.title) || 'Unknown Title')}</h3>
                             <p>${cleanArtistName(track.album_artist)}</p>
                         </div>
                         <div class="track-meta">

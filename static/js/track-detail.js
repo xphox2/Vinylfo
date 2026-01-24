@@ -1,11 +1,15 @@
 // Track detail page JavaScript
 
+import { normalizeArtistName, normalizeTitle } from './modules/utils.js';
+
 function cleanArtistName(artistName) {
     if (!artistName) return 'Unknown Artist';
-    if (typeof window.normalizeArtistName === 'function') {
-        return window.normalizeArtistName(artistName) || 'Unknown Artist';
-    }
-    return artistName;
+    return normalizeArtistName(artistName) || 'Unknown Artist';
+}
+
+function cleanTrackTitle(trackTitle) {
+    if (!trackTitle) return 'Unknown Track';
+    return normalizeTitle(trackTitle) || 'Unknown Track';
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -40,7 +44,7 @@ function loadTrackDetail(trackId) {
                 coverHtml = `<img src="/albums/${track.album_id}/image" alt="${track.album_title}" class="track-cover" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'track-cover-placeholder\\'>No Cover</div>';">`;
             }
             
-            const trackTitle = track.title || 'Unknown Title';
+            const trackTitle = cleanTrackTitle(track.title) || 'Unknown Title';
             const albumTitle = cleanAlbumTitle(track.album_title, trackTitle);
             
             detail.innerHTML = `

@@ -127,13 +127,13 @@ class ResolutionQueueManager {
         return `
             <div class="unprocessed-item" data-track-id="${item.id}">
                 <div class="unprocessed-track-info">
-                    <div class="unprocessed-track-title">${escapeHtml(item.title)}</div>
+                    <div class="unprocessed-track-title">${escapeHtml(normalizeTitle(item.title))}</div>
                     <div class="unprocessed-track-meta">
-                        ${escapeHtml(item.artist || '')} - ${escapeHtml(item.album_title || '')}
+                        ${escapeHtml(normalizeArtistName(item.artist || ''))} - ${escapeHtml(normalizeTitle(item.album_title || ''))}
                     </div>
                 </div>
                 <div>
-                    <button class="btn btn-secondary btn-small unprocessed-manual-btn" data-track-id="${item.id}" data-title="${escapeHtml(item.title)}">Manual</button>
+                    <button class="btn btn-secondary btn-small unprocessed-manual-btn" data-track-id="${item.id}" data-title="${escapeHtml(normalizeTitle(item.title))}">Manual</button>
                 </div>
             </div>
         `;

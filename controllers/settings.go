@@ -99,19 +99,34 @@ func (c *SettingsController) ResetDatabase(ctx *gin.Context) {
 		return
 	}
 
+	// Tables must be deleted in order due to foreign key constraints
+	// Tables referencing other tables must be deleted first
 	tables := []string{
-		"track_histories",
+		// YouTube tables reference tracks - delete first
+		"track_youtube_candidates",
+		"track_youtube_matches",
+		// Session-related tables reference tracks
 		"session_notes",
 		"session_sharings",
 		"session_playlists",
-		"playback_sessions",
+		// Duration tables reference tracks
 		"duration_sources",
 		"duration_resolver_progress",
 		"duration_resolutions",
+		// Track history references tracks
+		"track_histories",
+		// Playback sessions reference tracks
+		"playback_sessions",
+		// Main data tables
 		"tracks",
 		"albums",
+		// Sync tables
 		"sync_logs",
 		"sync_progresses",
+		"sync_histories",
+		// System tables (safe to delete)
+		"pkce_states",
+		"audit_logs",
 	}
 
 	for _, table := range tables {
@@ -350,19 +365,9 @@ func (c *SettingsController) UpdateLogSettings(ctx *gin.Context) {
 }
 
 func (c *SettingsController) CleanupLogs(ctx *gin.Context) {
-	var config models.AppConfig
-	result := c.db.First(&config)
-	if result.Error != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch settings"})
-		return
-	}
-
-	retentionCount := config.LogRetentionCount
-	if retentionCount <= 0 {
-		retentionCount = 10
-	}
-
-	deleted, err := utils.CleanupOldLogs(retentionCount, "logs")
+	// Force cleanup - delete all but 1 log file (keep newest)
+	// This ignores the retention count setting which only applies to startup cleanup
+	deleted, err := utils.ForceCleanupLogs(1, "logs")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cleanup logs"})
 		return

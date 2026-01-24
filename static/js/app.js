@@ -1,4 +1,4 @@
-import { pagination, formatDuration, formatTime, escapeHtml, cleanAlbumTitle, cleanArtistName, updatePaginationControls } from './app-state.js';
+import { pagination, formatDuration, formatTime, escapeHtml, cleanAlbumTitle, cleanArtistName, cleanTrackTitle, updatePaginationControls } from './app-state.js';
 
 window.pagination = pagination;
 window.formatDuration = formatDuration;
@@ -6,6 +6,7 @@ window.formatTime = formatTime;
 window.escapeHtml = escapeHtml;
 window.cleanAlbumTitle = cleanAlbumTitle;
 window.cleanArtistName = cleanArtistName;
+window.cleanTrackTitle = cleanTrackTitle;
 window.updatePaginationControls = updatePaginationControls;
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -306,7 +307,7 @@ function renderTracks(tracks) {
                 <img src="/albums/${track.album_id}/image" alt="" class="track-cover-img" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'track-cover-placeholder-small\\'>♪</div>';">
             </div>
             <div class="track-info">
-                <h3>${track.title || 'Unknown Title'}</h3>
+                <h3>${cleanTrackTitle(track.title) || 'Unknown Title'}</h3>
                 <p>${cleanArtistName(track.album_artist)}</p>
             </div>
             <div class="track-video-clear" style="${clearIconStyle}" onclick="openClearYouTubeModal(${track.id}, '${escapeHtml(track.title)}'); return false;" title="Clear YouTube video">
@@ -469,7 +470,7 @@ function showTracksForAlbum(albumID) {
                                 <img src="/albums/${track.album_id}/image" alt="" class="track-cover-img" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'track-cover-placeholder-small\\'>♪</div>';">
                             </div>
                             <div class="track-info">
-                                <h3>${track.title || 'Unknown Title'}</h3>
+                                <h3>${cleanTrackTitle(track.title) || 'Unknown Title'}</h3>
                                 <p>${cleanArtistName(track.album_artist)}</p>
                             </div>
                             <div class="track-meta">
@@ -510,7 +511,7 @@ function loadTrackDetail(trackId) {
             
             detail.innerHTML = `
                 <div class="track-detail-item">
-                    <h3>${track.title || 'Unknown Title'}</h3>
+                    <h3>${cleanTrackTitle(track.title) || 'Unknown Title'}</h3>
                     <p><strong>Artist:</strong> ${cleanArtistName(track.album_artist)}</p>
                     <p><strong>Album:</strong> ${displayAlbumTitle}</p>
                     <p><strong>Duration:</strong> ${formatDuration(track.duration) || 'Unknown Duration'}</p>

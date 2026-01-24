@@ -4,12 +4,16 @@
  * Uses SSE for real-time updates and TabSync for tab-to-tab communication
  */
 
+import { normalizeArtistName, normalizeTitle } from './modules/utils.js';
+
 function cleanArtistName(artistName) {
     if (!artistName) return 'Unknown Artist';
-    if (typeof window.normalizeArtistName === 'function') {
-        return window.normalizeArtistName(artistName) || 'Unknown Artist';
-    }
-    return artistName;
+    return normalizeArtistName(artistName) || 'Unknown Artist';
+}
+
+function cleanTrackTitle(trackTitle) {
+    if (!trackTitle) return 'Unknown Track';
+    return normalizeTitle(trackTitle) || 'Unknown Track';
 }
 
 class VideoFeedManager {

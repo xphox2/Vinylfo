@@ -3,11 +3,18 @@ export const pagination = {
     track: { page: 1, limit: 25, totalPages: 1, query: '' }
 };
 
-export function formatDuration(seconds) {
-    if (!seconds || seconds <= 0) return '0:00';
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+import { normalizeArtistName, normalizeTitle, formatDuration } from './modules/utils.js';
+
+export { formatDuration };
+
+export function cleanArtistName(artistName) {
+    if (!artistName) return 'Unknown Artist';
+    return normalizeArtistName(artistName) || 'Unknown Artist';
+}
+
+export function cleanTrackTitle(trackTitle) {
+    if (!trackTitle) return 'Unknown Track';
+    return normalizeTitle(trackTitle) || 'Unknown Track';
 }
 
 export function formatTime(seconds) {
@@ -33,15 +40,6 @@ export function cleanAlbumTitle(albumTitle, trackTitle) {
     }
 
     return albumTitle;
-}
-
-export function cleanArtistName(artistName) {
-    if (!artistName) return 'Unknown Artist';
-    // Use the global normalizeArtistName from utils.js if available
-    if (typeof window.normalizeArtistName === 'function') {
-        return window.normalizeArtistName(artistName) || 'Unknown Artist';
-    }
-    return artistName;
 }
 
 export function updatePaginationControls(type) {

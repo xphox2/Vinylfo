@@ -1,11 +1,15 @@
 // Album detail page JavaScript
 
+import { normalizeArtistName, normalizeTitle } from './modules/utils.js';
+
 function cleanArtistName(artistName) {
     if (!artistName) return 'Unknown Artist';
-    if (typeof window.normalizeArtistName === 'function') {
-        return window.normalizeArtistName(artistName) || 'Unknown Artist';
-    }
-    return artistName;
+    return normalizeArtistName(artistName) || 'Unknown Artist';
+}
+
+function cleanTrackTitle(trackTitle) {
+    if (!trackTitle) return 'Unknown Track';
+    return normalizeTitle(trackTitle) || 'Unknown Track';
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -51,7 +55,7 @@ function loadAlbumDetail(albumId) {
                     ${tracks.map(track => `
                         <div class="track-item" onclick="window.location.href='/track/${track.id}'">
                             <div class="track-number">${track.track_number || ''}</div>
-                            <div class="track-title">${escapeHtml(track.title || 'Unknown Title')}</div>
+                            <div class="track-title">${escapeHtml(cleanTrackTitle(track.title) || 'Unknown Title')}</div>
                             <div class="track-duration">${formatDuration(track.duration)}</div>
                         </div>
                     `).join('')}

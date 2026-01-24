@@ -110,3 +110,6 @@ class TabSyncManager {
         this.broadcast('seek', { position });
     }
 }
+
+// Expose TabSyncManager globally for use in other scripts
+window.TabSyncManager = TabSyncManager;

@@ -5,6 +5,79 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1-alpha] - 2026-01-24
+
+### Added
+
+#### Track Title Normalization
+- **Added track title normalization across the application**: Applied `normalizeTitle()` consistently to remove edition suffixes and disambiguation markers from track names
+  - Removes edition suffixes: `(Remastered)`, `(Deluxe)`, `(Mono)`, `(Stereo)`, `(Anniversary)`, `(Expanded)`, etc.
+  - Removes disambiguation suffixes: `(2)`, `(3)`, etc.
+  - Example: `"Machine Gun Kelly (2)"` → `"Machine Gun Kelly"`, `"Song Title (Remastered 2021)"` → `"Song Title"`
+
+- **Updated `normalizeTitle()` function**: Extended to also strip disambiguation suffixes like `(2)`, `(3)`, matching the behavior of `normalizeArtistName()`
+  - File: `static/js/modules/utils.js`
+
+- **Added `cleanTrackTitle()` helper function**: Standardized track title cleaning across all UI components
+  - Files updated:
+    - `static/js/app-state.js` - Added and exported `cleanTrackTitle()` function
+    - `static/js/app.js` - Updated 5 track title displays to use `cleanTrackTitle()`
+    - `static/js/album-detail.js` - Updated track list display
+    - `static/js/playlist.js` - Updated track list and available tracks display
+    - `static/js/track-detail.js` - Updated track detail view
+    - `static/js/playback-dashboard.js` - Updated queue and current track display
+    - `static/js/search.js` - Updated album modal track display
+    - `static/js/video-feed.js` - Added `cleanTrackTitle()` helper
+    - `static/js/resolution-center.js` - Updated unprocessed tracks display
+
+- **Resolution Center consistency**: Applied `normalizeTitle()` to unprocessed track titles for consistent display with review queue
+
+### Changed
+
+#### Discogs Duration Search Enhancement
+- **Improved track duration lookup from Discogs**: Replaced limited search fallback with comprehensive master release checking
+  - **Before**: If main release lacked durations, searched Discogs (limited to 12 results, only checked 3 releases)
+  - **After**: Gets ALL releases from the master release and checks each one until finding one with durations
+  - More reliable: All releases from the master ARE the same album (no matching errors)
+  - Comprehensive: Checks every release, not just the first 3
+
+- **New `GetAllReleasesFromMaster()` function**: Fetches all releases for a master release in a single API call
+  - Returns up to 50 releases per master
+  - Includes release ID, title, year, and format
+  - File: `discogs/client.go`
+
+- **Enhanced `CrossReferenceTimestampsWithMaster()`**: Now iterates through ALL master releases to find one with track durations
+  - First checks main release from master
+  - If no durations, fetches all releases from master (1 API call)
+  - Iterates through each release until finding one with durations
+  - Matches tracks by name to preserve original track order
+  - File: `discogs/client.go`
+
+- **Added fallback search for deleted/private masters**: When a master release is no longer available (404), the system now searches Discogs for alternative releases with track durations
+  - Searches up to 2 pages (24 results) and checks up to 5 releases
+  - Uses title/artist similarity matching to find the right release
+  - Helps find durations even when the original master has been deleted
+  - Example: Big Thief U.F.O.F. master was deleted, but search finds release 13581607 with durations
+  - File: `discogs/client.go`
+
+### Fixed
+
+#### Log Cleanup Button
+- **Fixed "Clean Up Now" button not working**: Button now properly deletes log files
+  - **Before**: Respected retention count setting, deleted 0 files if under limit
+  - **After**: Force cleanup ignores retention count, deletes all but newest log file
+  - Retention count setting now only applies to automatic cleanup on startup
+  - "Clean Up Now" gives full manual control
+
+- **New `ForceCleanupLogs()` function**: Forces cleanup regardless of retention settings
+  - File: `utils/log_cleanup.go`
+  - Updated `CleanupLogs()` controller to use force cleanup
+  - File: `controllers/settings.go`
+
+---
+
+## [0.3.0-alpha] - 2026-01-23
+
 ### Added
 
 #### YouTube Video Icon on Tracks Page

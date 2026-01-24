@@ -1,4 +1,7 @@
 // Playback Dashboard JavaScript with Queue and Resume Support
+
+import { normalizeArtistName, normalizeTitle } from './modules/utils.js';
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Playback dashboard loaded');
 
@@ -24,11 +27,12 @@ function cleanAlbumTitle(albumTitle, trackTitle) {
 
 function cleanArtistName(artistName) {
     if (!artistName) return 'Unknown Artist';
-    // Use the global normalizeArtistName from utils.js if available
-    if (typeof window.normalizeArtistName === 'function') {
-        return window.normalizeArtistName(artistName) || 'Unknown Artist';
-    }
-    return artistName;
+    return normalizeArtistName(artistName) || 'Unknown Artist';
+}
+
+function cleanTrackTitle(trackTitle) {
+    if (!trackTitle) return 'Unknown Track';
+    return normalizeTitle(trackTitle) || 'Unknown Track';
 }
 
 // TabSyncManager is loaded from tab-sync-manager.js
@@ -101,7 +105,7 @@ class PlaybackManager {
                     youtube_video_id: data.track.youtube_video_id
                 });
                 
-                document.getElementById('track-title').textContent = data.track.title || 'Unknown Track';
+                document.getElementById('track-title').textContent = cleanTrackTitle(data.track.title) || 'Unknown Track';
                 document.getElementById('track-artist').textContent = cleanArtistName(data.track.album_artist);
                 document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(data.track.album_title, data.track.title);
                 document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(this.getEffectiveDuration());
@@ -856,7 +860,7 @@ class PlaybackManager {
             }
             item.innerHTML = `
                 <span class="queue-number">${globalIndex + 1}.</span>
-                <span class="queue-title">${this.escapeHtml(track.title || 'Unknown')}</span>
+                <span class="queue-title">${this.escapeHtml(cleanTrackTitle(track.title) || 'Unknown')}</span>
                 <span class="queue-album">${this.escapeHtml(cleanAlbumTitle(track.album_title, track.title) || 'Unknown Album')}</span>
                 <span class="queue-duration">${this.formatTime(track.duration || 0)}</span>
             `;
@@ -948,7 +952,7 @@ class PlaybackManager {
             fullTrack: track
         });
 
-        document.getElementById('track-title').textContent = track.title || 'Unknown Track';
+        document.getElementById('track-title').textContent = cleanTrackTitle(track.title) || 'Unknown Track';
         document.getElementById('track-artist').textContent = cleanArtistName(track.album_artist);
         document.getElementById('track-album').textContent = 'Album: ' + cleanAlbumTitle(track.album_title, track.title);
         document.getElementById('track-duration').textContent = 'Duration: ' + this.formatTime(this.getEffectiveDuration());

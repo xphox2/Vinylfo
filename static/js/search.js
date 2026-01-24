@@ -1,5 +1,7 @@
 const API_BASE = '/api';
 
+import { normalizeArtistName, normalizeTitle } from './modules/utils.js';
+
 class SearchManager {
     constructor() {
         this.currentPage = 1;
@@ -231,7 +233,7 @@ class SearchManager {
             tracks.forEach((track) => {
                 const side = track.side || track.position || '';
                 const duration = this.formatDuration(track.duration);
-                tracksHtml += `<li><span class="track-position">${side}</span> ${this.escapeHtml(track.title)} ${duration ? `<span class="track-duration">(${duration})</span>` : ''}</li>`;
+                tracksHtml += `<li><span class="track-position">${side}</span> ${this.escapeHtml(this.cleanTrackTitle(track.title))} ${duration ? `<span class="track-duration">(${duration})</span>` : ''}</li>`;
             });
             tracksHtml += '</ul>';
         }
@@ -265,10 +267,12 @@ class SearchManager {
 
     cleanArtistName(artistName) {
         if (!artistName) return 'Unknown Artist';
-        if (typeof window.normalizeArtistName === 'function') {
-            return window.normalizeArtistName(artistName) || 'Unknown Artist';
-        }
-        return artistName;
+        return normalizeArtistName(artistName) || 'Unknown Artist';
+    }
+
+    cleanTrackTitle(trackTitle) {
+        if (!trackTitle) return 'Unknown Track';
+        return normalizeTitle(trackTitle) || 'Unknown Track';
     }
 
     closeModal() {

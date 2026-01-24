@@ -54,6 +54,51 @@ func CleanupOldLogs(retentionCount int, logDir string) (int, error) {
 	return deleted, nil
 }
 
+// ForceCleanupLogs deletes old log files to keep only the specified number of files
+// This is used by the "Clean Up Now" button to force cleanup regardless of retention settings
+func ForceCleanupLogs(filesToKeep int, logDir string) (int, error) {
+	if filesToKeep <= 0 {
+		filesToKeep = 1
+	}
+
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		return 0, err
+	}
+
+	var logFiles []os.FileInfo
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, "vinylfo_") || strings.HasPrefix(name, "sync_debug_") {
+			if strings.HasSuffix(name, ".log") {
+				info, _ := entry.Info()
+				logFiles = append(logFiles, info)
+			}
+		}
+	}
+
+	if len(logFiles) <= filesToKeep {
+		return 0, nil
+	}
+
+	sort.Slice(logFiles, func(i, j int) bool {
+		return logFiles[i].ModTime().After(logFiles[j].ModTime())
+	})
+
+	deleted := 0
+	for i := filesToKeep; i < len(logFiles); i++ {
+		path := filepath.Join(logDir, logFiles[i].Name())
+		if err := os.Remove(path); err == nil {
+			deleted++
+		}
+	}
+
+	return deleted, nil
+}
+
 func GetLogFileCount(logDir string) (int, error) {
 	entries, err := os.ReadDir(logDir)
 	if err != nil {

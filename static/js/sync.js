@@ -1,5 +1,7 @@
 const API_BASE = '/api';
 
+import { normalizeArtistName } from './modules/utils.js';
+
 class SyncManager {
     constructor() {
         this.isRunning = false;
@@ -189,10 +191,7 @@ class SyncManager {
 
     cleanArtistName(artistName) {
         if (!artistName) return 'Unknown Artist';
-        if (typeof window.normalizeArtistName === 'function') {
-            return window.normalizeArtistName(artistName) || 'Unknown Artist';
-        }
-        return artistName;
+        return normalizeArtistName(artistName) || 'Unknown Artist';
     }
 
     async loadFolders() {

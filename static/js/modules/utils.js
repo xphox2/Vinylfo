@@ -267,10 +267,12 @@ export function normalizeArtistName(name) {
     return name.replace(/\s*\(\d+\)\s*$/, '').replace(/\s*\([^)]*(?:rapper|singer|artist|band|musician|producer|dj|DJ)\)\s*$/i, '').trim();
 }
 
-// Normalize title - removes edition suffixes like "(Remastered)", "(Deluxe)", etc.
+// Normalize title - removes edition suffixes like "(Remastered)", "(Deluxe)", etc. and disambiguation suffixes like "(2)"
 export function normalizeTitle(title) {
     if (!title) return '';
     let normalized = title;
+    // First remove disambiguation suffixes like "(2)", "(3)" - same as normalizeArtistName
+    normalized = normalized.replace(/\s*\(\d+\)\s*$/, '').trim();
     // Apply up to 3 times to handle multiple suffixes
     for (let i = 0; i < 3; i++) {
         const prev = normalized;
