@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -384,6 +385,7 @@ func (c *TrackController) SetYouTubeVideo(ctx *gin.Context) {
 			Status:         "matched",
 			MatchMethod:    "manual",
 		}
+		log.Printf("[DEBUG] SetYouTubeVideo: Creating new match for track %d with videoID=%s, status=%s", trackID, videoID, newMatch.Status)
 		if err := c.db.Create(&newMatch).Error; err != nil {
 			utils.InternalError(ctx, "Failed to create YouTube match")
 			return
@@ -392,6 +394,7 @@ func (c *TrackController) SetYouTubeVideo(ctx *gin.Context) {
 	} else {
 		existingMatch.YouTubeVideoID = videoID
 		existingMatch.Status = "matched"
+		log.Printf("[DEBUG] SetYouTubeVideo: Updating existing match for track %d with videoID=%s, status=%s", trackID, videoID, existingMatch.Status)
 		if err := c.db.Save(&existingMatch).Error; err != nil {
 			utils.InternalError(ctx, "Failed to update YouTube match")
 			return

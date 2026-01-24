@@ -464,6 +464,9 @@ func (c *PlaybackController) buildTrackResponse(track models.Track, album models
 	if result := c.db.Where("track_id = ? AND status = ?", track.ID, "matched").First(&youtubeMatch); result.Error == nil {
 		youtubeVideoDuration = youtubeMatch.VideoDuration
 		youtubeVideoID = youtubeMatch.YouTubeVideoID
+		log.Printf("[DEBUG] buildTrackResponse: Found YouTube match for track %d: videoID=%s, status=%s", track.ID, youtubeVideoID, youtubeMatch.Status)
+	} else {
+		log.Printf("[DEBUG] buildTrackResponse: No YouTube match found for track %d (status=matched). Error: %v", track.ID, result.Error)
 	}
 
 	return map[string]interface{}{
