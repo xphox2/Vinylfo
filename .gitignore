@@ -16,3 +16,10 @@ CLEANUP.md
 BUG.md
 data/
 tests/ALPHA_RELEASE_CHECKLIST.md
+*.syso
+version.res
+!vinylfo.exe.manifest
+version.rc
+*.syso
+*.syso
+rsrc_windows_amd64.syso

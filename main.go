@@ -148,6 +148,7 @@ func main() {
 
 	tmpl := template.Must(template.ParseFS(embeddedFiles,
 		"templates/header.html",
+		"templates/footer.html",
 		"templates/index.html",
 		"templates/search.html",
 		"templates/sync.html",

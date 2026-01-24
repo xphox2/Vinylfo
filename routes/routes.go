@@ -70,6 +70,13 @@ func SetupRoutes(r *gin.Engine) {
 		})
 	})
 
+	// Config endpoint for frontend (version info for footer, etc.)
+	r.GET("/api/config", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"version": Version,
+		})
+	})
+
 	r.GET("/health", func(c *gin.Context) {
 		sqlDB, err := db.DB()
 		if err != nil {
