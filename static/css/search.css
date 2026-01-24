@@ -405,3 +405,25 @@
     font-size: 0.85rem;
     margin: 0.75rem 0 0 0;
 }
+
+.no-connection {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+    grid-column: 2;
+}
+
+.no-connection p {
+    margin: 0.5rem 0;
+    font-size: 1rem;
+}
+
+.no-connection .hint {
+    font-size: 0.85rem;
+    color: #999;
+}
+
+.no-connection .error {
+    color: #dc3545;
+    font-weight: 600;
+}

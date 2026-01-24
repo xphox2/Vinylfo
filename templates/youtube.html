@@ -13,53 +13,22 @@
 {{ template "header" }}
 <main class="container">
     <div class="view">
-        <div class="view-header">
-            <h2>YouTube Playlist Manager</h2>
-            <div>
-                <button id="create-playlist-btn" class="btn btn-primary" style="background-color: #007bff;">+ Create Playlist</button>
+        <div id="playlists-view">
+            <div class="pagination-controls">
+                <div class="page-controls">
+                    <span id="playlist-page-info">Available YouTube Playlists</span>
+                </div>
+            </div>
+            <div id="playlists-container" class="playlist-list">
+                <div class="loading">Loading playlists...</div>
             </div>
         </div>
-
-        <div id="app-section">
-            <div class="sync-status-section">
-                <h4>Connection Status</h4>
-                <div id="connection-status" class="loading">Loading status...</div>
-            </div>
-
-            <div id="stats-section" class="sync-status-section" style="display: none;">
-            </div>
-
-            <div id="sync-actions" class="sync-actions-section" style="display: none;">
-                <button id="sync-all-btn" class="youtube-action-btn">Sync All Playlists</button>
-                <div class="sync-options">
-                    <label class="radio-label">
-                        <input type="checkbox" id="api-fallback" checked>
-                        <span>Use YouTube API as fallback</span>
-                    </label>
-                </div>
-            </div>
         
-            <div id="playlists-view">
-                <div id="playlists-container" class="playlist-list">
-                    <div class="loading">Loading playlists...</div>
-                </div>
-            </div>
-            
-            <div id="playlist-items-view" style="display: none;">
-                <button id="back-to-playlists" class="back-btn">&larr; Back to Playlists</button>
-                <h3 id="playlist-items-title">Playlist Videos</h3>
-                <div class="sync-actions-section" id="playlist-sync-actions" style="display: none;">
-                    <button id="sync-playlist-btn" class="youtube-action-btn">Sync This Playlist</button>
-                    <div class="sync-options">
-                        <label class="radio-label">
-                            <input type="checkbox" id="playlist-api-fallback" checked>
-                            <span>Use YouTube API as fallback</span>
-                        </label>
-                    </div>
-                </div>
-                <div id="playlist-items-container" class="playlist-list">
-                    <div class="loading">Loading videos...</div>
-                </div>
+        <div id="playlist-items-view" style="display: none;">
+            <button id="back-to-playlists" class="back-btn">&larr; Back to Playlists</button>
+            <h2 id="playlist-items-title" style="margin: 0 0 1rem 0; color: #333;"></h2>
+            <div id="playlist-items-container" class="playlist-list">
+                <div class="loading">Loading videos...</div>
             </div>
         </div>
     </div>
@@ -89,27 +58,6 @@
 const API_BASE = '/api/youtube';
 
 async function loadYouTubeData() {
-    const statusResponse = await fetch(`${API_BASE}/status`);
-    const status = await statusResponse.json();
-    const connectionStatus = document.getElementById('connection-status');
-    const statsSection = document.getElementById('stats-section');
-    const syncActions = document.getElementById('sync-actions');
-
-    if (!connectionStatus) {
-        return;
-    }
-
-    if (!status.db_connected || !status.connected) {
-        connectionStatus.innerHTML = '<p class="error-message"><strong>YouTube Not Connected</strong><br>Please connect your YouTube account in Settings.</p>';
-        statsSection.style.display = 'none';
-        syncActions.style.display = 'none';
-        return;
-    }
-
-    connectionStatus.innerHTML = '<p class="empty-state"><strong>Connected to YouTube</strong></p>';
-    statsSection.style.display = 'block';
-    syncActions.style.display = 'block';
-
     await loadPlaylists();
 }
 
@@ -141,9 +89,11 @@ async function loadPlaylists(container) {
                     ? `https://img.youtube.com/p/img/lg_${item.id}_default.jpg`
                     : 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4=';
                 playlistItem.innerHTML = `
-                    <img src="${thumbnailUrl}" alt="${escapeHtml(item.title)}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4='">
+                    <div class="playlist-cover-container">
+                        <img src="${thumbnailUrl}" alt="${escapeHtml(item.title)}" class="playlist-cover" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'playlist-cover-placeholder\\'>No Cover</div>';">
+                    </div>
                     <div class="playlist-info">
-                        <h4>${escapeHtml(item.title || 'Untitled')}</h4>
+                        <h3>${escapeHtml(item.title || 'Untitled')}</h3>
                         <p class="playlist-video-count">Loading...</p>
                     </div>
                     <div class="playlist-actions">
@@ -180,13 +130,11 @@ async function loadPlaylistItems(playlistId, playlistTitle) {
     const playlistsView = document.getElementById('playlists-view');
     const playlistItemsView = document.getElementById('playlist-items-view');
     const titleElement = document.getElementById('playlist-items-title');
-    const playlistSyncActions = document.getElementById('playlist-sync-actions');
 
     if (!container) return;
 
     playlistsView.style.display = 'none';
     playlistItemsView.style.display = 'block';
-    playlistSyncActions.style.display = 'block';
     titleElement.textContent = playlistTitle;
     container.innerHTML = '<div class="loading">Loading videos...</div>';
 
@@ -215,9 +163,11 @@ async function loadPlaylistItems(playlistId, playlistTitle) {
                     ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
                     : 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4=';
                 videoItem.innerHTML = `
-                    <img src="${thumbnailUrl}" alt="${escapeHtml(videoTitle)}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4='">
+                    <div class="video-cover-container">
+                        <img src="${thumbnailUrl}" alt="${escapeHtml(videoTitle)}" class="video-cover" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'video-cover-placeholder\\'>No Cover</div>';">
+                    </div>
                     <div class="video-info">
-                        <h4>${escapeHtml(videoTitle)}</h4>
+                        <h3>${escapeHtml(videoTitle)}</h3>
                         <p>${escapeHtml(channelTitle)}</p>
                     </div>
                 `;
@@ -416,20 +366,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const syncAllBtn = document.getElementById('sync-all-btn');
     if (syncAllBtn) {
         syncAllBtn.addEventListener('click', syncAllPlaylists);
-    }
-
-    const syncPlaylistBtn = document.getElementById('sync-playlist-btn');
-    if (syncPlaylistBtn) {
-        syncPlaylistBtn.addEventListener('click', () => {
-            const titleElement = document.getElementById('playlist-items-title');
-            if (titleElement) {
-                const playlistId = document.querySelector('#playlist-items-view')?.style.display !== 'none' 
-                    ? document.querySelector('.playlist-item')?.dataset?.playlistId : null;
-                if (playlistId) {
-                    syncPlaylist(playlistId);
-                }
-            }
-        });
     }
 
     const cancelBtn = document.getElementById('cancel-playlist');

@@ -65,8 +65,21 @@ class SearchManager {
 
         try {
             const response = await fetch(`${API_BASE}/discogs/search?q=${encodeURIComponent(query)}&page=${this.currentPage}`);
-            const data = await response.json();
 
+            if (response.status === 401) {
+                const error = await response.json();
+                this.showNotification(error.hint || 'Please connect your Discogs account in Settings', 'warning');
+                this.renderNoConnection();
+                return;
+            }
+
+            if (!response.ok) {
+                const error = await response.json();
+                this.showNotification(error.error || 'Search failed', 'error');
+                return;
+            }
+
+            const data = await response.json();
             this.totalPages = data.totalPages || 1;
             this.renderResults(data.results);
             this.renderPagination();
@@ -76,6 +89,18 @@ class SearchManager {
         } finally {
             this.showLoading(false);
         }
+    }
+
+    renderNoConnection() {
+        const container = document.getElementById('results-list');
+        container.innerHTML = '';
+        document.getElementById('results-empty').classList.add('hidden');
+        container.innerHTML = `
+            <div class="no-connection">
+                <p class="error">Discogs connection required</p>
+                <p class="hint">Go to Settings to connect your Discogs account</p>
+            </div>
+        `;
     }
 
     renderPagination() {

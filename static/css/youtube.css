@@ -90,6 +90,203 @@
     margin-top: 1rem;
 }
 
+.playlist-list {
+    background-color: white;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.playlist-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    min-height: 80px;
+}
+
+.playlist-item:hover {
+    background-color: #f9f9f9;
+}
+
+.playlist-item:last-child {
+    border-bottom: none;
+}
+
+.playlist-cover-container {
+    flex-shrink: 0;
+    margin-right: 1rem;
+}
+
+.playlist-cover {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 4px;
+    background-color: #f0f0f0;
+}
+
+.playlist-cover-placeholder {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f0f0;
+    border-radius: 4px;
+    color: #999;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+.playlist-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.playlist-info h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+    color: #333;
+}
+
+.playlist-info p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.video-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    min-height: 80px;
+}
+
+.video-item:hover {
+    background-color: #f9f9f9;
+}
+
+.video-item:last-child {
+    border-bottom: none;
+}
+
+.video-cover-container {
+    flex-shrink: 0;
+    margin-right: 1rem;
+}
+
+.video-cover {
+    width: 120px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 4px;
+    background-color: #f0f0f0;
+}
+
+.video-cover-placeholder {
+    width: 120px;
+    height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f0f0;
+    border-radius: 4px;
+    color: #999;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+.video-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.video-info h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+    color: #333;
+}
+
+.video-info p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.youtube-page-header {
+    margin-bottom: 1rem;
+}
+
+.youtube-page-header h2 {
+    margin: 0 0 0.5rem 0;
+    color: #333;
+}
+
+.back-btn {
+    background: none;
+    border: none;
+    color: #007bff;
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0;
+    margin-bottom: 1rem;
+}
+
+.back-btn:hover {
+    text-decoration: underline;
+}
+
+#playlist-items-title {
+    margin: 0 0 1rem 0;
+    color: #333;
+}
+
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0.5rem 0;
+}
+
+.page-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+#playlist-page-info, #videos-page-info {
+    color: #333;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.playlist-actions {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.btn-delete {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.btn-delete:hover {
+    background-color: #c82333;
+}
+
 .sync-options {
     margin-top: 0.75rem;
     font-size: 0.9rem;

@@ -183,7 +183,7 @@ func (c *DiscogsController) Search(ctx *gin.Context) {
 	}
 
 	if !config.IsDiscogsConnected {
-		ctx.JSON(400, gin.H{"error": "Discogs not connected"})
+		ctx.JSON(401, gin.H{"error": "Discogs connection required", "hint": "Connect your Discogs account in Settings to search"})
 		return
 	}
 
