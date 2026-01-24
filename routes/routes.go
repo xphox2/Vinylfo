@@ -122,6 +122,8 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/tracks/:id", trackController.GetTrackByID)
 	r.POST("/tracks", trackController.CreateTrack)
 	r.PUT("/tracks/:id", trackController.UpdateTrack)
+	r.PUT("/tracks/:id/youtube", trackController.SetYouTubeVideo)
+	r.DELETE("/tracks/:id/youtube", trackController.DeleteYouTubeVideo)
 	r.DELETE("/tracks/:id", trackController.DeleteTrack)
 
 	r.GET("/playback", playbackController.GetCurrent)

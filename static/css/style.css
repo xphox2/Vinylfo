@@ -218,6 +218,63 @@ h2 {
     background-color: #f9f9f9;
 }
 
+.track-video-icon {
+    width: 24px;
+    height: 24px;
+    margin-right: 1rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.track-video-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.track-video-icon--available {
+    color: #000;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.track-video-icon--available:hover {
+    color: #28a745;
+}
+
+.track-video-clear {
+    width: 24px;
+    height: 24px;
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #dc3545;
+    transition: opacity 0.2s ease;
+}
+
+.track-video-clear:hover {
+    opacity: 0.7;
+}
+
+.track-video-clear svg {
+    width: 18px;
+    height: 18px;
+}
+
+.track-video-icon--unavailable {
+    color: #ccc;
+    opacity: 0.5;
+    cursor: default;
+}
+
+.track-video-icon--unavailable:hover {
+    opacity: 0.7;
+}
+
 .track-cover-small {
     width: 50px;
     height: 50px;
@@ -493,6 +550,41 @@ h2 {
     border: 1px solid #ddd;
     border-radius: 3px;
     box-sizing: border-box;
+}
+
+.modal-content button {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    margin-right: 0.5rem;
+}
+
+.modal-content button[type="submit"],
+.modal-content button.primary {
+    background-color: #28a745;
+    color: white;
+}
+
+.modal-content button[type="submit"]:hover,
+.modal-content button.primary:hover {
+    background-color: #218838;
+}
+
+.modal-content button.secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.modal-content button.secondary:hover {
+    background-color: #5a6268;
+}
+
+.modal-error {
+    color: #dc3545;
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
 }
 
 .dragging {

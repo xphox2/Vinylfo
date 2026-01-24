@@ -16,6 +16,9 @@ for /f "tokens=1 delims=-" %%n in ("%VERSION%") do set FILE_VERSION=%%n
 
 echo Version: %VERSION% (file: %FILE_VERSION%)
 
+REM Create winres directory if it doesn't exist
+if not exist winres mkdir winres
+
 REM Copy icon for resource compiler
 set ICON_FILE=
 if exist icons\vinyl-icon.ico (

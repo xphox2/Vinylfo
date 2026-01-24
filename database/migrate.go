@@ -171,6 +171,33 @@ func InitDB() (*gorm.DB, error) {
 		}
 	}
 
+	// Migration: Add youtube_video_id column to track_youtube_matches if missing
+	var ytColumnCount int64
+	db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='track_youtube_matches'").Scan(&ytColumnCount)
+	if ytColumnCount > 0 {
+		db.Raw("SELECT COUNT(*) FROM pragma_table_info('track_youtube_matches') WHERE name='youtube_video_id'").Scan(&ytColumnCount)
+		if ytColumnCount == 0 {
+			log.Println("Adding youtube_video_id column to track_youtube_matches table...")
+			if err := db.Exec(`ALTER TABLE track_youtube_matches ADD COLUMN youtube_video_id VARCHAR(20) DEFAULT NULL`).Error; err != nil {
+				log.Printf("Warning: Failed to add youtube_video_id column: %v", err)
+			} else {
+				log.Println("youtube_video_id column added successfully")
+			}
+		}
+		// Fix any records that have NULL youtube_video_id but exist in the table
+		var nullCount int64
+		db.Raw("SELECT COUNT(*) FROM track_youtube_matches WHERE youtube_video_id IS NULL OR youtube_video_id = ''").Scan(&nullCount)
+		if nullCount > 0 {
+			log.Printf("Found %d records with NULL youtube_video_id - these may need to be re-saved", nullCount)
+		}
+		// Create index on youtube_video_id if not exists
+		if !migrator.HasIndex(&models.TrackYouTubeMatch{}, "idx_youtube_video_id") {
+			if err := db.Exec(`CREATE INDEX idx_youtube_video_id ON track_youtube_matches(youtube_video_id)`).Error; err != nil {
+				log.Printf("Note: Could not create youtube_video_id index: %v", err)
+			}
+		}
+	}
+
 	DB = db
 	log.Println("Database connected successfully")
 

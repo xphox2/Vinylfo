@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### Added
+
+#### YouTube Video Icon on Tracks Page
+
+- **Video Icon Column**: Added video camera icon column between album art and track title on the Tracks page (`/#tracks`)
+  - Black icon when YouTube video is matched/available
+  - Greyed out when no video is matched
+  - Green highlight on hover
+  - Click opens YouTube video in new browser window
+
+- **Manual YouTube URL Entry**: Click grey (unavailable) icon to open modal for manual YouTube URL entry
+  - Supports multiple YouTube URL formats: `youtube.com/watch?v=`, `youtu.be/`, `youtube.com/embed/`
+  - Validates URL format and extracts video ID
+  - Error message for invalid URLs
+  - Icon updates immediately after successful save
+
+- **Clear YouTube Video**: Red X icon appears to the left of video camera icon when video is saved
+  - Click to open confirmation modal
+  - Confirms clearing video for specific track
+  - Icon updates immediately after clearing
+
+#### New API Endpoints
+- `PUT /tracks/:id/youtube` - Set YouTube video for a track
+- `DELETE /tracks/:id/youtube` - Clear YouTube video for a track
+
+#### Database Changes
+- Added `youtube_video_id` column to `track_youtube_matches` table
+- Automatic migration on startup to add column if missing
+
 ### Fixed
 
 #### Discogs Sync Rate Limiting and Stall Issues

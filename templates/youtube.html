@@ -27,25 +27,6 @@
             </div>
 
             <div id="stats-section" class="sync-status-section" style="display: none;">
-                <h4>Sync Statistics</h4>
-                <div class="sync-stats-large">
-                    <div class="stat-box stat-matched">
-                        <span class="stat-number" id="stat-matched">0</span>
-                        <span class="stat-label">Matched</span>
-                    </div>
-                    <div class="stat-box stat-review">
-                        <span class="stat-number" id="stat-review">0</span>
-                        <span class="stat-label">Needs Review</span>
-                    </div>
-                    <div class="stat-box stat-unavailable">
-                        <span class="stat-number" id="stat-unavailable">0</span>
-                        <span class="stat-label">Unavailable</span>
-                    </div>
-                    <div class="stat-box stat-pending">
-                        <span class="stat-number" id="stat-pending">0</span>
-                        <span class="stat-label">Pending</span>
-                    </div>
-                </div>
             </div>
 
             <div id="sync-actions" class="sync-actions-section" style="display: none;">
@@ -129,40 +110,7 @@ async function loadYouTubeData() {
     statsSection.style.display = 'block';
     syncActions.style.display = 'block';
 
-    await loadSyncStats();
     await loadPlaylists();
-}
-
-async function loadSyncStats() {
-    try {
-        const response = await fetch(`${API_BASE}/playlists`);
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        if (!data.items) return;
-
-        let matched = 0, review = 0, unavailable = 0, pending = 0;
-
-        for (const playlist of data.items) {
-            const matchesResponse = await fetch(`${API_BASE}/matches/${playlist.id}`);
-            if (matchesResponse.ok) {
-                const matchesData = await matchesResponse.json();
-                for (const track of matchesData.tracks || []) {
-                    if (track.match_status === 'matched') matched++;
-                    else if (track.match_status === 'review') review++;
-                    else if (track.match_status === 'unavailable') unavailable++;
-                    else pending++;
-                }
-            }
-        }
-
-        document.getElementById('stat-matched').textContent = matched;
-        document.getElementById('stat-review').textContent = review;
-        document.getElementById('stat-unavailable').textContent = unavailable;
-        document.getElementById('stat-pending').textContent = pending;
-    } catch (err) {
-        console.error('Failed to load sync stats:', err);
-    }
 }
 
 async function loadPlaylists(container) {
@@ -401,7 +349,6 @@ async function syncAllPlaylists() {
         }
 
         showNotification('Sync started for all playlists', 'success');
-        setTimeout(loadSyncStats, 2000);
     } catch (err) {
         console.error('Failed to sync playlists:', err);
         showNotification('Failed to start sync', 'error');
@@ -418,7 +365,6 @@ async function syncPlaylist(playlistId) {
             body: JSON.stringify({ youtube_api_fallback: apiFallback })
         });
         showNotification('Sync started for playlist', 'success');
-        setTimeout(loadSyncStats, 2000);
     } catch (err) {
         console.error('Failed to sync playlist:', err);
         showNotification('Failed to start sync', 'error');

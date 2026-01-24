@@ -292,6 +292,15 @@ function renderTracks(tracks) {
         
         const item = document.createElement('div');
         item.className = 'track-item';
+        
+        const hasYouTubeVideo = track.youtube_video_id && track.youtube_video_id.trim() !== '';
+        
+        const videoIconClass = hasYouTubeVideo ? 'track-video-icon--available' : 'track-video-icon--unavailable';
+        const videoIconClick = hasYouTubeVideo ? `onclick="openYouTubeVideo('${track.youtube_video_id}'); return false;"` : `onclick="openYouTubeModal(${track.id}); return false;"`;
+        const videoIconTitle = hasYouTubeVideo ? 'Watch on YouTube' : 'Add YouTube video';
+        
+        const clearIconStyle = hasYouTubeVideo ? '' : 'display: none;';
+        
         item.innerHTML = `
             <div class="track-cover-small">
                 <img src="/albums/${track.album_id}/image" alt="" class="track-cover-img" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'track-cover-placeholder-small\\'>♪</div>';">
@@ -300,13 +309,25 @@ function renderTracks(tracks) {
                 <h3>${track.title || 'Unknown Title'}</h3>
                 <p>${cleanArtistName(track.album_artist)}</p>
             </div>
+            <div class="track-video-clear" style="${clearIconStyle}" onclick="openClearYouTubeModal(${track.id}, '${escapeHtml(track.title)}'); return false;" title="Clear YouTube video">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                </svg>
+            </div>
+            <div class="track-video-icon ${videoIconClass}" ${videoIconClick} title="${videoIconTitle}">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+                </svg>
+            </div>
             <div class="track-meta">
                 <p class="track-album-title">${displayAlbumTitle}</p>
                 <p class="track-duration">${formatDuration(track.duration) || ''}</p>
             </div>
         `;
-        item.addEventListener('click', function() {
-            window.location.href = '/track/' + track.id;
+        item.addEventListener('click', function(e) {
+            if (!e.target.closest('.track-video-icon') && !e.target.closest('.track-video-clear')) {
+                window.location.href = '/track/' + track.id;
+            }
         });
         list.appendChild(item);
     });
@@ -617,3 +638,222 @@ window.loadSessions = loadSessions;
 window.restoreSession = restoreSession;
 window.searchAlbums = searchAlbums;
 window.searchTracks = searchTracks;
+window.openYouTubeVideo = openYouTubeVideo;
+window.openYouTubeModal = openYouTubeModal;
+window.openClearYouTubeModal = openClearYouTubeModal;
+window.parseYouTubeVideoId = parseYouTubeVideoId;
+
+let currentTrackIdForYouTube = null;
+let currentTrackTitleForClear = null;
+
+function openYouTubeVideo(videoId) {
+    if (videoId) {
+        window.open('https://www.youtube.com/watch?v=' + videoId, '_blank');
+    }
+}
+
+function openYouTubeModal(trackId) {
+    currentTrackIdForYouTube = trackId;
+    const modal = document.getElementById('youtube-modal');
+    const input = document.getElementById('youtube-url-input');
+    const errorEl = document.getElementById('youtube-modal-error');
+    
+    if (modal && input && errorEl) {
+        input.value = '';
+        errorEl.textContent = '';
+        modal.style.display = 'flex';
+        input.focus();
+    }
+}
+
+function openClearYouTubeModal(trackId, trackTitle) {
+    currentTrackIdForYouTube = trackId;
+    currentTrackTitleForClear = trackTitle;
+    const modal = document.getElementById('youtube-clear-modal');
+    const titleEl = document.getElementById('clear-youtube-track-title');
+    const errorEl = document.getElementById('youtube-clear-modal-error');
+    
+    if (modal && titleEl && errorEl) {
+        titleEl.textContent = trackTitle || 'this track';
+        errorEl.textContent = '';
+        modal.style.display = 'flex';
+    }
+}
+
+function closeYouTubeModal() {
+    const modal = document.getElementById('youtube-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    currentTrackIdForYouTube = null;
+}
+
+function closeClearYouTubeModal() {
+    const modal = document.getElementById('youtube-clear-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    currentTrackIdForYouTube = null;
+    currentTrackTitleForClear = null;
+}
+
+function parseYouTubeVideoId(url) {
+    if (!url || typeof url !== 'string') {
+        return null;
+    }
+    
+    const patterns = [
+        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/,
+        /^([a-zA-Z0-9_-]{11})$/
+    ];
+    
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    
+    return null;
+}
+
+function saveYouTubeUrl() {
+    const input = document.getElementById('youtube-url-input');
+    const errorEl = document.getElementById('youtube-modal-error');
+    
+    if (!input || !errorEl || !currentTrackIdForYouTube) {
+        return;
+    }
+    
+    const url = input.value.trim();
+    const videoId = parseYouTubeVideoId(url);
+    
+    if (!videoId) {
+        errorEl.textContent = 'Please enter a valid YouTube URL';
+        return;
+    }
+    
+    fetch('/tracks/' + currentTrackIdForYouTube + '/youtube', {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ youtube_url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            errorEl.textContent = data.error;
+            return;
+        }
+        
+        closeYouTubeModal();
+        
+        if (pagination.track.query) {
+            searchTracks(pagination.track.query);
+        } else {
+            loadTracks();
+        }
+    })
+    .catch(error => {
+        console.error('Error saving YouTube URL:', error);
+        errorEl.textContent = 'Failed to save YouTube URL';
+    });
+}
+
+function confirmClearYouTube() {
+    if (!currentTrackIdForYouTube) {
+        return;
+    }
+    
+    const errorEl = document.getElementById('youtube-clear-modal-error');
+    
+    fetch('/tracks/' + currentTrackIdForYouTube + '/youtube', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            errorEl.textContent = data.error;
+            return;
+        }
+        
+        closeClearYouTubeModal();
+        
+        if (pagination.track.query) {
+            searchTracks(pagination.track.query);
+        } else {
+            loadTracks();
+        }
+    })
+    .catch(error => {
+        console.error('Error clearing YouTube URL:', error);
+        errorEl.textContent = 'Failed to clear YouTube URL';
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOMContentLoaded fired');
+    const modal = document.getElementById('youtube-modal');
+    const clearModal = document.getElementById('youtube-clear-modal');
+    const closeBtn = modal ? modal.querySelector('.close-modal') : null;
+    const clearCloseBtn = clearModal ? clearModal.querySelector('.close-modal') : null;
+    const cancelBtn = document.getElementById('cancel-youtube-url');
+    const saveBtn = document.getElementById('save-youtube-url');
+    const input = document.getElementById('youtube-url-input');
+    const clearCancelBtn = document.getElementById('cancel-clear-youtube');
+    const clearConfirmBtn = document.getElementById('confirm-clear-youtube');
+    
+    console.log('Modal elements:', { modal: !!modal, closeBtn: !!closeBtn, cancelBtn: !!cancelBtn, saveBtn: !!saveBtn, input: !!input });
+    
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeYouTubeModal);
+    }
+    
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', closeYouTubeModal);
+    }
+    
+    if (saveBtn) {
+        saveBtn.addEventListener('click', saveYouTubeUrl);
+    }
+    
+    if (input) {
+        input.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                saveYouTubeUrl();
+            }
+        });
+    }
+    
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeYouTubeModal();
+            }
+        });
+    }
+    
+    if (clearCloseBtn) {
+        clearCloseBtn.addEventListener('click', closeClearYouTubeModal);
+    }
+    
+    if (clearCancelBtn) {
+        clearCancelBtn.addEventListener('click', closeClearYouTubeModal);
+    }
+    
+    if (clearConfirmBtn) {
+        clearConfirmBtn.addEventListener('click', confirmClearYouTube);
+    }
+    
+    if (clearModal) {
+        clearModal.addEventListener('click', function(e) {
+            if (e.target === clearModal) {
+                closeClearYouTubeModal();
+            }
+        });
+    }
+});

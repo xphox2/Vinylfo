@@ -85,6 +85,31 @@
         <div id="sessions-list"></div>
     </div>
 </main>
+<div id="youtube-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h3>Add YouTube Video</h3>
+        <p>Enter a YouTube URL for this track:</p>
+        <input type="text" id="youtube-url-input" placeholder="https://youtube.com/watch?v=...">
+        <div style="margin-top: 1rem;">
+            <button type="button" id="save-youtube-url" class="primary">Save</button>
+            <button type="button" class="secondary" id="cancel-youtube-url">Cancel</button>
+        </div>
+        <p id="youtube-modal-error" class="modal-error"></p>
+    </div>
+</div>
+<div id="youtube-clear-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close-modal" id="close-youtube-clear-modal">&times;</span>
+        <h3>Clear YouTube Video</h3>
+        <p>Are you sure you want to clear the YouTube video for <span id="clear-youtube-track-title"></span>?</p>
+        <div style="margin-top: 1rem;">
+            <button type="button" id="confirm-clear-youtube" class="primary">Clear</button>
+            <button type="button" class="secondary" id="cancel-clear-youtube">Cancel</button>
+        </div>
+        <p id="youtube-clear-modal-error" class="modal-error"></p>
+    </div>
+</div>
 {{ template "footer" }}
 <script type="module" src="/static/js/app.js"></script>
 </body>
