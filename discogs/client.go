@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1508,6 +1509,10 @@ func (c *Client) CrossReferenceTimestampsWithMaster(title, artist string, curren
 			releasesChecked++
 			altTracks, err := c.GetTracksForAlbum(resultID)
 			if err != nil {
+				if errors.Is(err, ErrRateLimited) {
+					logToFile("CrossReferenceTimestamps: Rate limited while fetching release %d, returning error to allow sync to pause and resume", resultID)
+					return currentTracks, err
+				}
 				logToFile("CrossReferenceTimestamps: Failed to fetch tracks for release %d: %v", resultID, err)
 				continue
 			}

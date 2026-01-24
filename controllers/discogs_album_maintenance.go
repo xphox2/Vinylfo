@@ -10,6 +10,7 @@ import (
 	"vinylfo/services"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func (c *DiscogsController) FetchUsername(ctx *gin.Context) {
@@ -191,7 +192,6 @@ func (c *DiscogsController) DeleteUnlinkedAlbums(ctx *gin.Context) {
 	var input struct {
 		AlbumIDs []uint `json:"album_ids"`
 	}
-
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		ctx.JSON(400, gin.H{"error": "Invalid request body"})
 		return
@@ -202,43 +202,69 @@ func (c *DiscogsController) DeleteUnlinkedAlbums(ctx *gin.Context) {
 		return
 	}
 
-	log.Printf("DeleteUnlinkedAlbums: Deleting %d albums", len(input.AlbumIDs))
+	var deletedTracks int64
+	var deletedAlbums int64
+	var err error
 
-	deleted := 0
-	failed := 0
-
-	for _, albumID := range input.AlbumIDs {
-		tx := c.db.Begin()
-
-		if err := tx.Where("album_id = ?", albumID).Delete(&models.Track{}).Error; err != nil {
-			log.Printf("DeleteUnlinkedAlbums: Failed to delete tracks for album %d: %v", albumID, err)
-			tx.Rollback()
-			failed++
-			continue
-		}
-
-		if err := tx.Delete(&models.Album{}, albumID).Error; err != nil {
-			log.Printf("DeleteUnlinkedAlbums: Failed to delete album %d: %v", albumID, err)
-			tx.Rollback()
-			failed++
-			continue
-		}
-
-		if err := tx.Commit().Error; err != nil {
-			log.Printf("DeleteUnlinkedAlbums: Failed to commit deletion for album %d: %v", albumID, err)
-			failed++
-			continue
-		}
-
-		deleted++
-		log.Printf("DeleteUnlinkedAlbums: Deleted album %d", albumID)
+	tx := c.db.Begin()
+	if tx.Error != nil {
+		ctx.JSON(500, gin.H{"error": "Failed to start transaction"})
+		return
 	}
 
-	log.Printf("DeleteUnlinkedAlbums: Completed - deleted=%d, failed=%d", deleted, failed)
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
 
+	// Delete tracks for the albums
+	deletedTracks, err = deleteTracksForAlbums(tx, input.AlbumIDs)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": fmt.Sprintf("Failed to delete tracks: %v", err)})
+		return
+	}
+
+	// Delete the albums
+	deletedAlbums, err = deleteAlbumsByID(tx, input.AlbumIDs)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": fmt.Sprintf("Failed to delete albums: %v", err)})
+		return
+	}
+
+	if err = tx.Commit().Error; err != nil {
+		ctx.JSON(500, gin.H{"error": fmt.Sprintf("Failed to commit transaction: %v", err)})
+		return
+	}
+
+	log.Printf("DeleteUnlinkedAlbums: Deleted %d albums and %d tracks", deletedAlbums, deletedTracks)
 	ctx.JSON(200, gin.H{
-		"message": fmt.Sprintf("Deleted %d albums, %d failed", deleted, failed),
-		"deleted": deleted,
-		"failed":  failed,
+		"message":       fmt.Sprintf("Deleted %d albums and %d tracks", deletedAlbums, deletedTracks),
+		"deletedAlbums": deletedAlbums,
+		"deletedTracks": deletedTracks,
+	})
+}
+
+func deleteTracksForAlbums(tx *gorm.DB, albumIDs []uint) (int64, error) {
+	result := tx.Where("album_id IN ?", albumIDs).Delete(&models.Track{})
+	return result.RowsAffected, result.Error
+}
+
+func deleteAlbumsByID(tx *gorm.DB, albumIDs []uint) (int64, error) {
+	result := tx.Where("id IN ?", albumIDs).Delete(&models.Album{})
+	return result.RowsAffected, result.Error
+}
+
+// CleanupOrphanedTracks removes tracks with invalid data (album_id=0 or empty title)
+func (c *DiscogsController) CleanupOrphanedTracks(ctx *gin.Context) {
+	importer := services.NewAlbumImporter(c.db, nil)
+	deletedCount, err := importer.CleanupOrphanedTracks()
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": fmt.Sprintf("Failed to cleanup orphaned tracks: %v", err)})
+		return
+	}
+	ctx.JSON(200, gin.H{
+		"message":      fmt.Sprintf("Deleted %d orphaned tracks", deletedCount),
+		"deletedCount": deletedCount,
 	})
 }

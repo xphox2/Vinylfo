@@ -52,6 +52,7 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 	var savedProcessed int
 	var savedTotalAlbums int
 	var savedLastActivity time.Time
+	var savedStatus string
 
 	ctxDB, cancelDB := context.WithTimeout(ctx.Request.Context(), 150*time.Millisecond)
 	defer cancelDB()
@@ -70,6 +71,7 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 			savedProcessed = savedProgress.Processed
 			savedTotalAlbums = savedProgress.TotalAlbums
 			savedLastActivity = savedProgress.LastActivityAt
+			savedStatus = savedProgress.Status
 		}
 	}
 
@@ -131,7 +133,7 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 		AnonRemaining:        state.AnonRemaining,
 		LastBatch:            state.LastBatch,
 		HasSavedProgress:     hasSavedProgress,
-		SavedStatus:          "running",
+		SavedStatus:          savedStatus,
 		SavedFolderID:        savedProgress.FolderID,
 		SavedFolderName:      savedFolderName,
 		SavedProcessed:       savedProcessed,

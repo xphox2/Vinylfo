@@ -211,6 +211,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/api/discogs/refresh-tracks", discogsController.RefreshTracks)
 	r.GET("/api/discogs/unlinked-albums", discogsController.FindUnlinkedAlbums)
 	r.POST("/api/discogs/unlinked-albums/delete", discogsController.DeleteUnlinkedAlbums)
+	r.POST("/api/discogs/cleanup-orphaned-tracks", discogsController.CleanupOrphanedTracks)
 
 	r.GET("/api/settings", settingsController.Get)
 	r.PUT("/api/settings", settingsController.Update)

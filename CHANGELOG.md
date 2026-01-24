@@ -74,6 +74,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated `CleanupLogs()` controller to use force cleanup
   - File: `controllers/settings.go`
 
+#### Discogs Sync Rate Limit Handling
+- **Fixed rate limit errors during track duration lookup**: When searching for alternative releases with track durations, rate limit errors are now properly propagated to trigger sync pause/resume
+  - **Before**: After hitting 429, all subsequent `GetTracksForAlbum` calls failed immediately with "already rate limited" errors
+  - **After**: Rate limit errors are returned to the caller, allowing the sync worker callback to pause the sync and resume after the rate limit resets
+  - CrossReferenceTimestamps returns rate limit errors instead of silently continuing
+  - FetchAndSaveTracks propagates rate limit errors to enable retry logic
+  - Files: `discogs/client.go`, `services/album_import.go`
+
+- **Fixed Processed count exceeding Total albums**: When track fetch failed due to rate limits, the album was deleted but `Processed` was still incremented
+  - **Before**: Failed albums counted towards processed total, causing `Processed` to exceed `Total` when albums were retried
+  - **After**: `Processed` only increments for successfully synced albums
+  - Added check before album processing to detect rate limits and pause sync
+  - Added check after processAlbum returns to break loop if paused during processing
+  - When track fetch fails due to rate limit, the album is removed from batch, status is set to paused, and we return early
+  - On resume, the failed album is retried without double-counting
+  - File: `services/sync_worker.go`
+
+- **Fixed tracks with empty titles**: Discogs API sometimes returns tracks with empty titles
+  - **Before**: Tracks with empty titles were created, displaying as "Unknown Track" in the UI
+  - **After**: Added validation to skip creating tracks with empty titles during sync
+  - Both `CreateAlbum` and `FetchAndSaveTracks` now skip empty-title tracks
+  - File: `services/album_import.go`
+
 ---
 
 ## [0.3.0-alpha] - 2026-01-23

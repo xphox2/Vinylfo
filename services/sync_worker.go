@@ -152,6 +152,13 @@ func (w *SyncWorker) Run() {
 			state.IsRunning(), state.IsPaused(), state.Processed,
 			state.LastBatch != nil && lastBatchAlbums > 0, lastBatchAlbums)
 
+		// Check if we've exceeded total - safety check
+		if state.Total > 0 && state.Processed >= state.Total {
+			w.logToFile("Sync: Processed (%d) >= Total (%d), marking complete", state.Processed, state.Total)
+			w.markComplete(state)
+			return
+		}
+
 		if !state.IsActive() {
 			w.logToFile("Sync: complete (idle), Processed=%d/%d", state.Processed, state.Total)
 			return
@@ -226,8 +233,23 @@ func (w *SyncWorker) Run() {
 
 		w.logToFile("Sync: processing batch of %d albums, Processed=%d/%d", len(currentReleases), state.Processed, state.Total)
 
+		// Safety check before processing batch
+		if state.Total > 0 && state.Processed >= state.Total {
+			w.logToFile("Sync: Processed (%d) >= Total (%d) before batch, marking complete", state.Processed, state.Total)
+			w.markComplete(state)
+			continue
+		}
+
 		// Process each album with context cancellation support
 		for _, album := range currentReleases {
+			// Safety check before each album
+			currentCheck := w.stateManager.GetState()
+			if currentCheck.Total > 0 && currentCheck.Processed >= currentCheck.Total {
+				w.logToFile("Sync: Processed (%d) >= Total (%d) before album, marking complete", currentCheck.Processed, currentCheck.Total)
+				w.markComplete(currentCheck)
+				return
+			}
+
 			select {
 			case <-w.ctx.Done():
 				w.logToFile("Sync: context cancelled during album processing")
@@ -235,7 +257,7 @@ func (w *SyncWorker) Run() {
 			default:
 			}
 
-			currentCheck := w.stateManager.GetState()
+			currentCheck = w.stateManager.GetState()
 			if !currentCheck.IsActive() {
 				return
 			}
@@ -244,7 +266,21 @@ func (w *SyncWorker) Run() {
 				break // Exit album loop, go back to main loop to wait
 			}
 
+			// Check if rate limited before processing
+			if w.client.RateLimiter.IsRateLimited() {
+				w.logToFile("Sync: rate limited during album processing, pausing sync")
+				w.stateManager.SetStatus(sync.SyncStatusPaused)
+				break
+			}
+
 			w.processAlbum(album, state)
+
+			// Check if we got paused during album processing
+			state = w.stateManager.GetState()
+			if state.IsPaused() {
+				w.logToFile("Sync: paused during album processing, waiting for resume")
+				break
+			}
 
 			w.stateManager.UpdateState(func(s *sync.SyncState) {
 				s.LastActivity = time.Now()
@@ -648,12 +684,28 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 						ErrorMsg:   "Deleted album after track fetch failure",
 					})
 				}
-			} else {
-				w.logToFile("processSyncBatches: Successfully synced album with tracks: %s - %s", artist, title)
+				// Don't increment Processed for failed albums - they may be retried
+				// Remove from batch but don't save progress (so we retry on resume)
+				w.stateManager.UpdateState(func(s *sync.SyncState) {
+					w.removeFirstAlbumFromBatch(s)
+				})
+				w.progressService.Save(w.stateManager.GetState())
+				w.logToFile("processSyncBatches: Rate limited, pausing sync to wait for reset")
+				w.stateManager.SetStatus(sync.SyncStatusPaused)
+				return // Exit to main loop which will wait for resume
 			}
+			w.logToFile("processSyncBatches: Successfully synced album with tracks: %s - %s", artist, title)
 		}
 
 		w.stateManager.UpdateState(func(s *sync.SyncState) {
+			// Check if we've exceeded total - this can happen when processing across pages/folders
+			if s.Processed >= s.Total && s.Total > 0 {
+				w.logToFile("processSyncBatches: WARNING - Processed (%d) >= Total (%d), marking sync complete", s.Processed, s.Total)
+				s.Status = sync.SyncStatusIdle
+				s.LastBatch = nil
+				s.LastActivity = time.Time{}
+				return
+			}
 			s.Processed++
 		})
 		w.progressService.Save(w.stateManager.GetState())
@@ -714,6 +766,14 @@ func (w *SyncWorker) updateExistingAlbum(existingAlbum *models.Album, title, art
 	}
 
 	w.stateManager.UpdateState(func(s *sync.SyncState) {
+		// Check if we've exceeded total - this can happen when processing across pages/folders
+		if s.Processed >= s.Total && s.Total > 0 {
+			w.logToFile("Sync: WARNING - Processed (%d) >= Total (%d), marking sync complete", s.Processed, s.Total)
+			s.Status = sync.SyncStatusIdle
+			s.LastBatch = nil
+			s.LastActivity = time.Time{}
+			return
+		}
 		s.Processed++
 	})
 	w.progressService.Save(w.stateManager.GetState())

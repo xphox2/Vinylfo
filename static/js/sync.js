@@ -83,8 +83,8 @@ class SyncManager {
                         document.getElementById('pause-sync').textContent = 'Cancel';
                         document.getElementById('pause-sync').classList.remove('btn-success');
                         document.getElementById('pause-sync').classList.add('btn-danger');
-                    } else if (progress.has_saved_progress) {
-                        console.log('checkConnection: has saved progress, showing paused state');
+                    } else if (progress.has_saved_progress && (progress.saved_status === 'running' || progress.saved_status === 'paused')) {
+                        console.log('checkConnection: has saved progress with status=' + progress.saved_status + ', showing paused state');
                         this.isRunning = true;
                         this.isPaused = true;
                         this.showSyncPaused();

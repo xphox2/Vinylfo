@@ -32,6 +32,42 @@ func NewAlbumImporter(db *gorm.DB, client *discogs.Client) *AlbumImporter {
 	}
 }
 
+// CleanupOrphanedTracks removes tracks with invalid data (album_id=0 or empty title)
+// This is a safety net for edge cases where tracks may have been created without proper album association
+func (i *AlbumImporter) CleanupOrphanedTracks() (int64, error) {
+	// First, log how many orphaned tracks we're about to delete for diagnostics
+	var countBefore int64
+	i.db.Model(&models.Track{}).Where("album_id = ? OR TRIM(title) = ?", 0, "").Count(&countBefore)
+
+	if countBefore > 0 {
+		log.Printf("CleanupOrphanedTracks: Found %d orphaned tracks (album_id=0 or empty title) - investigating root cause", countBefore)
+
+		// Log sample of orphaned tracks for debugging
+		var sampleTracks []models.Track
+		i.db.Where("album_id = ? OR TRIM(title) = ?", 0, "").Limit(5).Find(&sampleTracks)
+		for _, track := range sampleTracks {
+			log.Printf("CleanupOrphanedTracks SAMPLE: id=%d, album_id=%d, title='%s', created_at=%v",
+				track.ID, track.AlbumID, track.Title, track.CreatedAt)
+		}
+
+		// Log albums that might be missing
+		var orphanAlbumIDs []uint
+		i.db.Model(&models.Track{}).Where("album_id = ?", 0).Pluck("id", &orphanAlbumIDs)
+		if len(orphanAlbumIDs) > 0 {
+			log.Printf("CleanupOrphanedTracks: Tracks with album_id=0 have IDs: %v", orphanAlbumIDs)
+		}
+	}
+
+	var result *gorm.DB
+	result = i.db.Where("album_id = ? OR TRIM(title) = ?", 0, "").Delete(&models.Track{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	deletedCount := result.RowsAffected
+	log.Printf("CleanupOrphanedTracks: Deleted %d orphaned tracks (album_id=0 or empty title)", deletedCount)
+	return deletedCount, nil
+}
+
 // AlbumInput represents the input data for creating an album
 type AlbumInput struct {
 	Title       string
@@ -210,6 +246,19 @@ func (i *AlbumImporter) CreateAlbumWithTracks(input AlbumInput, tracks []TrackIn
 
 	// Create tracks
 	for _, trackInput := range tracks {
+		// Skip tracks with empty titles
+		if strings.TrimSpace(trackInput.Title) == "" {
+			log.Printf("CreateAlbum: Skipping track with empty title for album %s - %s", album.Title, album.Artist)
+			continue
+		}
+
+		// Safety check
+		if album.ID == 0 {
+			log.Printf("CreateAlbum ERROR: album.ID is 0, skipping track creation")
+			continue
+		}
+
+		log.Printf("CreateAlbum: Creating track '%s' for album_id=%d", trackInput.Title, album.ID)
 		track := models.Track{
 			AlbumID:     album.ID,
 			Title:       trackInput.Title,
@@ -294,6 +343,11 @@ func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID 
 		log.Printf("FetchAndSaveTracks: No durations found for %s - %s (release %d, master %d), attempting cross-reference", artist, albumTitle, discogsID, masterID)
 		// Use master_id to check master's main release first before falling back to search
 		crossRefTracks, crossErr := i.client.CrossReferenceTimestampsWithMaster(albumTitle, artist, tracks, masterID)
+		if crossErr != nil {
+			if strings.Contains(crossErr.Error(), "rate limited") {
+				return false, fmt.Sprintf("Failed to fetch tracks: %v", crossErr)
+			}
+		}
 		if crossErr == nil && len(crossRefTracks) > 0 {
 			hasDurations = false
 			for _, track := range crossRefTracks {
@@ -360,12 +414,6 @@ func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID 
 		}
 		duration := parseDuration(track["duration"])
 
-		// Debug: show all keys and values in the track map
-		log.Printf("FetchAndSaveTracks DEBUG: track map has %d keys", len(track))
-		for k, v := range track {
-			log.Printf("FetchAndSaveTracks DEBUG: key=%s value=%v type=%T", k, v, v)
-		}
-
 		// Get track_number - use default 0 if not present or wrong type
 		trackNumber := 0
 		switch tn := track["track_number"].(type) {
@@ -391,6 +439,18 @@ func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID 
 		log.Printf("FetchAndSaveTracks: title=%s, position=%s, track_number=%d, disc_number=%d",
 			title, position, trackNumber, discNumber)
 
+		// Skip tracks with empty titles
+		if strings.TrimSpace(title) == "" {
+			log.Printf("FetchAndSaveTracks: Skipping track with empty title for album %s - %s", albumTitle, artist)
+			continue
+		}
+
+		// Safety check: ensure albumID is valid
+		if albumID == 0 {
+			log.Printf("FetchAndSaveTracks ERROR: albumID is 0, skipping track creation for %s - %s", title, albumTitle)
+			continue
+		}
+
 		newTrack := models.Track{
 			AlbumID:     albumID,
 			Title:       title,
@@ -400,6 +460,9 @@ func (i *AlbumImporter) FetchAndSaveTracks(db *gorm.DB, albumID uint, discogsID 
 			Side:        position,
 			Position:    position,
 		}
+
+		log.Printf("FetchAndSaveTracks: Creating track '%s' for album_id=%d (album: %s - %s)",
+			title, albumID, albumTitle, artist)
 
 		if err := db.Create(&newTrack).Error; err != nil {
 			errMsg := fmt.Sprintf("Failed to create track %s: %v", title, err)
