@@ -448,9 +448,7 @@ func (w *SyncWorker) fetchNextBatch(page, folderID int, state sync.SyncState) ([
 	w.logToFile("processSyncBatches: fetched %d albums from page %d folder %d", len(releases), page, folderID)
 
 	if len(releases) < w.config.BatchSize {
-		w.logToFile("processSyncBatches: received fewer albums than page size (%d < %d), sync complete", len(releases), w.config.BatchSize)
-		w.markComplete(state)
-		return nil, true
+		w.logToFile("processSyncBatches: received fewer albums than page size (%d < %d), last page detected", len(releases), w.config.BatchSize)
 	}
 
 	apiRem := w.client.GetAPIRemaining()
@@ -519,11 +517,15 @@ func (w *SyncWorker) handleEmptyReleases(page int, state sync.SyncState) ([]map[
 
 	// Update total to reflect actual processed count
 	checkState := w.stateManager.GetState()
-	if checkState.Processed > checkState.Total {
+	uniqueProcessed := checkState.UniqueProcessed
+	if uniqueProcessed == 0 {
+		uniqueProcessed = checkState.Processed
+	}
+	if uniqueProcessed > checkState.Total {
 		w.stateManager.UpdateState(func(s *sync.SyncState) {
-			s.Total = checkState.Processed
+			s.Total = uniqueProcessed
 		})
-		w.logToFile("processSyncBatches: adjusted total to %d (was %d)", checkState.Processed, checkState.Total)
+		w.logToFile("processSyncBatches: adjusted total to %d (was %d)", uniqueProcessed, checkState.Total)
 	}
 
 	// Handle empty page - move to next folder or complete
@@ -848,6 +850,7 @@ func (w *SyncWorker) updateExistingAlbum(existingAlbum *models.Album, title, art
 			return
 		}
 		s.Processed++
+		s.UniqueProcessed++
 		// Mark this album as processed to avoid re-processing after rate limit
 		if discogsID > 0 {
 			if s.ProcessedIDs == nil {
@@ -917,7 +920,7 @@ func (w *SyncWorker) markComplete(state sync.SyncState) {
 
 	w.stateManager.UpdateState(func(s *sync.SyncState) {
 		s.Status = sync.SyncStatusIdle
-		s.Total = state.Processed
+		s.Total = state.Total
 		s.LastBatch = nil
 		s.LastActivity = time.Time{}
 	})

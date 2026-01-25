@@ -25,7 +25,7 @@ func (s *SyncProgressService) Load(state sync.SyncState) *models.SyncProgress {
 	var progress models.SyncProgress
 
 	// Use raw SQL with a short timeout to avoid hanging on locked tables
-	err := s.db.Raw("SELECT id, folder_id, folder_name, folder_index, current_page, processed, total_albums, last_activity_at, status, last_batch_json, sync_mode FROM sync_progresses ORDER BY id DESC LIMIT 1").Scan(&progress).Error
+	err := s.db.Raw("SELECT id, folder_id, folder_name, folder_index, current_page, processed, total_albums, last_activity_at, status, last_batch_json, sync_mode, processed_ids_json FROM sync_progresses ORDER BY id DESC LIMIT 1").Scan(&progress).Error
 
 	if err != nil || progress.ID == 0 {
 		return nil
