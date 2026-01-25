@@ -63,10 +63,8 @@ class SyncManager {
                             this.showSyncPaused(shouldPoll);
                             // If rate-limited, update the UI to show countdown
                             if (progress.is_rate_limited) {
-                                this.startRateLimitCountdown(progress.processed || 0, progress.total || 0);
-                                document.getElementById('pause-sync').textContent = 'Cancel';
-                                document.getElementById('pause-sync').classList.remove('btn-success');
-                                document.getElementById('pause-sync').classList.add('btn-danger');
+                                this.wasRateLimited = true;
+                                this.rateLimitSecondsLeft = progress.rate_limit_seconds_left || 60;
                             }
                         } else {
                             this.showSyncRunning();
@@ -79,10 +77,6 @@ class SyncManager {
                         this.wasRateLimited = true;
                         this.rateLimitSecondsLeft = progress.rate_limit_seconds_left || 60;
                         this.showSyncPaused(true); // Start polling to detect resume
-                        this.startRateLimitCountdown(progress.processed || 0, progress.total || 0);
-                        document.getElementById('pause-sync').textContent = 'Cancel';
-                        document.getElementById('pause-sync').classList.remove('btn-success');
-                        document.getElementById('pause-sync').classList.add('btn-danger');
                     } else if (progress.has_saved_progress && (progress.saved_status === 'running' || progress.saved_status === 'paused')) {
                         console.log('checkConnection: has saved progress with status=' + progress.saved_status + ', showing paused state');
                         this.isRunning = true;
@@ -630,9 +624,7 @@ class SyncManager {
                 if (progress.is_rate_limited) {
                     this.rateLimitSecondsLeft = progress.rate_limit_seconds_left || 60;
                     this.startRateLimitCountdown(processed, total);
-                    document.getElementById('pause-sync').textContent = 'Cancel';
-                    document.getElementById('pause-sync').classList.remove('btn-warning');
-                    document.getElementById('pause-sync').classList.add('btn-danger');
+                    // Keep button as Resume (paused state) - use Cancel button to cancel sync
                     // CRITICAL: Keep polling active during rate limit to detect when it clears
                     if (!this.pollingActive) {
                         console.log('pollProgress: rate limited - ensuring polling stays active');
@@ -692,6 +684,15 @@ class SyncManager {
                         console.log('pollProgress: rate limit cleared but still paused, calling resumeSync');
                         this.wasRateLimited = false;
                         this.resumeSync();
+                    } else {
+                        // Rate limit cleared and backend auto-resumed (is_paused: false, is_running may be false initially)
+                        console.log('pollProgress: rate limit cleared, backend auto-resumed, updating paused state');
+                        this.isPaused = false;
+                        this.wasRateLimited = false;
+                        this.stopRateLimitCountdown();
+                        document.getElementById('pause-sync').textContent = 'Pause';
+                        document.getElementById('pause-sync').classList.remove('btn-success', 'btn-danger');
+                        document.getElementById('pause-sync').classList.add('btn-warning');
                     }
                 }
             }
