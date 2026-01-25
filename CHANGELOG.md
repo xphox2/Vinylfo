@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2-alpha] - 2026-01-25
+
+### Fixed
+
+#### YouTube Match Icon Not Showing on Tracks Page
+
+- **Fixed YouTube matches not displaying on Tracks page**: After running YouTube scan, matched tracks were not showing the black video icon on the tracks page (`/#tracks`)
+- **Root cause**: GORM auto-converts `YouTubeVideoID` to `you_tube_video_id` (snake_case), but a migration added `youtube_video_id` column separately
+  - Data was written to `you_tube_video_id` column
+  - Queries looked for `youtube_video_id` column (which was NULL)
+  - Result: Empty `youtube_video_id` values in all queries
+
+- **Database migration fix**: Added migration to copy data from `you_tube_video_id` to `youtube_video_id` and drop the incorrectly named column
+  - File: `database/migrate.go`
+  - Migration copies values from wrong column to correct column
+  - Drops `you_tube_video_id` column after successful copy
+
+- **Model fix**: Added explicit `column:youtube_video_id` tag to force correct column name
+  - File: `models/models.go`
+  - `TrackYouTubeMatch.YouTubeVideoID` now uses `gorm:"column:youtube_video_id;size:20;index"`
+
+- **Track model fix**: Added `YouTubeVideoID` field to `Track` model for JSON serialization
+  - File: `models/models.go`
+  - Field uses `gorm:"-"` to ignore for DB operations, `json:"youtube_video_id,omitempty"` for JSON
+
+- **Query fix**: Changed `GetTracks` and `SearchTracks` to use `SELECT *` with `[]map[string]interface{}` for reliable GORM mapping
+  - File: `controllers/track.go`
+  - Bypasses GORM struct mapping issues by using raw map results
+
+- **Video feed fix**: Added fallback raw SQL query in case GORM query fails
+  - File: `controllers/video_feed.go`
+
+### Added
+
+#### GORM Best Practices Documentation
+
+- **Created `GORM.md`**: Documented recurring GORM issues and solutions
+  - Anonymous struct field tags don't work reliably
+  - GORM auto-converts camelCase to snake_case (YouTubeVideoID → you_tube_video_id)
+  - Column name mismatch causes silent failures
+  - `SELECT *` with `[]map[string]interface{}` is most reliable approach
+  - Always use explicit `column:` tags to force column names
+  - How to fix column name mismatches with migrations
+
 ## [0.3.1-alpha] - 2026-01-24
 
 ### Added

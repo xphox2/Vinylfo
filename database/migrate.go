@@ -184,11 +184,24 @@ func InitDB() (*gorm.DB, error) {
 				log.Println("youtube_video_id column added successfully")
 			}
 		}
-		// Fix any records that have NULL youtube_video_id but exist in the table
+		// Fix any records that have NULL youtube_video_id - copy from you_tube_video_id if exists
 		var nullCount int64
+		db.Raw("SELECT COUNT(*) FROM track_youtube_matches WHERE (youtube_video_id IS NULL OR youtube_video_id = '') AND you_tube_video_id IS NOT NULL AND you_tube_video_id != ''").Scan(&nullCount)
+		if nullCount > 0 {
+			log.Printf("Found %d records with NULL youtube_video_id but with you_tube_video_id - copying values...")
+			db.Exec("UPDATE track_youtube_matches SET youtube_video_id = you_tube_video_id WHERE (youtube_video_id IS NULL OR youtube_video_id = '') AND you_tube_video_id IS NOT NULL AND you_tube_video_id != ''")
+		}
+		// Check if there are still null values
 		db.Raw("SELECT COUNT(*) FROM track_youtube_matches WHERE youtube_video_id IS NULL OR youtube_video_id = ''").Scan(&nullCount)
 		if nullCount > 0 {
 			log.Printf("Found %d records with NULL youtube_video_id - these may need to be re-saved", nullCount)
+		}
+		// Drop the incorrectly named column you_tube_video_id
+		var hasYouTubeVideoIDCol int
+		db.Raw("SELECT COUNT(*) FROM pragma_table_info('track_youtube_matches') WHERE name='you_tube_video_id'").Scan(&hasYouTubeVideoIDCol)
+		if hasYouTubeVideoIDCol > 0 {
+			log.Println("Dropping incorrectly named you_tube_video_id column...")
+			db.Exec("ALTER TABLE track_youtube_matches DROP COLUMN you_tube_video_id")
 		}
 		// Create index on youtube_video_id if not exists
 		if !migrator.HasIndex(&models.TrackYouTubeMatch{}, "idx_youtube_video_id") {

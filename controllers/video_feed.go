@@ -441,7 +441,8 @@ func (c *VideoFeedController) buildVideoTrackInfo(track *models.Track) VideoTrac
 
 	// Get YouTube match if exists
 	var youtubeMatch models.TrackYouTubeMatch
-	result := c.db.Where("track_id = ? AND status = ?", track.ID, "matched").First(&youtubeMatch)
+	result := c.db.Where("track_id = ? AND (match_method IN (?, ?) OR status = ?)", track.ID, "web_search", "api_search", "reviewed").First(&youtubeMatch)
+
 	if result.Error == nil {
 		info.HasVideo = true
 		info.YouTubeVideoID = youtubeMatch.YouTubeVideoID
@@ -449,6 +450,28 @@ func (c *VideoFeedController) buildVideoTrackInfo(track *models.Track) VideoTrac
 		info.VideoDuration = youtubeMatch.VideoDuration
 		info.ThumbnailURL = youtubeMatch.ThumbnailURL
 		info.MatchScore = youtubeMatch.MatchScore
+	} else if result.Error == gorm.ErrRecordNotFound {
+		// Fallback: query directly with raw SQL
+		var row map[string]interface{}
+		rowResult := c.db.Raw(`SELECT * FROM track_youtube_matches WHERE track_id = ? AND (match_method IN ('web_search', 'api_search') OR status = 'reviewed') LIMIT 1`, track.ID).Scan(&row)
+		if rowResult.Error == nil && len(row) > 0 {
+			if v, ok := row["youtube_video_id"].(string); ok && v != "" {
+				info.HasVideo = true
+				info.YouTubeVideoID = v
+				if t, ok := row["video_title"].(string); ok {
+					info.VideoTitle = t
+				}
+				if d, ok := row["video_duration"].(int64); ok {
+					info.VideoDuration = int(d)
+				}
+				if thumb, ok := row["thumbnail_url"].(string); ok {
+					info.ThumbnailURL = thumb
+				}
+				if s, ok := row["match_score"].(float64); ok {
+					info.MatchScore = s
+				}
+			}
+		}
 	}
 
 	return info

@@ -359,6 +359,8 @@ func (s *YouTubeSyncService) createMatch(track *models.Track, candidate ScoredCa
 		status = "needs_review"
 	}
 
+	log.Printf("[DEBUG] createMatch: track=%d, videoID=%s, title=%s, status=%s", track.ID, candidate.VideoID, candidate.Title, status)
+
 	return &models.TrackYouTubeMatch{
 		TrackID:        track.ID,
 		YouTubeVideoID: candidate.VideoID,
@@ -410,11 +412,17 @@ func (s *YouTubeSyncService) createCandidates(trackID uint, candidates []ScoredC
 }
 
 func (s *YouTubeSyncService) saveMatch(match *models.TrackYouTubeMatch) error {
+	if match.YouTubeVideoID == "" {
+		log.Printf("[WARNING] saveMatch: Attempted to save match with empty YouTubeVideoID for track %d", match.TrackID)
+		return fmt.Errorf("cannot save match with empty YouTubeVideoID")
+	}
 	var existing models.TrackYouTubeMatch
 	if err := s.db.Where("track_id = ?", match.TrackID).First(&existing).Error; err == nil {
 		match.ID = existing.ID
+		log.Printf("[DEBUG] saveMatch: Updating existing match for track %d with videoID=%s", match.TrackID, match.YouTubeVideoID)
 		return s.db.Save(match).Error
 	}
+	log.Printf("[DEBUG] saveMatch: Creating new match for track %d with videoID=%s", match.TrackID, match.YouTubeVideoID)
 	return s.db.Create(match).Error
 }
 

@@ -62,13 +62,18 @@ type DurationResolverTrack struct {
 
 func (s *DurationResolverService) GetTracksNeedingResolution() ([]models.Track, error) {
 	var tracks []models.Track
-	err := s.db.Where("duration = 0 OR duration IS NULL").Find(&tracks).Error
+	err := s.db.
+		Where("duration = 0 OR duration IS NULL").
+		Where("album_id != 0").
+		Where("title IS NOT NULL AND TRIM(title) != ''").
+		Find(&tracks).Error
 	return tracks, err
 }
 
 func (s *DurationResolverService) GetTracksNeedingResolutionForAlbum(albumID uint) ([]models.Track, error) {
 	var tracks []models.Track
 	err := s.db.Where("album_id = ? AND (duration = 0 OR duration IS NULL)", albumID).
+		Where("title IS NOT NULL AND TRIM(title) != ''").
 		Order("track_number").
 		Find(&tracks).Error
 	return tracks, err
@@ -193,10 +198,17 @@ func (s *DurationResolverService) ResolveTrackDuration(ctx context.Context, trac
 		log.Printf("DEBUG: Track '%s' FAILED - no durations found from %d sources. Match threshold: %.2f",
 			track.Title, successfulQueries, s.config.MinMatchScore)
 
-		var track models.Track
-		s.db.First(&track, track.ID)
-		track.DurationNeedsReview = true
-		s.db.Save(&track)
+		// Mark this track for review without risking an accidental INSERT.
+		// (Using Save on a zero-ID struct will create a new track row.)
+		if track.ID != 0 {
+			if err := s.db.Model(&models.Track{}).
+				Where("id = ?", track.ID).
+				Update("duration_needs_review", true).Error; err != nil {
+				log.Printf("Failed to mark track %d duration_needs_review: %v", track.ID, err)
+			}
+		} else {
+			log.Printf("ResolveTrackDuration: refusing to mark duration_needs_review for zero track ID")
+		}
 	} else {
 		resolvedDuration, consensusCount := s.findConsensus(allDurations)
 		resolution.ConsensusCount = consensusCount

@@ -47,6 +47,8 @@ func (c *DurationController) GetTracksNeedingResolution(ctx *gin.Context) {
 	subQuery := "(SELECT track_id FROM duration_resolutions WHERE status != 'failed')"
 	query := c.db.Model(&models.Track{}).
 		Where("duration = 0 OR duration IS NULL").
+		Where("album_id != 0").
+		Where("title IS NOT NULL AND TRIM(title) != ''").
 		Where("(duration_needs_review = ? OR tracks.id NOT IN "+subQuery+")", true)
 
 	if albumID > 0 {

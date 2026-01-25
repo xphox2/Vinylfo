@@ -72,7 +72,8 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 	baseQuery := c.db.Model(&models.Track{}).
 		Table("tracks").
 		Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
-		Joins("left join albums on tracks.album_id = albums.id")
+		Joins("left join albums on tracks.album_id = albums.id").
+		Where("tracks.title IS NOT NULL AND tracks.title != ''")
 
 	if excludeIDs != "" {
 		idStrings := strings.Split(excludeIDs, ",")
@@ -97,19 +98,14 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 			trackIDs[i] = t.ID
 		}
 
-		var ytMatches []struct {
-			TrackID        uint   `gorm:"column:track_id"`
-			YouTubeVideoID string `gorm:"column:youtube_video_id"`
-		}
-		c.db.Model(&models.TrackYouTubeMatch{}).
-			Select("track_id, youtube_video_id").
-			Where("track_id IN ?", trackIDs).
-			Find(&ytMatches)
+		var rawRows []map[string]interface{}
+		c.db.Raw(`SELECT * FROM track_youtube_matches WHERE track_id IN ?`, trackIDs).Scan(&rawRows)
 
-		ytMap := make(map[uint]string, len(ytMatches))
-		for _, m := range ytMatches {
-			if m.YouTubeVideoID != "" {
-				ytMap[m.TrackID] = m.YouTubeVideoID
+		ytMap := make(map[uint]string, len(rawRows))
+		for _, row := range rawRows {
+			trackID := uint(row["track_id"].(int64))
+			if v, ok := row["youtube_video_id"].(string); ok && v != "" {
+				ytMap[trackID] = v
 			}
 		}
 
@@ -179,7 +175,7 @@ func (c *TrackController) SearchTracks(ctx *gin.Context) {
 		Table("tracks").
 		Select("tracks.*, albums.title as album_title, albums.artist as album_artist").
 		Joins("left join albums on tracks.album_id = albums.id").
-		Where("LOWER(tracks.title) LIKE ? OR LOWER(albums.title) LIKE ? OR LOWER(albums.artist) LIKE ?", searchTerm, searchTerm, searchTerm)
+		Where("tracks.title IS NOT NULL AND tracks.title != '' AND (LOWER(tracks.title) LIKE ? OR LOWER(albums.title) LIKE ? OR LOWER(albums.artist) LIKE ?)", searchTerm, searchTerm, searchTerm)
 
 	if excludeIDs != "" {
 		idStrings := strings.Split(excludeIDs, ",")
@@ -204,19 +200,14 @@ func (c *TrackController) SearchTracks(ctx *gin.Context) {
 			trackIDs[i] = t.ID
 		}
 
-		var ytMatches []struct {
-			TrackID        uint   `gorm:"column:track_id"`
-			YouTubeVideoID string `gorm:"column:youtube_video_id"`
-		}
-		c.db.Model(&models.TrackYouTubeMatch{}).
-			Select("track_id, youtube_video_id").
-			Where("track_id IN ?", trackIDs).
-			Find(&ytMatches)
+		var rawRows []map[string]interface{}
+		c.db.Raw(`SELECT * FROM track_youtube_matches WHERE track_id IN ?`, trackIDs).Scan(&rawRows)
 
-		ytMap := make(map[uint]string, len(ytMatches))
-		for _, m := range ytMatches {
-			if m.YouTubeVideoID != "" {
-				ytMap[m.TrackID] = m.YouTubeVideoID
+		ytMap := make(map[uint]string, len(rawRows))
+		for _, row := range rawRows {
+			trackID := uint(row["track_id"].(int64))
+			if v, ok := row["youtube_video_id"].(string); ok && v != "" {
+				ytMap[trackID] = v
 			}
 		}
 
@@ -390,7 +381,6 @@ func (c *TrackController) SetYouTubeVideo(ctx *gin.Context) {
 			utils.InternalError(ctx, "Failed to create YouTube match")
 			return
 		}
-		c.db.Exec("UPDATE track_youtube_matches SET youtube_video_id = ? WHERE track_id = ?", videoID, trackID)
 	} else {
 		existingMatch.YouTubeVideoID = videoID
 		existingMatch.Status = "matched"
@@ -399,7 +389,6 @@ func (c *TrackController) SetYouTubeVideo(ctx *gin.Context) {
 			utils.InternalError(ctx, "Failed to update YouTube match")
 			return
 		}
-		c.db.Exec("UPDATE track_youtube_matches SET youtube_video_id = ? WHERE track_id = ?", videoID, trackID)
 	}
 
 	utils.Success(ctx, 200, gin.H{
@@ -448,4 +437,40 @@ func extractYouTubeVideoID(url string) string {
 		return matches[1]
 	}
 	return ""
+}
+
+// Debug endpoint to check YouTube matches in database
+func (c *TrackController) DebugYouTubeMatches(ctx *gin.Context) {
+	var matches []models.TrackYouTubeMatch
+	result := c.db.Find(&matches)
+
+	log.Printf("[DEBUG] DebugYouTubeMatches: Total records: %d", result.RowsAffected)
+
+	type MatchInfo struct {
+		ID             uint   `json:"id"`
+		TrackID        uint   `json:"track_id"`
+		YouTubeVideoID string `json:"youtube_video_id"`
+		VideoTitle     string `json:"video_title"`
+		MatchMethod    string `json:"match_method"`
+		Status         string `json:"status"`
+	}
+
+	var matchInfo []MatchInfo
+	for _, m := range matches {
+		log.Printf("[DEBUG] DB record: id=%d, track_id=%d, youtube_video_id='%s', title='%s', method='%s', status='%s'",
+			m.ID, m.TrackID, m.YouTubeVideoID, m.VideoTitle, m.MatchMethod, m.Status)
+		matchInfo = append(matchInfo, MatchInfo{
+			ID:             m.ID,
+			TrackID:        m.TrackID,
+			YouTubeVideoID: m.YouTubeVideoID,
+			VideoTitle:     m.VideoTitle,
+			MatchMethod:    m.MatchMethod,
+			Status:         m.Status,
+		})
+	}
+
+	ctx.JSON(200, gin.H{
+		"total_matches": result.RowsAffected,
+		"matches":       matchInfo,
+	})
 }

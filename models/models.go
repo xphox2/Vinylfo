@@ -37,6 +37,9 @@ type Track struct {
 	Position     string `json:"position"`              // Full position code
 	AudioFileURL string `json:"audio_file_url"`
 
+	YouTubeVideoID string `gorm:"-" json:"youtube_video_id,omitempty"`
+	// Populated from track_youtube_matches for display purposes
+
 	DurationSource string `gorm:"size:50;default:'discogs';index" json:"duration_source"`
 	// Values: "discogs" (original), "resolved" (from API consensus), "manual" (user entered)
 
@@ -272,7 +275,7 @@ type DurationResolverProgress struct {
 type TrackYouTubeMatch struct {
 	ID             uint   `gorm:"primaryKey;autoIncrement" json:"id"`
 	TrackID        uint   `gorm:"uniqueIndex;not null" json:"track_id"` // One match per track
-	YouTubeVideoID string `gorm:"size:20;index" json:"youtube_video_id"`
+	YouTubeVideoID string `gorm:"column:youtube_video_id;size:20;index" json:"youtube_video_id"`
 	VideoTitle     string `gorm:"size:500" json:"video_title"`
 	VideoDuration  int    `json:"video_duration"` // Duration in seconds
 	ChannelName    string `gorm:"size:255" json:"channel_name"`

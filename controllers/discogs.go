@@ -425,6 +425,10 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 	}
 
 	for _, trackInput := range input.Tracks {
+		if strings.TrimSpace(trackInput.Title) == "" {
+			log.Printf("CreateAlbum: skipping track with empty title for album %d", album.ID)
+			continue
+		}
 		track := models.Track{
 			AlbumID:     album.ID,
 			Title:       trackInput.Title,
@@ -434,7 +438,9 @@ func (c *DiscogsController) CreateAlbum(ctx *gin.Context) {
 			Side:        trackInput.Side,
 			Position:    trackInput.Position,
 		}
-		c.db.Create(&track)
+		if err := c.db.Create(&track).Error; err != nil {
+			log.Printf("CreateAlbum: failed to create track '%s': %v", trackInput.Title, err)
+		}
 	}
 
 	c.db.Preload("Tracks").First(&album, album.ID)
