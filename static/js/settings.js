@@ -143,6 +143,7 @@ class SettingsManager {
         const saveLastFMKey = document.getElementById('save-lastfm-key');
         const saveLogRetention = document.getElementById('save-log-retention');
         const cleanupLogs = document.getElementById('cleanup-logs');
+        const exportSupport = document.getElementById('export-support');
 
         if (connectDiscogs) connectDiscogs.addEventListener('click', () => this.connectDiscogs());
         if (disconnectDiscogs) disconnectDiscogs.addEventListener('click', () => this.disconnectDiscogs());
@@ -154,6 +155,7 @@ class SettingsManager {
         if (saveLastFMKey) saveLastFMKey.addEventListener('click', () => this.saveLastFMAPIKey());
         if (saveLogRetention) saveLogRetention.addEventListener('click', () => this.saveLogRetention());
         if (cleanupLogs) cleanupLogs.addEventListener('click', () => this.cleanupLogs());
+        if (exportSupport) exportSupport.addEventListener('click', () => this.exportSupport());
     }
 
     async saveYouTubeAPIKey() {
@@ -266,7 +268,7 @@ class SettingsManager {
             const data = await response.json();
 
             if (response.ok) {
-                this.showNotification(`Cleaned up ${data.deleted_count} log files`, 'success');
+                this.showNotification(`Cleaned up ${data.deleted_count} files`, 'success');
                 const logSettingsRes = await fetch(`${API_BASE}/settings/logs`);
                 const logSettings = await logSettingsRes.json();
                 this.renderLogSettings(logSettings);
@@ -276,6 +278,38 @@ class SettingsManager {
         } catch (error) {
             console.error('Failed to cleanup logs:', error);
             this.showNotification('Failed to cleanup logs', 'error');
+        }
+    }
+
+    async exportSupport() {
+        try {
+            const response = await fetch(`${API_BASE}/logs/export`);
+            if (response.ok) {
+                const blob = await response.blob();
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'support.zip';
+                if (contentDisposition && contentDisposition.includes('attachment')) {
+                    const match = contentDisposition.match(/filename="(.+)"/);
+                    if (match && match[1]) {
+                        filename = match[1];
+                    }
+                }
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                this.showNotification('Support bundle downloaded', 'success');
+            } else {
+                const data = await response.json();
+                this.showNotification(data.error || 'Failed to export support bundle', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to export support bundle:', error);
+            this.showNotification('Failed to export support bundle', 'error');
         }
     }
 

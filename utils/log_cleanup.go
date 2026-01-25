@@ -67,6 +67,7 @@ func ForceCleanupLogs(filesToKeep int, logDir string) (int, error) {
 	}
 
 	var logFiles []os.FileInfo
+	var zipFiles []os.FileInfo
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -78,25 +79,35 @@ func ForceCleanupLogs(filesToKeep int, logDir string) (int, error) {
 				logFiles = append(logFiles, info)
 			}
 		}
-	}
-
-	if len(logFiles) <= filesToKeep {
-		return 0, nil
-	}
-
-	sort.Slice(logFiles, func(i, j int) bool {
-		return logFiles[i].ModTime().After(logFiles[j].ModTime())
-	})
-
-	deleted := 0
-	for i := filesToKeep; i < len(logFiles); i++ {
-		path := filepath.Join(logDir, logFiles[i].Name())
-		if err := os.Remove(path); err == nil {
-			deleted++
+		if strings.HasPrefix(name, "support_") && strings.HasSuffix(name, ".zip") {
+			info, _ := entry.Info()
+			zipFiles = append(zipFiles, info)
 		}
 	}
 
-	return deleted, nil
+	totalDeleted := 0
+
+	if len(logFiles) > filesToKeep {
+		sort.Slice(logFiles, func(i, j int) bool {
+			return logFiles[i].ModTime().After(logFiles[j].ModTime())
+		})
+
+		for i := filesToKeep; i < len(logFiles); i++ {
+			path := filepath.Join(logDir, logFiles[i].Name())
+			if err := os.Remove(path); err == nil {
+				totalDeleted++
+			}
+		}
+	}
+
+	for _, zipFile := range zipFiles {
+		path := filepath.Join(logDir, zipFile.Name())
+		if err := os.Remove(path); err == nil {
+			totalDeleted++
+		}
+	}
+
+	return totalDeleted, nil
 }
 
 func GetLogFileCount(logDir string) (int, error) {
@@ -170,9 +181,9 @@ func GetLogFiles(logDir string) ([]LogFileInfo, error) {
 	return logs, nil
 }
 
-// ExportLogsToZip creates a zip file containing the most recent log files.
+// CreateSupportZip creates a zip file containing the most recent log files.
 // Returns the path to the created zip file.
-func ExportLogsToZip(logDir string, maxFiles int) (string, error) {
+func CreateSupportZip(logDir string, maxFiles int) (string, error) {
 	if maxFiles <= 0 {
 		maxFiles = 5
 	}
@@ -191,9 +202,9 @@ func ExportLogsToZip(logDir string, maxFiles int) (string, error) {
 		logs = logs[:maxFiles]
 	}
 
-	// Create zip file in temp directory
+	// Create zip file in logs directory with timestamp
 	timestamp := time.Now().Format("20060102_150405")
-	zipPath := filepath.Join(os.TempDir(), fmt.Sprintf("vinylfo_logs_%s.zip", timestamp))
+	zipPath := filepath.Join(logDir, fmt.Sprintf("support_%s.zip", timestamp))
 
 	zipFile, err := os.Create(zipPath)
 	if err != nil {

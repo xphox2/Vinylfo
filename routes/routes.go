@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"time"
 
 	"vinylfo/controllers"
@@ -241,19 +242,14 @@ func SetupRoutes(r *gin.Engine) {
 
 	// Log export endpoint for bug reports
 	r.GET("/api/logs/export", func(c *gin.Context) {
-		zipPath, err := utils.ExportLogsToZip("logs", 5)
+		zipPath, err := utils.CreateSupportZip("logs", 10)
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.FileAttachment(zipPath, "vinylfo_logs.zip")
-
-		// Clean up temp file after sending (deferred cleanup)
-		go func() {
-			time.Sleep(5 * time.Second)
-			os.Remove(zipPath)
-		}()
+		filename := filepath.Base(zipPath)
+		c.FileAttachment(zipPath, filename)
 	})
 
 	r.GET("/api/logs/list", func(c *gin.Context) {
