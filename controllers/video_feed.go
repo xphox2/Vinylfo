@@ -323,11 +323,19 @@ func (c *VideoFeedController) Next(ctx *gin.Context) {
 
 	trackInfo := c.buildVideoTrackInfo(&newTrack)
 
+	pm.SetCurrentTrack(playlistID, &newTrack)
+	pm.UpdatePosition(playlistID, 0)
+
+	c.db.Save(&playbackState)
+
 	c.broadcastEvent(VideoFeedEvent{
 		Type: "track_changed",
 		Data: gin.H{
 			"track":       trackInfo,
 			"queue_index": playbackState.QueueIndex,
+			"is_playing":  true,
+			"is_paused":   false,
+			"position":    0,
 		},
 	})
 
@@ -377,11 +385,19 @@ func (c *VideoFeedController) Previous(ctx *gin.Context) {
 
 	trackInfo := c.buildVideoTrackInfo(&newTrack)
 
+	pm.SetCurrentTrack(playlistID, &newTrack)
+	pm.UpdatePosition(playlistID, 0)
+
+	c.db.Save(&playbackState)
+
 	c.broadcastEvent(VideoFeedEvent{
 		Type: "track_changed",
 		Data: gin.H{
 			"track":       trackInfo,
 			"queue_index": playbackState.QueueIndex,
+			"is_playing":  true,
+			"is_paused":   false,
+			"position":    0,
 		},
 	})
 

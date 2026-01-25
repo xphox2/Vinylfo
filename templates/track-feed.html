@@ -1,0 +1,41 @@
+{{ define "track-feed.html" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinylfo Track Feed</title>
+    <link rel="stylesheet" href="/static/css/track-feed.css">
+</head>
+<body data-theme="{{ .theme }}" data-speed="{{ .speed }}" data-separator="{{ .separator }}" data-show-duration="{{ .showDuration }}" data-show-album="{{ .showAlbum }}" data-show-artist="{{ .showArtist }}" data-direction="{{ .direction }}" data-prefix="{{ .prefix }}">
+
+    <div id="track-feed-container">
+
+        <div class="marquee-wrapper">
+            <div class="marquee-container">
+                <div id="marquee-content" class="marquee-content">
+                    <span class="track-text" id="track-text-1"></span>
+                    <span class="track-separator" id="separator-1"></span>
+                    <span class="track-text" id="track-text-2"></span>
+                    <span class="track-separator" id="separator-2"></span>
+                </div>
+            </div>
+        </div>
+
+        <div id="no-track-overlay" class="overlay hidden">
+            <div class="no-track-content">
+                <p class="no-track-text">No track playing</p>
+            </div>
+        </div>
+
+        <div id="connection-status" class="hidden">
+            <span class="status-dot"></span>
+            <span class="status-text">Connecting...</span>
+        </div>
+
+    </div>
+
+    <script type="module" src="/static/js/track-feed.js"></script>
+</body>
+</html>
+{{ end }}

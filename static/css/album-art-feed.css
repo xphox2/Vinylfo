@@ -1,0 +1,192 @@
+/**
+ * Vinylfo Album Art Feed Styles
+ * Full-screen album art display for OBS streaming
+ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+}
+
+body {
+    background: #000;
+}
+
+#album-art-feed-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transition: opacity 0.5s ease;
+}
+
+.layer.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#album-art-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#album-art {
+    width: 100%;
+    height: 100%;
+    object-fit: v-bind(fit);
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+
+#album-art.loaded {
+    opacity: 1;
+}
+
+[data-animation="true"] #album-art-wrapper {
+    animation: kenBurns var(--anim-duration, 20s) ease-in-out infinite alternate;
+}
+
+@keyframes kenBurns {
+    0% {
+        transform: scale(1) translate(0, 0);
+    }
+    100% {
+        transform: scale(1.1) translate(-2%, -2%);
+    }
+}
+
+.overlay {
+    position: absolute;
+    z-index: 10;
+    transition: opacity 0.5s ease;
+}
+
+.overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#no-track-overlay {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.no-track-content {
+    text-align: center;
+}
+
+.vinyl-icon {
+    width: 150px;
+    height: 150px;
+    margin-bottom: 30px;
+    animation: rotate 8s linear infinite;
+}
+
+@keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.no-track-text {
+    color: #fff;
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+#connection-status {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: rgba(255, 100, 100, 0.9);
+    border-radius: 20px;
+    z-index: 200;
+    transition: opacity 0.3s ease;
+}
+
+#connection-status.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    background: #fff;
+    border-radius: 50%;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-text {
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.theme-light #no-track-overlay {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+}
+
+.theme-light .no-track-text {
+    color: #1a1a2e;
+}
+
+.theme-light .vinyl-icon circle {
+    fill: #e4e8eb;
+    stroke: #ccc;
+}
+
+.theme-transparent #no-track-overlay {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.theme-transparent .no-track-text {
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+body.obs-mode {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+#album-art-feed-container * {
+    image-rendering: -webkit-optimize-contrast;
+}

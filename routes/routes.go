@@ -18,8 +18,16 @@ var Version = "dev"
 
 func CSPMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check if this is the video feed page - allow YouTube embedding
-		if c.Request.URL.Path == "/feeds/video" || c.Request.URL.Path == "/feeds/video/events" {
+		if c.Request.URL.Path == "/feeds/art" || c.Request.URL.Path == "/feeds/track" {
+			c.Header("Content-Security-Policy",
+				"default-src 'self'; "+
+					"script-src 'self' 'unsafe-inline'; "+
+					"style-src 'self' 'unsafe-inline'; "+
+					"img-src 'self' data: https:; "+
+					"connect-src 'self'; "+
+					"frame-ancestors *")
+			c.Header("Cache-Control", "no-store")
+		} else if c.Request.URL.Path == "/feeds/video" || c.Request.URL.Path == "/feeds/video/events" {
 			c.Header("Content-Security-Policy",
 				"default-src 'self'; "+
 					"script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com https://www.youtube.com https://s.ytimg.com; "+
@@ -27,9 +35,9 @@ func CSPMiddleware() gin.HandlerFunc {
 					"img-src 'self' data: https:; "+
 					"connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://www.youtube.com; "+
 					"frame-src https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com; "+
-					"media-src 'self' https://www.youtube.com")
-			// Allow embedding in OBS
-			c.Header("X-Frame-Options", "ALLOWALL")
+					"media-src 'self' https://www.youtube.com; "+
+					"frame-ancestors *")
+			c.Header("Cache-Control", "no-store")
 		} else {
 			c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com; frame-src https://accounts.google.com")
 			c.Header("X-Frame-Options", "DENY")
@@ -162,6 +170,14 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/playback/video/youtube-duration", videoFeedController.GetYouTubeVideoDuration)
 	r.POST("/playback/video/refresh-duration", videoFeedController.RefreshYouTubeDuration)
 	r.POST("/playback/video/refresh-all-durations", videoFeedController.RefreshAllYouTubeDurations)
+
+	// Album Art Feed for OBS streaming
+	albumArtFeedController := controllers.NewAlbumArtFeedController()
+	r.GET("/feeds/art", albumArtFeedController.GetAlbumArtFeedPage)
+
+	// Track Info Feed for OBS streaming
+	trackFeedController := controllers.NewTrackFeedController()
+	r.GET("/feeds/track", trackFeedController.GetTrackFeedPage)
 
 	r.GET("/sessions", playlistController.GetSessions)
 	r.GET("/playback-sessions/:id", playlistController.GetSessionByID)

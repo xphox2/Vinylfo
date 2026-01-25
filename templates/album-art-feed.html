@@ -1,0 +1,42 @@
+{{ define "album-art-feed.html" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinylfo Album Art Feed</title>
+    <link rel="stylesheet" href="/static/css/album-art-feed.css">
+</head>
+<body data-theme="{{ .theme }}" data-animation="{{ .animation }}" data-anim-duration="{{ .animDuration }}" data-fit="{{ .fit }}">
+
+    <div id="album-art-feed-container">
+
+        <div id="album-art-wrapper" class="layer">
+            <img id="album-art" src="" alt="Album Art">
+        </div>
+
+        <div id="no-track-overlay" class="overlay hidden">
+            <div class="no-track-content">
+                <svg class="vinyl-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" fill="#1a1a1a" stroke="#333" stroke-width="2"/>
+                    <circle cx="50" cy="50" r="35" fill="none" stroke="#222" stroke-width="1"/>
+                    <circle cx="50" cy="50" r="25" fill="none" stroke="#222" stroke-width="1"/>
+                    <circle cx="50" cy="50" r="15" fill="none" stroke="#222" stroke-width="1"/>
+                    <circle cx="50" cy="50" r="8" fill="#333"/>
+                    <circle cx="50" cy="50" r="3" fill="#666"/>
+                </svg>
+                <p class="no-track-text">No track playing</p>
+            </div>
+        </div>
+
+        <div id="connection-status" class="hidden">
+            <span class="status-dot"></span>
+            <span class="status-text">Connecting...</span>
+        </div>
+
+    </div>
+
+    <script type="module" src="/static/js/album-art-feed.js"></script>
+</body>
+</html>
+{{ end }}

@@ -160,6 +160,8 @@ func main() {
 		"templates/resolution-center.html",
 		"templates/youtube.html",
 		"templates/video-feed.html",
+		"templates/album-art-feed.html",
+		"templates/track-feed.html",
 	))
 	r.SetHTMLTemplate(tmpl)
 
