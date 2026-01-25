@@ -19,6 +19,7 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 		CurrentPage          int                      `json:"current_page"`
 		TotalPages           int                      `json:"total_pages"`
 		Processed            int                      `json:"processed"`
+		UniqueProcessed      int                      `json:"unique_processed"`
 		Total                int                      `json:"total"`
 		SyncMode             string                   `json:"sync_mode"`
 		CurrentFolder        int                      `json:"current_folder"`
@@ -75,8 +76,8 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 		}
 	}
 
-	log.Printf("GetSyncProgress: IsRunning=%v, IsPaused=%v, Processed=%d, Total=%d, LastBatch=%v, savedProgress=%v",
-		state.IsRunning(), state.IsPaused(), state.Processed, state.Total,
+	log.Printf("GetSyncProgress: IsRunning=%v, IsPaused=%v, Processed=%d, UniqueProcessed=%d, Total=%d, LastBatch=%v, savedProgress=%v",
+		state.IsRunning(), state.IsPaused(), state.Processed, state.UniqueProcessed, state.Total,
 		state.LastBatch != nil && len(state.LastBatch.Albums) > 0, hasSavedProgress)
 
 	totalFolders := 0
@@ -115,13 +116,20 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 		log.Printf("GetSyncProgress: cleared expired rate limit flag")
 	}
 
+	// Use UniqueProcessed for display (actual new albums created)
+	displayProcessed := state.UniqueProcessed
+	if displayProcessed == 0 {
+		displayProcessed = state.Processed
+	}
+
 	response := ProgressResponse{
 		IsRunning:            state.IsRunning(),
 		IsPaused:             state.IsPaused(),
 		IsActive:             state.IsActive(),
 		CurrentPage:          state.CurrentPage,
 		TotalPages:           state.TotalPages,
-		Processed:            state.Processed,
+		Processed:            displayProcessed,
+		UniqueProcessed:      state.UniqueProcessed,
 		Total:                state.Total,
 		SyncMode:             state.SyncMode,
 		CurrentFolder:        state.CurrentFolder,
@@ -148,7 +156,7 @@ func (c *DiscogsController) GetSyncProgress(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, response)
-	log.Printf("GetSyncProgress: IsRunning=%v, Processed=%d, Total=%d, IsStalled=%v", state.IsRunning(), state.Processed, state.Total, isStalled)
+	log.Printf("GetSyncProgress: IsRunning=%v, Processed=%d, UniqueProcessed=%d, Total=%d, IsStalled=%v", state.IsRunning(), displayProcessed, state.UniqueProcessed, state.Total, isStalled)
 }
 
 func (c *DiscogsController) GetSyncHistory(ctx *gin.Context) {

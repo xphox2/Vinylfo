@@ -26,6 +26,7 @@ type SyncState struct {
 	CurrentPage      int                      `json:"current_page"`
 	TotalPages       int                      `json:"total_pages"`
 	Processed        int                      `json:"processed"`
+	UniqueProcessed  int                      `json:"unique_processed"`
 	Total            int                      `json:"total"`
 	SyncMode         string                   `json:"sync_mode"`
 	CurrentFolder    int                      `json:"current_folder"`
@@ -39,6 +40,8 @@ type SyncState struct {
 	WorkerID         string                   `json:"worker_id"`
 	RateLimitRetryAt *time.Time               `json:"rate_limit_retry_at,omitempty"`
 	RateLimitMessage string                   `json:"rate_limit_message,omitempty"`
+	// ProcessedIDs tracks which Discogs release IDs have been processed to avoid re-processing after rate limits
+	ProcessedIDs map[int]bool `json:"processed_ids,omitempty"`
 }
 
 type StateManager struct {

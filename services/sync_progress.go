@@ -54,7 +54,11 @@ func (s *SyncProgressService) Save(state sync.SyncState) {
 	progress.FolderID = state.CurrentFolder
 	progress.FolderIndex = state.FolderIndex
 	progress.CurrentPage = state.CurrentPage
-	progress.Processed = state.Processed
+	// Save UniqueProcessed to preserve actual album count (not re-processed albums)
+	progress.Processed = state.UniqueProcessed
+	if progress.Processed == 0 {
+		progress.Processed = state.Processed
+	}
 	progress.TotalAlbums = state.Total
 	progress.LastActivityAt = time.Now()
 
@@ -85,6 +89,16 @@ func (s *SyncProgressService) Save(state sync.SyncState) {
 		progress.LastBatchJSON = ""
 	}
 
+	// Save ProcessedIDs as JSON
+	if state.ProcessedIDs != nil && len(state.ProcessedIDs) > 0 {
+		processedIDsJSON, err := json.Marshal(state.ProcessedIDs)
+		if err == nil {
+			progress.ProcessedIDsJSON = string(processedIDsJSON)
+		}
+	} else {
+		progress.ProcessedIDsJSON = ""
+	}
+
 	s.db.Save(&progress)
 }
 
@@ -113,13 +127,24 @@ func (s *SyncProgressService) ArchiveToHistory(progress *models.SyncProgress) {
 // RestoreLastBatch restores the last batch from the database into the sync state
 func (s *SyncProgressService) RestoreLastBatch(state *sync.SyncState) {
 	progress := s.Load(*state)
-	if progress == nil || progress.LastBatchJSON == "" {
+	if progress == nil {
 		return
 	}
 
-	var batch sync.SyncBatch
-	if err := json.Unmarshal([]byte(progress.LastBatchJSON), &batch); err == nil {
-		state.LastBatch = &batch
+	// Restore LastBatch
+	if progress.LastBatchJSON != "" {
+		var batch sync.SyncBatch
+		if err := json.Unmarshal([]byte(progress.LastBatchJSON), &batch); err == nil {
+			state.LastBatch = &batch
+		}
+	}
+
+	// Restore ProcessedIDs
+	if progress.ProcessedIDsJSON != "" {
+		var processedIDs map[int]bool
+		if err := json.Unmarshal([]byte(progress.ProcessedIDsJSON), &processedIDs); err == nil {
+			state.ProcessedIDs = processedIDs
+		}
 	}
 }
 

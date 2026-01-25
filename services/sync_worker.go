@@ -17,6 +17,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// getAlbumDiscogsID extracts the Discogs ID from an album map
+func getAlbumDiscogsID(album map[string]interface{}) (int, bool) {
+	if v, ok := album["discogs_id"].(int); ok {
+		return v, true
+	}
+	return 0, false
+}
+
 // SyncWorker handles the batch sync process
 type SyncWorker struct {
 	db              *gorm.DB
@@ -104,11 +112,12 @@ func (w *SyncWorker) Run() {
 
 	w.stateManager.UpdateState(func(s *sync.SyncState) {
 		s.WorkerID = w.workerID
+		s.ProcessedIDs = make(map[int]bool)
 	})
 
 	initialState := w.stateManager.GetState()
-	w.logToFile("Sync: initial state - IsRunning=%v, IsPaused=%v, Processed=%d, Total=%d",
-		initialState.IsRunning(), initialState.IsPaused(), initialState.Processed, initialState.Total)
+	w.logToFile("Sync: initial state - IsRunning=%v, IsPaused=%v, Processed=%d, UniqueProcessed=%d, Total=%d",
+		initialState.IsRunning(), initialState.IsPaused(), initialState.Processed, initialState.UniqueProcessed, initialState.Total)
 
 	for {
 		select {
@@ -148,19 +157,23 @@ func (w *SyncWorker) Run() {
 		if state.LastBatch != nil {
 			lastBatchAlbums = len(state.LastBatch.Albums)
 		}
-		w.logToFile("Sync: loop TOP - IsRunning=%v, IsPaused=%v, Processed=%d, LastBatch=%v, albums_in_batch=%d",
-			state.IsRunning(), state.IsPaused(), state.Processed,
+		uniqueProcessed := state.UniqueProcessed
+		if uniqueProcessed == 0 {
+			uniqueProcessed = state.Processed
+		}
+		w.logToFile("Sync: loop TOP - IsRunning=%v, IsPaused=%v, Processed=%d, UniqueProcessed=%d, LastBatch=%v, albums_in_batch=%d",
+			state.IsRunning(), state.IsPaused(), state.Processed, state.UniqueProcessed,
 			state.LastBatch != nil && lastBatchAlbums > 0, lastBatchAlbums)
 
-		// Check if we've exceeded total - safety check
-		if state.Total > 0 && state.Processed >= state.Total {
-			w.logToFile("Sync: Processed (%d) >= Total (%d), marking complete", state.Processed, state.Total)
+		// Check if we've exceeded total - safety check using UniqueProcessed
+		if state.Total > 0 && uniqueProcessed >= state.Total {
+			w.logToFile("Sync: UniqueProcessed (%d) >= Total (%d), marking complete", uniqueProcessed, state.Total)
 			w.markComplete(state)
 			return
 		}
 
 		if !state.IsActive() {
-			w.logToFile("Sync: complete (idle), Processed=%d/%d", state.Processed, state.Total)
+			w.logToFile("Sync: complete (idle), UniqueProcessed=%d/%d", uniqueProcessed, state.Total)
 			return
 		}
 
@@ -169,8 +182,8 @@ func (w *SyncWorker) Run() {
 			// Check if this is a rate limit pause - get fresh rate limit state
 			isRateLimited := w.client.RateLimiter.IsRateLimited()
 			secondsLeft := w.client.RateLimiter.GetSecondsUntilReset()
-			w.logToFile("Sync: PAUSED - waiting for resume, Processed=%d/%d, isRateLimited=%v, secondsLeft=%d",
-				state.Processed, state.Total, isRateLimited, secondsLeft)
+			w.logToFile("Sync: PAUSED - waiting for resume, UniqueProcessed=%d/%d, isRateLimited=%v, secondsLeft=%d",
+				uniqueProcessed, state.Total, isRateLimited, secondsLeft)
 
 			if err := w.stateManager.WaitForResume(w.ctx); err != nil {
 				w.logToFile("Sync: context cancelled while paused: %v", err)
@@ -180,8 +193,8 @@ func (w *SyncWorker) Run() {
 			continue
 		}
 
-		w.logToFile("Sync: NOT PAUSED - proceeding with batch processing, Processed=%d, LastBatch=%v, albums_in_batch=%d",
-			state.Processed, state.LastBatch != nil && lastBatchAlbums > 0, lastBatchAlbums)
+		w.logToFile("Sync: NOT PAUSED - proceeding with batch processing, UniqueProcessed=%d, LastBatch=%v, albums_in_batch=%d",
+			uniqueProcessed, state.LastBatch != nil && lastBatchAlbums > 0, lastBatchAlbums)
 
 		// Determine if we need to fetch new data from API
 		needFetch, nextPage, nextFolder, done := w.handlePagination(state)
@@ -231,21 +244,48 @@ func (w *SyncWorker) Run() {
 			continue
 		}
 
-		w.logToFile("Sync: processing batch of %d albums, Processed=%d/%d", len(currentReleases), state.Processed, state.Total)
+		w.logToFile("Sync: processing batch of %d albums, Processed=%d, UniqueProcessed=%d, Total=%d", len(currentReleases), state.Processed, state.UniqueProcessed, state.Total)
 
-		// Safety check before processing batch
-		if state.Total > 0 && state.Processed >= state.Total {
-			w.logToFile("Sync: Processed (%d) >= Total (%d) before batch, marking complete", state.Processed, state.Total)
+		// Safety check before processing batch using UniqueProcessed
+		uniqueProcessed = state.UniqueProcessed
+		if uniqueProcessed == 0 {
+			uniqueProcessed = state.Processed
+		}
+		if state.Total > 0 && uniqueProcessed >= state.Total {
+			w.logToFile("Sync: UniqueProcessed (%d) >= Total (%d) before batch, marking complete", uniqueProcessed, state.Total)
 			w.markComplete(state)
 			continue
 		}
 
 		// Process each album with context cancellation support
 		for _, album := range currentReleases {
-			// Safety check before each album
+			// Skip albums that have already been processed (handles re-fetch after rate limit)
+			albumID, hasID := getAlbumDiscogsID(album)
+			if hasID {
+				state = w.stateManager.GetState()
+				if state.ProcessedIDs == nil {
+					state.ProcessedIDs = make(map[int]bool)
+				}
+				if state.ProcessedIDs[albumID] {
+					w.logToFile("Sync: skipping already processed album ID %d", albumID)
+					// Just remove from batch, don't increment any counters
+					// The album was already counted when it was first processed
+					w.stateManager.UpdateState(func(s *sync.SyncState) {
+						w.removeFirstAlbumFromBatch(s)
+					})
+					w.progressService.Save(w.stateManager.GetState())
+					continue
+				}
+			}
+
+			// Safety check before each album using UniqueProcessed
 			currentCheck := w.stateManager.GetState()
-			if currentCheck.Total > 0 && currentCheck.Processed >= currentCheck.Total {
-				w.logToFile("Sync: Processed (%d) >= Total (%d) before album, marking complete", currentCheck.Processed, currentCheck.Total)
+			checkUniqueProcessed := currentCheck.UniqueProcessed
+			if checkUniqueProcessed == 0 {
+				checkUniqueProcessed = currentCheck.Processed
+			}
+			if currentCheck.Total > 0 && checkUniqueProcessed >= currentCheck.Total {
+				w.logToFile("Sync: UniqueProcessed (%d) >= Total (%d) before album, marking complete", checkUniqueProcessed, currentCheck.Total)
 				w.markComplete(currentCheck)
 				return
 			}
@@ -285,6 +325,18 @@ func (w *SyncWorker) Run() {
 			w.stateManager.UpdateState(func(s *sync.SyncState) {
 				s.LastActivity = time.Now()
 			})
+		}
+
+		// Check if we've processed all unique albums
+		state = w.stateManager.GetState()
+		uniqueProcessed = state.UniqueProcessed
+		if uniqueProcessed == 0 {
+			uniqueProcessed = state.Processed
+		}
+		if uniqueProcessed >= state.Total && state.Total > 0 {
+			w.logToFile("Sync: UniqueProcessed (%d) >= Total (%d), marking complete", uniqueProcessed, state.Total)
+			w.markComplete(state)
+			return
 		}
 
 		// Check if LastBatch is empty after processing
@@ -684,36 +736,53 @@ func (w *SyncWorker) createNewAlbum(title, artist string, year int, coverImage s
 						ErrorMsg:   "Deleted album after track fetch failure",
 					})
 				}
-				// Don't increment Processed for failed albums - they may be retried
-				// Remove from batch but don't save progress (so we retry on resume)
+				// Clear LastBatch to force fresh API calls on resume
+				// This prevents re-processing the same album from cached batch data
+				w.logToFile("processSyncBatches: Clearing batch to restart from where we left off with fresh API calls")
 				w.stateManager.UpdateState(func(s *sync.SyncState) {
-					w.removeFirstAlbumFromBatch(s)
+					s.LastBatch = nil
+					s.CurrentPage = s.CurrentPage - 1 // Step back one page so we re-fetch
+					if s.CurrentPage < 1 {
+						s.CurrentPage = 1
+					}
 				})
 				w.progressService.Save(w.stateManager.GetState())
 				w.logToFile("processSyncBatches: Rate limited, pausing sync to wait for reset")
 				w.stateManager.SetStatus(sync.SyncStatusPaused)
-				return // Exit to main loop which will wait for resume
+				return
 			}
 			w.logToFile("processSyncBatches: Successfully synced album with tracks: %s - %s", artist, title)
 		}
 
 		w.stateManager.UpdateState(func(s *sync.SyncState) {
-			// Check if we've exceeded total - this can happen when processing across pages/folders
-			if s.Processed >= s.Total && s.Total > 0 {
-				w.logToFile("processSyncBatches: WARNING - Processed (%d) >= Total (%d), marking sync complete", s.Processed, s.Total)
+			// Check if we've exceeded total using UniqueProcessed - this can happen when processing across pages/folders
+			uniqueProcessed := s.UniqueProcessed
+			if uniqueProcessed == 0 {
+				uniqueProcessed = s.Processed
+			}
+			if uniqueProcessed >= s.Total && s.Total > 0 {
+				w.logToFile("processSyncBatches: WARNING - UniqueProcessed (%d) >= Total (%d), marking sync complete", uniqueProcessed, s.Total)
 				s.Status = sync.SyncStatusIdle
 				s.LastBatch = nil
 				s.LastActivity = time.Time{}
 				return
 			}
 			s.Processed++
+			s.UniqueProcessed++
+			// Mark this album as processed to avoid re-processing after rate limit
+			if discogsID > 0 {
+				if s.ProcessedIDs == nil {
+					s.ProcessedIDs = make(map[int]bool)
+				}
+				s.ProcessedIDs[discogsID] = true
+			}
 		})
 		w.progressService.Save(w.stateManager.GetState())
 		w.stateManager.UpdateState(func(s *sync.SyncState) {
 			w.removeFirstAlbumFromBatch(s)
 		})
 		w.progressService.Save(w.stateManager.GetState())
-		w.logToFile("processSyncBatches: Album synced successfully: %s - %s, Processed=%d", artist, title, w.stateManager.GetState().Processed)
+		w.logToFile("processSyncBatches: Album synced successfully: %s - %s, Processed=%d, UniqueProcessed=%d", artist, title, w.stateManager.GetState().Processed, w.stateManager.GetState().UniqueProcessed)
 		break
 	}
 }
@@ -766,15 +835,26 @@ func (w *SyncWorker) updateExistingAlbum(existingAlbum *models.Album, title, art
 	}
 
 	w.stateManager.UpdateState(func(s *sync.SyncState) {
-		// Check if we've exceeded total - this can happen when processing across pages/folders
-		if s.Processed >= s.Total && s.Total > 0 {
-			w.logToFile("Sync: WARNING - Processed (%d) >= Total (%d), marking sync complete", s.Processed, s.Total)
+		// Check if we've exceeded total using UniqueProcessed - this can happen when processing across pages/folders
+		uniqueProcessed := s.UniqueProcessed
+		if uniqueProcessed == 0 {
+			uniqueProcessed = s.Processed
+		}
+		if uniqueProcessed >= s.Total && s.Total > 0 {
+			w.logToFile("Sync: WARNING - UniqueProcessed (%d) >= Total (%d), marking sync complete", uniqueProcessed, s.Total)
 			s.Status = sync.SyncStatusIdle
 			s.LastBatch = nil
 			s.LastActivity = time.Time{}
 			return
 		}
 		s.Processed++
+		// Mark this album as processed to avoid re-processing after rate limit
+		if discogsID > 0 {
+			if s.ProcessedIDs == nil {
+				s.ProcessedIDs = make(map[int]bool)
+			}
+			s.ProcessedIDs[discogsID] = true
+		}
 	})
 	w.progressService.Save(w.stateManager.GetState())
 	w.stateManager.UpdateState(func(s *sync.SyncState) {
@@ -785,7 +865,7 @@ func (w *SyncWorker) updateExistingAlbum(existingAlbum *models.Album, title, art
 		}
 	})
 	w.progressService.Save(w.stateManager.GetState())
-	w.logToFile("Sync: processed=%d/%d", w.stateManager.GetState().Processed, w.stateManager.GetState().Total)
+	w.logToFile("Sync: processed=%d/%d, unique_processed=%d", w.stateManager.GetState().Processed, w.stateManager.GetState().Total, w.stateManager.GetState().UniqueProcessed)
 }
 
 // checkPauseState checks if sync is paused and waits for resume using context-aware waiting
