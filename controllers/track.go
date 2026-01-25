@@ -381,6 +381,7 @@ func (c *TrackController) SetYouTubeVideo(ctx *gin.Context) {
 			utils.InternalError(ctx, "Failed to create YouTube match")
 			return
 		}
+		existingMatch = newMatch
 	} else {
 		existingMatch.YouTubeVideoID = videoID
 		existingMatch.Status = "matched"
@@ -389,6 +390,14 @@ func (c *TrackController) SetYouTubeVideo(ctx *gin.Context) {
 			utils.InternalError(ctx, "Failed to update YouTube match")
 			return
 		}
+	}
+
+	if duration, err := fetchYouTubeVideoDuration(videoID); err == nil && duration > 0 {
+		existingMatch.VideoDuration = duration
+		c.db.Save(&existingMatch)
+		log.Printf("[DEBUG] SetYouTubeVideo: Cached duration for video %s: %d seconds", videoID, duration)
+	} else {
+		log.Printf("[DEBUG] SetYouTubeVideo: Could not fetch duration for video %s: %v", videoID, err)
 	}
 
 	utils.Success(ctx, 200, gin.H{
