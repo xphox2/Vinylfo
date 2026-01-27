@@ -10,14 +10,15 @@ import (
 type TrackFeedController struct{}
 
 type TrackFeedParams struct {
-	Theme        string
-	Speed        int
-	Separator    string
-	ShowDuration bool
-	ShowAlbum    bool
-	ShowArtist   bool
-	Direction    string
-	Prefix       string
+	Theme          string
+	Speed          int
+	Separator      string
+	ShowDuration   bool
+	ShowAlbum      bool
+	ShowArtist     bool
+	Direction      string
+	Prefix         string
+	ShowBackground bool
 }
 
 func NewTrackFeedController() *TrackFeedController {
@@ -57,15 +58,19 @@ func (c *TrackFeedController) GetTrackFeedPage(ctx *gin.Context) {
 	prefix := ctx.DefaultQuery("prefix", "Now Playing:")
 	prefix = strings.TrimSpace(prefix)
 
+	showBackgroundStr := ctx.DefaultQuery("showBackground", "true")
+	showBackground := showBackgroundStr == "true"
+
 	ctx.Header("Cache-Control", "no-store")
 	ctx.HTML(200, "track-feed.html", gin.H{
-		"theme":        theme,
-		"speed":        speed,
-		"separator":    separator,
-		"showDuration": showDuration,
-		"showAlbum":    showAlbum,
-		"showArtist":   showArtist,
-		"direction":    direction,
-		"prefix":       prefix,
+		"theme":          theme,
+		"speed":          speed,
+		"separator":      separator,
+		"showDuration":   showDuration,
+		"showAlbum":      showAlbum,
+		"showArtist":     showArtist,
+		"direction":      direction,
+		"prefix":         prefix,
+		"showBackground": showBackground,
 	})
 }

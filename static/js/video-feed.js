@@ -25,7 +25,8 @@ class VideoFeedManager {
             transition: document.body.dataset.transition || 'fade',
             showVisualizer: document.body.dataset.showVisualizer !== 'false',
             quality: document.body.dataset.quality || 'auto',
-            overlayDuration: parseInt(document.body.dataset.overlayDuration) || 5
+            overlayDuration: parseInt(document.body.dataset.overlayDuration) || 5,
+            showBackground: document.body.dataset.showBackground !== 'false'
         };
 
         // State
@@ -577,7 +578,9 @@ class VideoFeedManager {
         this.elements.albumArtLayer.classList.add('hidden');
         this.elements.visualizerLayer.classList.add('hidden');
         this.elements.trackOverlay.classList.add('hidden');
-        this.elements.noTrackOverlay.classList.remove('hidden');
+        if (this.config.showBackground) {
+            this.elements.noTrackOverlay.classList.remove('hidden');
+        }
 
         if (this.visualizer) {
             this.visualizer.stop();

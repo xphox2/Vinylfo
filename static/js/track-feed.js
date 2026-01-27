@@ -13,7 +13,8 @@ class TrackFeedManager {
             showAlbum: document.body.dataset.showAlbum !== 'false',
             showArtist: document.body.dataset.showArtist !== 'false',
             direction: document.body.dataset.direction || 'rtl',
-            prefix: document.body.dataset.prefix || 'Now Playing:'
+            prefix: document.body.dataset.prefix || 'Now Playing:',
+            showBackground: document.body.dataset.showBackground !== 'false'
         };
 
         this.currentTrackId = null;
@@ -204,7 +205,9 @@ class TrackFeedManager {
         this.elements.trackText2.textContent = '';
         this.elements.separator1.textContent = '';
         this.elements.separator2.textContent = '';
-        this.elements.noTrackOverlay.classList.remove('hidden');
+        if (this.config.showBackground) {
+            this.elements.noTrackOverlay.classList.remove('hidden');
+        }
     }
 
     showConnectionStatus() {

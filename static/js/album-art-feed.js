@@ -9,7 +9,8 @@ class AlbumArtFeedManager {
             theme: document.body.dataset.theme || 'dark',
             animation: document.body.dataset.animation !== 'false',
             animDuration: parseInt(document.body.dataset.animDuration) || 20,
-            fit: document.body.dataset.fit || 'cover'
+            fit: document.body.dataset.fit || 'cover',
+            showBackground: document.body.dataset.showBackground !== 'false'
         };
 
         this.currentTrackId = null;
@@ -141,7 +142,9 @@ class AlbumArtFeedManager {
         this.currentTrackId = null;
         this.elements.albumArt.classList.remove('loaded');
         this.elements.albumArt.src = '';
-        this.elements.noTrackOverlay.classList.remove('hidden');
+        if (this.config.showBackground) {
+            this.elements.noTrackOverlay.classList.remove('hidden');
+        }
     }
 
     showConnectionStatus() {

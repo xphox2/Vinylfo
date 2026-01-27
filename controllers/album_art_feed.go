@@ -9,10 +9,11 @@ import (
 type AlbumArtFeedController struct{}
 
 type AlbumArtFeedParams struct {
-	Theme        string
-	Animation    bool
-	AnimDuration int
-	Fit          string
+	Theme          string
+	Animation      bool
+	AnimDuration   int
+	Fit            string
+	ShowBackground bool
 }
 
 func NewAlbumArtFeedController() *AlbumArtFeedController {
@@ -41,11 +42,15 @@ func (c *AlbumArtFeedController) GetAlbumArtFeedPage(ctx *gin.Context) {
 		fit = "cover"
 	}
 
+	showBackgroundStr := ctx.DefaultQuery("showBackground", "true")
+	showBackground := showBackgroundStr == "true"
+
 	ctx.Header("Cache-Control", "no-store")
 	ctx.HTML(200, "album-art-feed.html", gin.H{
-		"theme":        theme,
-		"animation":    animation,
-		"animDuration": animDur,
-		"fit":          fit,
+		"theme":          theme,
+		"animation":      animation,
+		"animDuration":   animDur,
+		"fit":            fit,
+		"showBackground": showBackground,
 	})
 }

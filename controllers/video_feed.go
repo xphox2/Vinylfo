@@ -74,6 +74,9 @@ func NewVideoFeedController(db *gorm.DB, playbackController *PlaybackController,
 
 // GetVideoFeedPage serves the video feed HTML template
 func (c *VideoFeedController) GetVideoFeedPage(ctx *gin.Context) {
+	showBackgroundStr := ctx.DefaultQuery("showBackground", "true")
+	showBackground := showBackgroundStr == "true"
+
 	ctx.HTML(200, "video-feed.html", gin.H{
 		"overlay":         ctx.DefaultQuery("overlay", "bottom"),
 		"theme":           ctx.DefaultQuery("theme", "dark"),
@@ -81,6 +84,7 @@ func (c *VideoFeedController) GetVideoFeedPage(ctx *gin.Context) {
 		"showVisualizer":  ctx.DefaultQuery("showVisualizer", "true"),
 		"quality":         ctx.DefaultQuery("quality", "auto"),
 		"overlayDuration": ctx.DefaultQuery("overlayDuration", "5"),
+		"showBackground":  showBackground,
 	})
 }
 

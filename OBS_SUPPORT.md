@@ -84,6 +84,7 @@ All options are passed as URL query parameters.
 | `showVisualizer` | `true`, `false` | `true` | Show/hide audio visualizer |
 | `quality` | `auto`, `high`, `medium`, `small` | `auto` | YouTube video quality preference |
 | `overlayDuration` | `0`-`30` | `5` | Seconds before overlay auto-hides (0 = never) |
+| `showBackground` | `true`, `false` | `true` | Show/hide "No track playing" background |
 
 ### Album Art Feed Parameters
 
@@ -93,6 +94,7 @@ All options are passed as URL query parameters.
 | `animation` | `true`, `false` | `true` | Enable Ken Burns animation |
 | `animDuration` | `5`-`120` | `20` | Animation duration in seconds |
 | `fit` | `contain`, `cover` | `cover` | How image fits the viewport |
+| `showBackground` | `true`, `false` | `true` | Show/hide "No track playing" background |
 
 ### Track Info Feed Parameters
 
@@ -106,12 +108,16 @@ All options are passed as URL query parameters.
 | `showArtist` | `true`, `false` | `true` | Show artist name |
 | `direction` | `rtl`, `ltr` | `rtl` | Scroll direction (right-to-left or left-to-right) |
 | `prefix` | any string | `Now Playing:` | Text prefix before track info |
+| `showBackground` | `true`, `false` | `true` | Show/hide "No track playing" background |
 
 ### Example URLs
 
 **Video Feed:**
 ```bash
 http://localhost:8080/feeds/video?overlay=bottom&theme=dark&transition=fade
+
+# Hide "No track playing" background (blank when idle)
+http://localhost:8080/feeds/video?showBackground=false
 ```
 
 **Album Art Feed:**
@@ -124,6 +130,9 @@ http://localhost:8080/feeds/art?theme=light&animation=false&fit=contain
 
 # Fast animation (5 seconds)
 http://localhost:8080/feeds/art?theme=dark&animation=true&animDuration=5
+
+# Hide "No track playing" background (blank when idle)
+http://localhost:8080/feeds/art?showBackground=false
 ```
 
 **Track Info Feed:**
@@ -136,6 +145,9 @@ http://localhost:8080/feeds/track?theme=light&speed=10&showDuration=false
 
 # Left-to-right scroll, custom prefix
 http://localhost:8080/feeds/track?direction=ltr&prefix="Now on air:"&theme=transparent
+
+# Hide "No track playing" background (blank when idle)
+http://localhost:8080/feeds/track?showBackground=false
 ```
 
 ---
@@ -343,6 +355,34 @@ http://localhost:8080/feeds/track?theme=transparent&direction=ltr&speed=5
 
 ---
 
+### Setup 12: Hidden Background (Clean OBS Layer)
+
+Hide the "No track playing" background for feeds that should be invisible when idle:
+
+**URL:**
+```
+http://localhost:8080/feeds/video?showBackground=false
+```
+
+Or for album art:
+```
+http://localhost:8080/feeds/art?showBackground=false
+```
+
+Or for track info:
+```
+http://localhost:8080/feeds/track?showBackground=false
+```
+
+**Settings:**
+- When no track is playing, the feed becomes completely blank/transparent
+- Useful for feeds layered under other content in OBS
+- Prevents "No track playing" text from showing through
+
+**Best for:** Background layers that should only show content during playback
+
+---
+
 ## OBS Setup Instructions
 
 ### Adding Vinylfo as a Browser Source
@@ -458,6 +498,8 @@ When no track is playing:
 - Animated vinyl record icon
 - "No track playing" message
 
+**To hide the idle state**, add `showBackground=false` to the URL. The feed will be blank/transparent when no track is playing.
+
 ---
 
 ### Track Info Feed Features
@@ -486,6 +528,10 @@ When no track is playing:
 - `light` - Dark text on light
 - `transparent` - White text with shadow (for any background)
 
+#### Idle State
+
+When no track is playing, the feed shows "No track playing". To hide this and make the feed blank/transparent when idle, add `showBackground=false` to the URL.
+
 ---
 
 ### Connection Status
@@ -509,6 +555,7 @@ All three feeds share the same SSE connection pattern for synchronized updates.
 1. Ensure Vinylfo server is running
 2. Start playback in Vinylfo main interface
 3. Check that the track has a YouTube match
+4. If you want the feed to be completely blank instead of showing "No track playing", add `showBackground=false` to the URL
 
 ### Album Art Not Showing
 
@@ -625,6 +672,7 @@ All three feeds share the same SSE connection pattern for synchronized updates.
 | Scrolling text | No | No | Yes |
 | YouTube playback | Yes | No | No |
 | Visualizer | Yes | No | No |
+| Hide idle state | Yes | Yes | Yes |
 | Best for | Video content | Background art | Text overlays |
 
 ### Port Requirements
@@ -728,6 +776,18 @@ For cleaner overlays, hide the connection status indicator:
 }
 ```
 
+### Hiding Idle Background
+
+To hide the "No track playing" background entirely when no track is playing (blank/transparent), use the `showBackground=false` parameter:
+
+```bash
+http://localhost:8080/feeds/video?showBackground=false
+http://localhost:8080/feeds/art?showBackground=false
+http://localhost:8080/feeds/track?showBackground=false
+```
+
+This is useful for feeds that should only appear when content is playing, keeping them invisible otherwise in OBS.
+
 ### Customizing Album Art Animation
 
 ```css
@@ -781,3 +841,4 @@ For issues or questions:
 ---
 
 *Last updated: January 2026*
+*Added showBackground parameter to all feeds (January 27, 2026)*
