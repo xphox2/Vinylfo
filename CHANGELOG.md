@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4-alpha] - 2026-01-27
+
+### Fixed
+
+#### Playback Time/Seek Reliability
+
+Overhauled playback timekeeping to make the server authoritative, eliminating seek snapback and ensuring consistent behavior across tabs and app restarts.
+
+- Added `setPositionFromAuthoritative()` helper to update all position-related fields atomically (`currentPosition`, `cachedPosition`, `lastWallClockUpdate`)
+- Prevents snapback when seeking by ensuring wall-clock timer has consistent state
+
+- Added `POST /playback/seek` endpoint for atomic position updates
+- File: `controllers/playback.go`
+- File: `routes/routes.go`
+- Client now calls seek endpoint instead of saveProgress for user-initiated seeks
+
+- Added `Revision int64` field to `PlaybackSession` model for monotonic ordering
+- File: `models/models.go`
+- Client tracks `lastAppliedRevision` and ignores stale snapshots
+- All state-changing endpoints (pause, resume, seek, skip, previous, playIndex) return revision
+
+- Added `BasePositionSeconds` field for computed position tracking
+- Position computed on read: `BasePositionSeconds + elapsed` when playing
+- Files: `models/models.go`, `controllers/playback.go`
+- Eliminates time drift between server and client
+- Timer now uses computed position for auto-advance detection
+
+- Progress save interval reduced from 1.5s to 30s
+- File: `static/js/playback-dashboard.js`
+- `UpdateProgress` endpoint now rejects updates while playing
+- Persistence shifted to event-driven (pause, seek, tab close) rather than constant
+
+## [0.3.3-alpha] - 2026-01-27
+
+### Fixed
+
+#### Player Timekeeping When Backgrounded / Closed
+
+- **Fixed `/player` time freezing when the tab is backgrounded/minimized**: The UI now re-syncs `track`, `is_playing`/`is_paused`, and `position` from the server so time snaps forward correctly after throttling.
+  - File: `static/js/playback-dashboard.js`
+  - Adds `visibilitychange`/`focus` resync hooks and applies `GET /playback/current` `position` when drift is detected.
+
+- **Fixed playback not continuing without an open UI**: Server-side playback now advances the current position continuously and auto-advances to the next track when the current track ends.
+  - File: `controllers/playback.go`
+  - The server timer no longer stalls at track end and treats missing/zero durations as uncapped progression.
+
 ## [0.3.2-alpha] - 2026-01-25
 
 ### Fixed

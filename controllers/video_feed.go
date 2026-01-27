@@ -815,15 +815,16 @@ func (c *VideoFeedController) stateMonitor() {
 			c.lastState.Position = position
 			c.lastStateMux.Unlock()
 
-			// Only broadcast position every 5 seconds to reduce traffic
-			if position%5 == 0 {
-				c.broadcastEvent(VideoFeedEvent{
-					Type: "position_update",
-					Data: gin.H{
-						"position": position,
-					},
-				})
-			}
+			// Broadcast position update with timestamp for drift correction
+			// Broadcasting every time position changes (which happens every 500ms from stateMonitor)
+			// This ensures clients can maintain accurate position even when backgrounded
+			c.broadcastEvent(VideoFeedEvent{
+				Type: "position_update",
+				Data: gin.H{
+					"position":  position,
+					"timestamp": time.Now().Unix(),
+				},
+			})
 		} else {
 			c.lastStateMux.Unlock()
 		}

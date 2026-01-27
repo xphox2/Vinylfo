@@ -62,20 +62,47 @@ class PlaybackManager {
         this.stateSyncBlocked = false;
         this.useYouTubeDuration = false;
         this.currentYouTubeDuration = 0;
+        this.lastServerPosition = 0;
+        this.lastServerTimestamp = 0;
+        this.positionUpdateListenerAdded = false;
+        this.forcePositionResync = false;
+        this.lastTickDebug = 0;
+        this.lastSyncDebug = 0;
+        this.lastSaveDebug = 0;
+        this.pendingSeekRevision = null;
     }
 
     async init() {
         console.log('[PlaybackManager] Initializing...');
-        
+
         // Load current playback status from server
         await this.loadCurrentPlayback();
-        
+
         this.setupControls();
         this.setupTabSyncListeners();
+        this.setupPositionUpdateListener();
+        this.setupVisibilityHandlers();
         this.startStatusUpdate();
         this.setupBeforeUnload();
         this.startPeriodicStateSync();
         console.log('[PlaybackManager] Initialization complete');
+    }
+
+    setupVisibilityHandlers() {
+        // Browsers throttle timers/network in background tabs/windows.
+        // When we become visible again, snap UI back to the server's authoritative position/state.
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                this.forcePositionResync = true;
+                this.syncStateFromServer();
+            }
+        });
+
+        // Some browsers resume without firing visibilitychange in certain flows.
+        window.addEventListener('focus', () => {
+            this.forcePositionResync = true;
+            this.syncStateFromServer();
+        });
     }
 
     async loadCurrentPlayback() {
@@ -170,6 +197,15 @@ class PlaybackManager {
                     this.updatePositionDisplay();
                 }
 
+                // Initialize wall-clock timer for resume
+                if (this.isPlaying) {
+                    this.lastWallClockUpdate = Date.now();
+                    this.cachedPosition = this.currentPosition;
+                }
+
+                // Store server revision for ordering
+                this.lastAppliedRevision = data.revision || 0;
+
                 const playlistInfo = document.getElementById('playlist-info');
                 if (playlistInfo && this.currentPlaylistName) {
                     playlistInfo.textContent = 'Playlist: ' + this.currentPlaylistName;
@@ -192,18 +228,85 @@ class PlaybackManager {
     }
 
     async syncStateFromServer() {
-        // Skip sync if we're in the middle of a user-initiated update
         if (this.stateSyncBlocked) {
             return;
         }
-        
+
         try {
-            const url = this.currentPlaylistId 
+            const url = this.currentPlaylistId
                 ? `/playback/current?playlist_id=${encodeURIComponent(this.currentPlaylistId)}`
                 : '/playback/current';
             const response = await fetch(url);
             const data = await response.json();
+
+            const serverRevision = data.revision || 0;
+            if (serverRevision <= this.lastAppliedRevision) {
+                return;
+            }
+            this.lastAppliedRevision = serverRevision;
             
+            // Track/state/position are authoritative from the server.
+            // This ensures the UI stays correct even if the tab was backgrounded.
+            if (data.playlist_id) {
+                this.currentPlaylistId = data.playlist_id;
+            }
+            if (data.playlist_name) {
+                this.currentPlaylistName = data.playlist_name;
+            }
+            if (data.track) {
+                if (!this.currentTrack || data.track.id !== this.currentTrack.id) {
+                    this.displayTrack(data.track, data.playlist_name);
+                }
+            }
+
+            if (typeof data.is_playing === 'boolean') {
+                this.isPlaying = data.is_playing;
+            }
+            if (typeof data.is_paused === 'boolean') {
+                this.isPaused = data.is_paused;
+            }
+            this.updateButtonStates();
+
+            if (typeof data.position === 'number' && !Number.isNaN(data.position)) {
+                const serverPosition = data.position;
+                const localPosition = this.currentPosition;
+                const drift = serverPosition - localPosition;
+                const driftSeconds = Math.abs(drift);
+                const now = Date.now();
+
+                if (serverPosition < localPosition && driftSeconds >= 1 && now - this.lastSyncDebug >= 2000) {
+                    console.log('[TimeDebug] Server position behind local', {
+                        serverPosition,
+                        localPosition,
+                        driftSeconds,
+                        forcePositionResync: this.forcePositionResync,
+                        isPlaying: this.isPlaying,
+                        isPaused: this.isPaused
+                    });
+                    this.lastSyncDebug = now;
+                }
+
+                const shouldResyncForward = drift >= 2;
+                const shouldResyncBackward = drift <= -2 && this.forcePositionResync;
+
+                // Avoid backward jitter while visible; allow backward resync only when forced.
+                if (shouldResyncForward || shouldResyncBackward) {
+                    this.currentPosition = serverPosition;
+                    this.cachedPosition = this.currentPosition;
+                    this.lastWallClockUpdate = Date.now();
+                    this.updatePositionDisplay();
+                    console.log('[TimeDebug] Resynced position from server', {
+                        serverPosition,
+                        localPositionBefore: localPosition,
+                        drift,
+                        driftSeconds,
+                        forcePositionResync: this.forcePositionResync
+                    });
+                }
+
+                this.forcePositionResync = false;
+            }
+
             if (data.queue && data.queue.length > 0) {
                 const serverQueueIds = data.queue.map(t => t.id).join(',');
                 const localQueueIds = this.queue.map(t => t.id).join(',');
@@ -276,6 +379,32 @@ class PlaybackManager {
         });
     }
 
+    setupPositionUpdateListener() {
+        if (this.positionUpdateListenerAdded) {
+            return;
+        }
+        this.positionUpdateListenerAdded = true;
+
+        window.addEventListener('vinylfo_position_update', (e) => {
+            const { position, timestamp } = e.detail;
+            if (typeof position === 'number' && typeof timestamp === 'number') {
+                if (position < this.currentPosition) {
+                    console.log('[TimeDebug] Position update behind local', {
+                        position,
+                        localPosition: this.currentPosition,
+                        timestamp
+                    });
+                }
+                this.lastServerPosition = position;
+                this.lastServerTimestamp = timestamp;
+                if (!this.isLocalChange) {
+                    this.currentPosition = position;
+                    this.updatePositionDisplay();
+                }
+            }
+        });
+    }
+
     applyRemoteState(state) {
         console.log('[PlaybackManager] Applying remote state:', state);
         if (state.track) {
@@ -307,6 +436,8 @@ class PlaybackManager {
             this.displayTrack(data.track);
         }
         this.currentPosition = data.position || 0;
+        this.lastWallClockUpdate = Date.now();
+        this.cachedPosition = this.currentPosition;
         this.updatePositionDisplay();
         this.isPlaying = true;
         this.isPaused = false;
@@ -368,8 +499,10 @@ class PlaybackManager {
         if (data.queue) {
             this.renderQueue();
         }
-        
+
         this.currentPosition = 0;
+        this.lastWallClockUpdate = Date.now();
+        this.cachedPosition = this.currentPosition;
         this.updatePositionDisplay();
         this.isPlaying = true;
         this.isPaused = false;
@@ -379,7 +512,13 @@ class PlaybackManager {
 
     applyRemoteSeek(position) {
         console.log('[PlaybackManager] Applying remote seek to:', position);
+        this.setPositionFromAuthoritative(position);
+    }
+
+    setPositionFromAuthoritative(position) {
         this.currentPosition = position;
+        this.cachedPosition = position;
+        this.lastWallClockUpdate = Date.now();
         this.updatePositionDisplay();
     }
 
@@ -526,24 +665,32 @@ class PlaybackManager {
         const clickX = event.clientX - rect.left;
         const containerWidth = rect.width;
 
-        // Calculate percentage
         const percentage = clickX / containerWidth;
-
-        // Calculate new position in seconds
         const newPosition = Math.floor(percentage * effectiveDuration);
 
         console.log('[PlaybackManager] Seeking to position:', newPosition);
 
-        // Update position
-        this.currentPosition = newPosition;
-        this.updatePositionDisplay();
+        this.setPositionFromAuthoritative(newPosition);
 
-        // Broadcast seek to other tabs
         this.isLocalChange = true;
         this.tabSync.broadcastSeek(newPosition);
 
-        // Save progress to backend
-        this.saveProgress();
+        fetch('/playback/seek', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                playlist_id: this.currentPlaylistId,
+                position_seconds: newPosition
+            })
+        }).then(response => response.json())
+        .then(data => {
+            if (data.revision) {
+                this.lastAppliedRevision = data.revision;
+            }
+        }).catch(error => {
+            console.error('[PlaybackManager] Seek failed:', error);
+            this.syncStateFromServer();
+        });
     }
 
     async play() {
@@ -558,6 +705,11 @@ class PlaybackManager {
                 const data = await response.json();
                 this.isPlaying = data.is_playing;
                 this.isPaused = data.is_paused;
+                if (data.revision) {
+                    this.lastAppliedRevision = data.revision;
+                }
+                this.lastWallClockUpdate = Date.now();
+                this.cachedPosition = this.currentPosition;
                 this.startProgressSaving();
                 this.updateButtonStates();
 
@@ -582,6 +734,9 @@ class PlaybackManager {
                 const data = await response.json();
                 this.isPaused = data.is_paused;
                 this.isPlaying = data.is_playing;
+                if (data.revision) {
+                    this.lastAppliedRevision = data.revision;
+                }
                 this.stopProgressSaving();
                 this.saveProgress();
                 this.updateButtonStates();
@@ -606,7 +761,11 @@ class PlaybackManager {
             if (response.ok) {
                 const data = await response.json();
                 console.log('[PlaybackManager] previous() - server response:', JSON.stringify(data, null, 2));
-                
+
+                if (data.revision) {
+                    this.lastAppliedRevision = data.revision;
+                }
+
                 if (data.queue_index !== undefined) {
                     this.queueIndex = data.queue_index;
                 }
@@ -638,8 +797,10 @@ class PlaybackManager {
                     this.queueIndex = data.queue_index || this.queueIndex;
                     this.renderQueue();
                 }
-                
+
                 this.currentPosition = 0;
+                this.lastWallClockUpdate = Date.now();
+                this.cachedPosition = this.currentPosition;
                 this.updatePositionDisplay();
                 this.isPlaying = true;
                 this.isPaused = false;
@@ -666,7 +827,11 @@ class PlaybackManager {
             if (response.ok) {
                 const data = await response.json();
                 console.log('[PlaybackManager] next() - server response:', JSON.stringify(data, null, 2));
-                
+
+                if (data.revision) {
+                    this.lastAppliedRevision = data.revision;
+                }
+
                 if (data.queue_index !== undefined) {
                     this.queueIndex = data.queue_index;
                 }
@@ -701,8 +866,10 @@ class PlaybackManager {
                     this.queueIndex = data.queue_index || this.queueIndex;
                     this.renderQueue();
                 }
-                
+
                 this.currentPosition = 0;
+                this.lastWallClockUpdate = Date.now();
+                this.cachedPosition = this.currentPosition;
                 this.updatePositionDisplay();
                 this.isPlaying = true;
                 this.isPaused = false;
@@ -762,6 +929,8 @@ class PlaybackManager {
                 }
 
                 this.currentPosition = 0;
+                this.lastWallClockUpdate = Date.now();
+                this.cachedPosition = this.currentPosition;
 
                 // Now pause immediately
                 await this.pause();
@@ -914,16 +1083,18 @@ class PlaybackManager {
                 if (data.track) {
                     this.queueIndex = index;
                     this.currentPosition = 0;
+                    this.lastWallClockUpdate = Date.now();
+                    this.cachedPosition = this.currentPosition;
                     this.displayTrack(track);
                     this.renderQueue();
                     this.startProgressSaving();
                     this.updateButtonStates();
-                    
+
                     // Wait for server to persist
                     setTimeout(() => {
                         this.stateSyncBlocked = false;
                     }, 1000);
-                    
+
                     this.isLocalChange = true;
                     this.tabSync.broadcastSkip(data.track, index, this.queue);
                 } else {
@@ -973,11 +1144,32 @@ class PlaybackManager {
     }
 
     startStatusUpdate() {
+        this.lastWallClockUpdate = Date.now();
+        this.cachedPosition = this.currentPosition;
+
         setInterval(() => {
             if (this.isPlaying && !this.isPaused) {
-                this.currentPosition++;
-                this.updatePositionDisplay();
-                this.checkTrackEnd();
+                const now = Date.now();
+                const elapsedMs = now - this.lastWallClockUpdate;
+                const elapsedSeconds = Math.floor(elapsedMs / 1000);
+
+                if (elapsedSeconds > 0) {
+                    this.cachedPosition += elapsedSeconds;
+                    this.lastWallClockUpdate += elapsedSeconds * 1000;
+                    this.currentPosition = this.cachedPosition;
+                    this.updatePositionDisplay();
+                    this.checkTrackEnd();
+                    if (now - this.lastTickDebug >= 5000) {
+                        console.log('[TimeDebug] Tick', {
+                            elapsedMs,
+                            elapsedSeconds,
+                            currentPosition: this.currentPosition,
+                            cachedPosition: this.cachedPosition,
+                            lastWallClockUpdate: this.lastWallClockUpdate
+                        });
+                        this.lastTickDebug = now;
+                    }
+                }
             }
         }, 1000);
     }
@@ -1028,17 +1220,14 @@ class PlaybackManager {
     }
 
     startProgressSaving() {
-        // Save progress every 1.5 seconds to ensure we capture the latest position
-        // (after the position increment happens)
         this.stopProgressSaving();
         this.saveInterval = setInterval(() => {
             if (this.isPlaying && !this.isPaused) {
-                // Small delay to ensure position increment has happened
                 setTimeout(() => {
                     this.saveProgress();
                 }, 600);
             }
-        }, 1500);
+        }, 30000);
     }
 
     stopProgressSaving() {
@@ -1050,6 +1239,17 @@ class PlaybackManager {
 
     saveProgress() {
         if (!this.currentTrack || !this.currentPlaylistId) return;
+
+        const now = Date.now();
+        if (now - this.lastSaveDebug >= 5000) {
+            console.log('[TimeDebug] Saving progress', {
+                playlistId: this.currentPlaylistId,
+                trackId: this.currentTrack.id,
+                positionSeconds: this.currentPosition,
+                queueIndex: this.queueIndex
+            });
+            this.lastSaveDebug = now;
+        }
 
         fetch('/playback/update-progress', {
             method: 'POST',

@@ -69,8 +69,12 @@ type PlaybackSession struct {
 	YouTubeSyncedAt     *time.Time `json:"youtube_synced_at,omitempty"`
 	StartedAt           time.Time  `json:"started_at"`
 	LastPlayedAt        time.Time  `json:"last_played_at"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	// Authoritative time tracking: BasePositionSeconds + UpdatedAt = computed position while playing
+	BasePositionSeconds int   `gorm:"default:0" json:"base_position_seconds"`
+	Revision            int64 `gorm:"default:0;index" json:"revision"`
+	// Revision is monotonically incremented on state-changing operations (seek/pause/resume/skip)
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // SessionPlaylist represents a playlist within a session
