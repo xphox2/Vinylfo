@@ -438,6 +438,8 @@ function showPlaylistsList() {
     loadPlaylists();
 }
 
+window.showPlaylistsList = showPlaylistsList;
+
 function loadAllTracks(excludeTrackIds) {
     console.log('Loading all tracks...');
     let url;
@@ -843,22 +845,10 @@ function showNotification(message, type) {
     }, 3000);
 }
 
-// Initialize event listeners when DOM is ready
+    // Initialize event listeners when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Playlist management script executing');
     
-    // Back to playlists button
-    document.getElementById('back-to-playlists').addEventListener('click', function() {
-        console.log('Back to playlists clicked');
-        showPlaylistsList();
-    });
-
-    // Back to playlist button (from add-tracks view)
-    document.getElementById('back-to-playlist').addEventListener('click', function() {
-        document.getElementById('add-tracks-view').style.display = 'none';
-        document.getElementById('playlist-detail-view').style.display = 'block';
-    });
-
     // Create playlist button
     document.getElementById('create-playlist-btn').addEventListener('click', function() {
         document.getElementById('create-playlist-modal').style.display = 'flex';
@@ -956,4 +946,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     loadPlaylists();
+
+    document.querySelectorAll('.back-link').forEach(link => {
+        link.addEventListener('click', function(e) {
+            const href = this.getAttribute('href');
+            if (href && href.startsWith('/')) {
+                e.preventDefault();
+                window.location.href = href;
+            }
+        });
+    });
 });

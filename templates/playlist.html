@@ -18,7 +18,7 @@
         <div id="playlists-container"><p>Loading playlists...</p></div>
     </div>
     <div id="playlist-detail-view" class="view" style="display: none;">
-        <button id="back-to-playlists">Back to Playlists</button>
+        <a href="#" onclick="window.location.href='/playlist'; return false;" class="back-link">← Back to Playlists</a>
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <h2 id="playlist-name" style="margin: 0;"></h2>
             <div class="playlist-actions">
@@ -36,7 +36,7 @@
         <div id="playlist-tracks"><p>Loading tracks...</p></div>
     </div>
     <div id="add-tracks-view" class="view" style="display: none;">
-        <button id="back-to-playlist">Back to Playlist</button>
+        <a href="#" onclick="showPlaylistsList(); return false;" class="back-link">← Back to Playlist</a>
         <div class="view-header">
             <h3 style="margin: 0;">Add Tracks to Playlist</h3>
             <div class="search-wrapper">
