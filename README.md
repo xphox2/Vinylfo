@@ -1,323 +1,162 @@
-# Vinylfo - Vinyl Collection Manager
+# Vinylfo
 
-Vinylfo is a self-hosted web application for managing your vinyl record collection. It syncs with your Discogs account to import albums and tracks, provides playlist management, and tracks your listening sessions.
+**Vinyl Collection Manager with YouTube Integration & OBS Support**
 
-## Features
+Vinylfo is a self-hosted web application for managing your vinyl record collection. Sync with Discogs to import your collection, create playlists, track listening sessions, and stream music videos to OBS for live broadcasts.
 
-### Collection Management
-- **Discogs Integration**: Connect your Discogs account via OAuth to sync your collection
-- **Automatic Sync**: Import albums from all Discogs folders or specific folders
-- **Album Metadata**: Stores artist, title, year, genre, style, label, country, and cover images
-- **Track Information**: Imports full tracklists with duration, position, and side information
-- **Local Search**: Search albums and tracks in your local database
+## 🌟 Key Features
 
-### Playback Tracking
-- **Session Management**: Track what you're currently playing
-- **Listening History**: Records play history for statistics
-- **Progress Tracking**: Saves playback progress across browser sessions
-- **Queue Display**: See upcoming tracks in your current session
+- **📀 Discogs Integration** - OAuth sync to import your vinyl collection with full metadata
+- **🎵 Playlist Management** - Create, organize, and shuffle custom playlists
+- **📺 YouTube Integration** - Connect your YouTube account to export playlists and match tracks to music videos
+- **🎬 OBS Streaming** - Real-time video feeds for professional streaming overlays
+- **⏱️ Duration Resolution** - Automatically resolve missing track durations from multiple sources
+- **🔄 Playback Tracking** - Track listening sessions with progress persistence across browser tabs
+- **🔒 Secure** - OAuth tokens encrypted at rest with automatic refresh
 
-### Playlist Features
-- **Create Playlists**: Organize tracks into custom playlists
-- **Add/Remove Tracks**: Add individual tracks or entire albums
-- **Shuffle**: Randomize playlist order
-- **Play Playlists**: Start playback from any playlist
+## 🚀 Quick Start
 
-### Resolution Center
-- **Automatic Duration Lookup**: Resolves missing track durations by querying external databases
-- **MusicBrainz Integration**: Queries MusicBrainz for track durations with rate limiting
-- **Wikipedia Integration**: Parses Wikipedia album pages for track listings
-- **Last.fm Integration**: Queries Last.fm API for track durations
-- **YouTube Integration**: Searches YouTube for track videos and extracts duration (optional)
-- **Consensus Algorithm**: Requires 2+ sources to agree before auto-applying durations
-- **Smart Matching**: Normalizes artist names and titles for better matching
-  - Handles Discogs disambiguation suffixes like "(2)", "(rapper)"
-  - Handles edition suffixes like "(Remastered)", "(Deluxe Edition)"
-- **Review Queue**: Manual review for tracks where sources disagree
-- **Bulk Processing**: Background worker processes all tracks with missing durations
-- **YouTube Quota Optimization**:
-  - Skips YouTube API when free sources already reach consensus
-  - File-based cache persists results across database resets
-- **YouTube Playlist Export**: Export vinyl playlists directly to your YouTube account
+### Installation
+
+1. **Download latest version.**
+
+2. **Place vinylfo.exe into a new folder.**
+
+3. **Run vinylfo.exe**
+
+4. **Open in browser:**
+   ```
+   http://localhost:8080
+   ```
+## 📖 Documentation
+
+- **[API.md](API.md)** - Complete REST API reference with all 168+ endpoints
+- **[OBS.md](OBS.md)** - OBS Studio integration guide for streaming feeds
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
+
+## 🎯 Usage
+
+### Basic Collection Management
+
+1. **Home** (`/`) - Browse albums and tracks
+2. **Player** (`/player`) - Playback dashboard with queue
+3. **Playlist** (`/playlist`) - Create and manage playlists
+
+### Discogs Sync
+
+1. Go to **Settings** (`/settings`)
+2. Click "Connect Discogs"
+3. Authorize the application
+4. Go to **Sync** (`/sync`) to start importing
 
 ### YouTube Integration
-- **Connect YouTube Account**: OAuth 2.0 integration to link your YouTube account
-- **YouTube Page** (`/youtube`): Dedicated page for managing YouTube content
-  - View your channel information
-  - Browse and manage your YouTube playlists
-  - Search and view music videos
-  - Create new playlists directly from the UI
-- **Playlist Export**: Export vinyl playlists to your YouTube account
-- **Secure Token Storage**: OAuth tokens encrypted and stored in database with automatic refresh
-- **Smart API Usage**: 10,000 daily quota units per connected user
 
-### Video Feed for OBS Streaming
-- **Real-Time Video Display**: Shows YouTube music videos synced with your playback queue
-- **OBS Browser Source**: Dedicated endpoint for OBS streaming overlays
-- **Server-Sent Events (SSE)**: Instant sync with main player (no polling delay)
-- **Playback Control Sync**: Play, pause, stop, skip commands sync to video feed in real-time
-- **Smart Fallbacks**: Album art with Ken Burns effect when no video available
-- **Audio Visualizer**: Animated frequency bars as fallback display
-- **Track Info Overlay**: Configurable lower-third with track/artist/album info
-- **Smooth Transitions**: Fade or slide transitions between tracks
-- **Customizable via URL Parameters**:
-  - Overlay position (top, bottom, none)
-  - Theme (dark, light, transparent)
-  - Transition style (fade, slide, none)
-  - Visualizer toggle
-  - Video quality selection
-  - Overlay auto-hide duration
+1. Go to **Settings** (`/settings`)
+2. Click "Connect YouTube"
+3. Authorize the application
+4. Use **YouTube** (`/youtube`) page to:
+   - Browse your YouTube playlists
+   - Export vinyl playlists to YouTube
+   - Match tracks to music videos
 
-**Usage:**
-1. Start playback from `/player` page
-2. Open `/feeds/video` in OBS as a Browser Source
-3. Control playback from `/player` - video feed syncs automatically
+### OBS Streaming
 
-### Discogs Sync Features
-- **Pause/Resume**: Long syncs can be paused and resumed later
-- **Progress Persistence**: Sync progress saved to database (survives restarts)
-- **Folder Support**: Sync all folders or select specific ones
-- **Refresh Tracks**: Re-sync track listings from Discogs
-- **Cleanup Tool**: Find and remove albums no longer in your Discogs collection
-- **Rate Limit Handling**: Respects Discogs API limits (60 req/min authenticated)
+Add browser sources to OBS Studio:
 
-## Screenshots
+- **Video Feed** (`http://localhost:8080/feeds/video`) - YouTube video player
+- **Album Art** (`http://localhost:8080/feeds/art`) - Current track artwork  
+- **Track Info** (`http://localhost:8080/feeds/track`) - Artist/title/album display
 
-The application includes pages for:
-- **Home** (`/`) - Browse albums and tracks
-- **Player** (`/player`) - Playback dashboard with queue
-- **Playlist** (`/playlist`) - Manage playlists
-- **Sync** (`/sync`) - Discogs sync dashboard
-- **YouTube** (`/youtube`) - YouTube integration and playlist management
-- **Video Feed** (`/feeds/video`) - OBS browser source for streaming video overlay
-- **Duration Review** (`/resolution-center`) - Resolve missing track durations
-- **Search** (`/search`) - Search Discogs database
-- **Settings** (`/settings`) - Configure Discogs and YouTube connections
+See [OBS.md](OBS.md) for complete setup instructions.
 
-## Project Structure
+### Duration Resolution
+
+If tracks are missing duration information:
+
+1. Go to **Resolution Center** (`/resolution-center`)
+2. The system will query multiple sources (MusicBrainz, Wikipedia, Last.fm, YouTube)
+3. Review tracks where sources disagree
+4. Bulk process remaining tracks
+
+## 🏗️ Architecture
+
+### Tech Stack
+
+- **Backend:** Go 1.24 with Gin framework
+- **Database:** SQLite (default) or MySQL
+- **Frontend:** Vanilla JavaScript with Server-Sent Events
+
+### Project Structure
 
 ```
 vinylfo/
-├── main.go                # Application entry point
-├── controllers/           # HTTP request handlers
-│   ├── album.go           # Album CRUD operations
-│   ├── discogs.go         # Discogs sync & OAuth
-│   ├── discogs_helpers.go # Utility functions
-│   ├── duration.go        # Duration resolution API
-│   ├── playback.go        # Playback session management
-│   ├── playlist.go        # Playlist management
-│   ├── settings.go        # Settings API
-│   ├── track.go           # Track CRUD operations
-│   ├── video_feed.go      # Video feed for OBS streaming
-│   └── youtube.go         # YouTube OAuth and playlist API
-├── services/              # Business logic layer
-│   ├── album_import.go    # Album import from Discogs
-│   ├── sync_progress.go   # Sync progress persistence
-│   ├── sync_worker.go     # Sync processing engine
-│   ├── duration_resolver.go  # Duration resolution service
-│   ├── duration_progress.go  # Resolution progress persistence
-│   └── duration_worker.go    # Bulk resolution worker
-├── duration/              # Duration resolution clients
-│   ├── client.go          # Base client and matching algorithms
-│   ├── rate_limiter.go    # Rate limiting for APIs
-│   ├── musicbrainz_client.go # MusicBrainz API integration
-│   ├── wikipedia_client.go   # Wikipedia API integration
-│   ├── lastfm_client.go      # Last.fm API integration
-│   ├── youtube_client.go     # YouTube API integration
-│   ├── youtube_cache.go      # File-based YouTube results cache
-│   └── youtube_oauth_client.go # YouTube OAuth and playlist management
+├── main.go                 # Application entry point
+├── controllers/            # HTTP handlers
+│   ├── album.go           # Album management
+│   ├── playback.go        # Playback control
+│   ├── discogs.go         # Discogs integration
+│   ├── youtube.go         # YouTube integration
+│   └── ...
+├── services/              # Business logic
+│   ├── album_import.go   # Import from Discogs
+│   ├── duration_resolver.go  # Duration lookup
+│   └── ...
 ├── models/                # Database models
-│   ├── models.go          # Album, Track, Playlist, etc.
-│   └── app_config.go      # Application settings
-├── discogs/               # Discogs API client
-│   ├── client.go          # API client with OAuth
-│   ├── rate_limiter.go    # Rate limiting
-│   └── review.go          # Data review/comparison
-├── sync/                  # Sync state management
-│   ├── state.go           # State manager
-│   └── legacy.go          # Legacy state wrapper
-├── database/              # Database operations
-│   ├── migrate.go         # Auto-migration
-│   └── seed.go            # Sample data seeding
 ├── routes/                # Route definitions
-│   └── routes.go          # All API routes
 ├── templates/             # HTML templates
-│   ├── header.html        # Shared header template
-│   ├── index.html         # Home page
-│   ├── youtube.html       # YouTube integration page
-│   ├── video-feed.html    # OBS video feed page
-│   ├── resolution-center.html  # Duration resolution page
-│   └── ...                # Other page templates
-└── static/                # Static assets (JS, CSS)
-    ├── js/
-    │   ├── video-feed.js      # Video feed manager
-    │   ├── audio-visualizer.js # Canvas audio visualizer
-    │   └── ...
-    └── css/
-        ├── video-feed.css     # Video feed styles
-        └── ...
+├── static/                # JS/CSS assets
+├── duration/              # Duration resolution clients
+└── discogs/               # Discogs API client
 ```
 
-## API Reference
+### Database
 
-### Albums
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/albums` | List all albums (paginated) |
-| GET | `/albums/search?q=` | Search albums |
-| GET | `/albums/:id` | Get album details |
-| GET | `/albums/:id/image` | Get album cover image |
-| GET | `/albums/:id/tracks` | Get album tracks |
-| POST | `/albums` | Create album |
-| PUT | `/albums/:id` | Update album |
-| DELETE | `/albums/:id` | Delete album |
+Supports SQLite (default) and MySQL:
 
-### Tracks
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/tracks` | List all tracks (paginated) |
-| GET | `/tracks/search?q=` | Search tracks |
-| GET | `/tracks/:id` | Get track details |
+- Automatic migrations on startup
+- Relationships: Albums → Tracks → Playlists → Sessions
+- OAuth tokens encrypted with AES-256
 
-### Playback
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/playback/current` | Get current playback state |
-| POST | `/playback/start-playlist` | Start playing a playlist |
-| POST | `/playback/pause` | Pause playback |
-| POST | `/playback/resume` | Resume playback |
-| POST | `/playback/skip` | Skip to next track |
-| POST | `/playback/previous` | Go to previous track |
-| GET | `/playback/history` | Get listening history |
 
-### Playlists
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/sessions/playlist` | List all playlists |
-| POST | `/sessions/playlist/new` | Create playlist |
-| GET | `/sessions/playlist/:id` | Get playlist details |
-| DELETE | `/sessions/playlist/:id` | Delete playlist |
-| POST | `/sessions/playlist/:id/tracks` | Add track to playlist |
-| DELETE | `/sessions/playlist/:id/tracks/:track_id` | Remove track |
-| POST | `/sessions/playlist/:id/shuffle` | Shuffle playlist |
+## 🔐 Security
 
-### Discogs Integration
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/discogs/oauth/url` | Get OAuth authorization URL |
-| GET | `/api/discogs/oauth/callback` | OAuth callback handler |
-| POST | `/api/discogs/disconnect` | Disconnect Discogs account |
-| GET | `/api/discogs/status` | Get connection status |
-| GET | `/api/discogs/folders` | Get Discogs folders |
-| GET | `/api/discogs/search?q=` | Search Discogs |
-| POST | `/api/discogs/sync/start` | Start collection sync |
-| GET | `/api/discogs/sync/progress` | Get sync progress |
-| POST | `/api/discogs/sync/pause` | Pause sync |
-| POST | `/api/discogs/sync/resume-pause` | Resume sync |
-| POST | `/api/discogs/sync/cancel` | Cancel sync |
-| POST | `/api/discogs/refresh-tracks` | Re-sync all tracks |
-| GET | `/api/discogs/unlinked-albums` | Find removed albums |
-| POST | `/api/discogs/unlinked-albums/delete` | Delete unlinked albums |
+- OAuth tokens encrypted with AES-256-GCM
+- HTTPS support for production deployments
+- Security headers on all responses (CSP, X-Frame-Options, etc.)
+- Rate limiting on external API calls
+- No sensitive data in logs
 
-### Resolution Center
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/duration/stats` | Get resolution statistics |
-| GET | `/api/duration/tracks` | Get tracks needing resolution |
-| POST | `/api/duration/resolve/track/:id` | Resolve single track |
-| POST | `/api/duration/resolve/album/:id` | Resolve all tracks in album |
-| POST | `/api/duration/resolve/start` | Start bulk resolution |
-| POST | `/api/duration/resolve/pause` | Pause bulk resolution |
-| POST | `/api/duration/resolve/resume` | Resume bulk resolution |
-| POST | `/api/duration/resolve/cancel` | Cancel bulk resolution |
-| GET | `/api/duration/resolve/progress` | Get bulk resolution progress |
-| GET | `/api/duration/review` | Get review queue |
-| GET | `/api/duration/review/:id` | Get resolution details |
-| POST | `/api/duration/review/:id` | Submit review decision |
-| POST | `/api/duration/review/bulk` | Bulk apply/reject |
+## 🤝 Contributing
 
-### YouTube Integration
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/youtube/oauth/url` | Get YouTube authorization URL |
-| GET | `/api/youtube/oauth/callback` | OAuth callback handler |
-| POST | `/api/youtube/disconnect` | Disconnect YouTube account |
-| GET | `/api/youtube/status` | Get connection status |
-| POST | `/api/youtube/playlists` | Create YouTube playlist |
-| PUT | `/api/youtube/playlists/:id` | Update playlist |
-| GET | `/api/youtube/playlists` | List your YouTube playlists |
-| DELETE | `/api/youtube/playlists/:id` | Delete playlist |
-| POST | `/api/youtube/playlists/:id/videos` | Add video to playlist |
-| DELETE | `/api/youtube/playlists/:id/videos/:item_id` | Remove video |
-| POST | `/api/youtube/search` | Search YouTube videos |
-| POST | `/api/youtube/export-playlist` | Export session to YouTube playlist |
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-### Video Feed (OBS Streaming)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/feeds/video` | Video feed page for OBS browser source |
-| GET | `/feeds/video/events` | SSE endpoint for real-time track updates |
-| GET | `/playback/current-youtube` | Get current track's YouTube video info |
-| GET | `/playback/next-preload` | Get next track info for preloading |
-| POST | `/playback/video/play` | Play video |
-| POST | `/playback/video/pause` | Pause video |
-| POST | `/playback/video/stop` | Stop video (preserves session) |
-| POST | `/playback/video/next` | Skip to next video |
-| POST | `/playback/video/previous` | Go to previous video |
-| POST | `/playback/video/seek` | Seek video to position |
+### Development Guidelines
 
-### Settings
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/settings` | Get application settings |
-| PUT | `/api/settings` | Update settings |
-| POST | `/api/database/reset` | Reset database (keeps config) |
-| POST | `/api/database/seed` | Seed sample data |
+- Follow Go best practices
+- Add tests for new features
+- Update CHANGELOG.md
+- Ensure all API endpoints are documented in API.md
 
-## Database Models
+## 📝 License
 
-- **Album**: Vinyl albums with metadata and cover images
-- **Track**: Individual tracks linked to albums
-- **Playlist**: User-created playlists
-- **PlaylistTrack**: Track-playlist associations with ordering
-- **PlaybackSession**: Current playback state and queue
-- **TrackHistory**: Listening history records
-- **SyncProgress**: Discogs sync state for resume capability
-- **SyncHistory**: Completed sync records
-- **SyncLog**: Sync error logs for troubleshooting
-- **DurationResolution**: Track duration resolution attempts and status
-- **DurationSource**: Individual source results (MusicBrainz, Wikipedia)
-- **DurationResolverProgress**: Bulk resolution progress for resume
-- **AppConfig**: Application settings and OAuth credentials (Discogs, YouTube)
-- **TrackYouTubeMatch**: YouTube video matches for tracks
-- **TrackYouTubeCandidate**: Candidate matches awaiting review
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Configuration
+## 🙏 Acknowledgments
 
-### YouTube Playlist Sync Settings
+- [Discogs API](https://www.discogs.com/developers/) for collection data
+- [YouTube Data API](https://developers.google.com/youtube/v3) for video integration
+- [MusicBrainz](https://musicbrainz.org/) for duration metadata
+- [Last.fm](https://www.last.fm/api) for track information
 
-| Environment Variable | Default | Description |
-|----------------------|---------|-------------|
-| `YOUTUBE_MATCH_SCORE_THRESHOLD` | 0.6 | Minimum score to consider a match (0.6-0.85 = needs review) |
-| `YOUTUBE_AUTO_MATCH_THRESHOLD` | 0.85 | Minimum score to auto-apply match without review |
-| `YOUTUBE_MAX_CANDIDATES` | 5 | Number of candidate matches stored per track |
-| `YOUTUBE_WEB_SEARCH_ENABLED` | true | Use web search before falling back to YouTube API |
-| `YOUTUBE_API_FALLBACK_ENABLED` | true | Fallback to YouTube API if web search insufficient |
+## 📞 Support
 
-### Scoring Weights
+- **Issues:** [GitHub Issues](https://github.com/yourusername/vinylfo/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/yourusername/vinylfo/discussions)
 
-The YouTube matching algorithm uses weighted scoring:
-- Title similarity: 40%
-- Artist similarity: 30%
-- Duration proximity: 20%
-- Channel name match: 10%
+---
 
-## License
-
-This project is licensed under the MIT License.
-
-## Acknowledgments
-
-- [Discogs](https://www.discogs.com/) for their comprehensive music database and API
-- [Gin](https://gin-gonic.com/) web framework
-- [GORM](https://gorm.io/) ORM library
+Made with ❤️ for vinyl enthusiasts
