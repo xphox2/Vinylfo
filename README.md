@@ -31,7 +31,7 @@ Vinylfo is a self-hosted web application for managing your vinyl record collecti
 ## 📖 Documentation
 
 - **[API.md](API.md)** - Complete REST API reference with all 168+ endpoints
-- **[OBS.md](OBS.md)** - OBS Studio integration guide for streaming feeds
+- **[OBS_SUPPORT.md](OBS_SUPPORT.md)** - OBS Studio integration guide for streaming feeds
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
 
 ## 🎯 Usage
