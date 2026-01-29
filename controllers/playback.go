@@ -3,8 +3,10 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -18,6 +20,19 @@ import (
 type PlaybackController struct {
 	db              *gorm.DB
 	playbackManager *PlaybackManager
+
+	sseClientsMux sync.RWMutex
+	sseClients    map[string]*playbackSSEClient
+}
+
+type playbackSSEClient struct {
+	playlistID string
+	ch         chan PlaybackEvent
+}
+
+type PlaybackEvent struct {
+	Type string `json:"type"`
+	Data gin.H  `json:"data"`
 }
 
 type PlaybackManager struct {
@@ -105,6 +120,8 @@ func (c *PlaybackController) advanceAfterTrackEnd(playlistID string) error {
 		}
 	})
 
+	c.broadcastState(playlistID)
+
 	return nil
 }
 
@@ -118,7 +135,157 @@ func NewPlaybackController(db *gorm.DB) *PlaybackController {
 	return &PlaybackController{
 		db:              db,
 		playbackManager: NewPlaybackManager(),
+		sseClients:      make(map[string]*playbackSSEClient),
 	}
+}
+
+func (c *PlaybackController) broadcastEvent(playlistID string, event PlaybackEvent) {
+	c.sseClientsMux.RLock()
+	defer c.sseClientsMux.RUnlock()
+
+	for _, client := range c.sseClients {
+		if client.playlistID != "" && client.playlistID != playlistID {
+			continue
+		}
+		select {
+		case client.ch <- event:
+		default:
+			// Client channel full; drop.
+		}
+	}
+}
+
+func (c *PlaybackController) broadcastState(playlistID string) {
+	state := c.buildPlaybackStateResponse(playlistID)
+	c.broadcastEvent(playlistID, PlaybackEvent{Type: "state", Data: state})
+}
+
+func (c *PlaybackController) broadcastPosition(playlistID string, position int) {
+	c.broadcastEvent(playlistID, PlaybackEvent{Type: "position", Data: gin.H{
+		"playlist_id": playlistID,
+		"position":    position,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}})
+}
+
+func (c *PlaybackController) buildPlaybackStateResponse(requestPlaylistID string) gin.H {
+	playlistID := requestPlaylistID
+	if playlistID == "" {
+		playlistID = c.playbackManager.GetCurrentPlaylistID()
+	}
+
+	var playbackState *models.PlaybackSession
+	if playlistID != "" {
+		playbackState = c.playbackManager.GetSession(playlistID)
+
+		var session models.PlaybackSession
+		result := c.db.First(&session, "playlist_id = ?", playlistID)
+		if result.Error == nil {
+			playbackState = &session
+		} else if playbackState == nil {
+			log.Printf("[Playback] GetPlaybackState: no session found for playlist_id=%s: %v", playlistID, result.Error)
+		}
+	}
+
+	if playbackState == nil {
+		return gin.H{
+			"has_state":  false,
+			"is_playing": false,
+			"is_paused":  false,
+		}
+	}
+
+	isPlaying := c.playbackManager.IsPlaying(playlistID)
+	isPaused := c.playbackManager.IsPaused(playlistID)
+
+	var currentPosition int
+	if isPlaying && !isPaused {
+		elapsed := int(time.Since(playbackState.UpdatedAt).Seconds())
+		currentPosition = playbackState.BasePositionSeconds + elapsed
+	} else {
+		currentPosition = playbackState.QueuePosition
+	}
+
+	var trackWithAlbum map[string]interface{}
+	if playbackState.TrackID > 0 {
+		var dbTrack models.Track
+		c.db.First(&dbTrack, playbackState.TrackID)
+		var album models.Album
+		c.db.First(&album, dbTrack.AlbumID)
+		trackWithAlbum = c.buildTrackResponse(dbTrack, album)
+	}
+
+	queueTracks := c.getQueueTracks(playbackState.PlaylistID)
+
+	response := gin.H{
+		"has_state":             true,
+		"position":              currentPosition,
+		"revision":              playbackState.Revision,
+		"base_position_seconds": playbackState.BasePositionSeconds,
+		"updated_at":            playbackState.UpdatedAt.Format(time.RFC3339),
+		"server_time":           time.Now().UTC().Format(time.RFC3339),
+		"last_update":           time.Now().UTC().Format(time.RFC3339),
+		"playlist_id":           playlistID,
+		"playlist_name":         playbackState.PlaylistName,
+		"queue_index":           playbackState.QueueIndex,
+		"queue":                 queueTracks,
+		"queue_position":        playbackState.QueuePosition,
+		"status":                playbackState.Status,
+		"is_playing":            isPlaying,
+		"is_paused":             isPaused,
+	}
+
+	if trackWithAlbum != nil {
+		response["track"] = trackWithAlbum
+	}
+
+	return response
+}
+
+// StreamEvents is the SSE endpoint for real-time playback sync (player tabs).
+func (c *PlaybackController) StreamEvents(ctx *gin.Context) {
+	ctx.Header("Content-Type", "text/event-stream")
+	ctx.Header("Cache-Control", "no-cache")
+	ctx.Header("Connection", "keep-alive")
+	ctx.Header("X-Accel-Buffering", "no")
+
+	playlistID := ctx.Query("playlist_id")
+
+	clientID := fmt.Sprintf("%d", time.Now().UnixNano())
+	clientChan := make(chan PlaybackEvent, 50)
+
+	c.sseClientsMux.Lock()
+	c.sseClients[clientID] = &playbackSSEClient{playlistID: playlistID, ch: clientChan}
+	c.sseClientsMux.Unlock()
+
+	defer func() {
+		c.sseClientsMux.Lock()
+		if client, ok := c.sseClients[clientID]; ok {
+			delete(c.sseClients, clientID)
+			close(client.ch)
+		}
+		c.sseClientsMux.Unlock()
+	}()
+
+	// Initial state snapshot.
+	clientChan <- PlaybackEvent{Type: "state", Data: c.buildPlaybackStateResponse(playlistID)}
+
+	ctx.Stream(func(w io.Writer) bool {
+		select {
+		case event, ok := <-clientChan:
+			if !ok {
+				return false
+			}
+			data, _ := json.Marshal(event)
+			ctx.SSEvent("message", string(data))
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			return true
+		case <-ctx.Request.Context().Done():
+			return false
+		}
+	})
 }
 
 func (pm *PlaybackManager) StartPlayback(playlistID string, session *models.PlaybackSession) {
@@ -263,80 +430,7 @@ func (pm *PlaybackManager) UpdateSessionState(playlistID string, updateFunc func
 
 func (c *PlaybackController) GetPlaybackState(ctx *gin.Context) {
 	playlistID := ctx.Query("playlist_id")
-	if playlistID == "" {
-		playlistID = c.playbackManager.GetCurrentPlaylistID()
-	}
-
-	var playbackState *models.PlaybackSession
-
-	if playlistID != "" {
-		playbackState = c.playbackManager.GetSession(playlistID)
-
-		// Always refresh from database to get latest QueueIndex
-		var session models.PlaybackSession
-		result := c.db.First(&session, "playlist_id = ?", playlistID)
-		if result.Error == nil {
-			playbackState = &session
-		}
-	}
-
-	if playbackState == nil {
-		ctx.JSON(200, gin.H{
-			"has_state":  false,
-			"is_playing": false,
-			"is_paused":  false,
-		})
-		return
-	}
-
-	isPlaying := c.playbackManager.IsPlaying(playlistID)
-	isPaused := c.playbackManager.IsPaused(playlistID)
-
-	var currentPosition int
-	if isPlaying && !isPaused {
-		if playbackState.BasePositionSeconds > 0 {
-			elapsed := int(time.Since(playbackState.UpdatedAt).Seconds())
-			currentPosition = playbackState.BasePositionSeconds + elapsed
-		} else {
-			currentPosition = c.playbackManager.GetPosition(playlistID)
-		}
-	} else {
-		currentPosition = playbackState.QueuePosition
-	}
-
-	var trackWithAlbum map[string]interface{}
-	if playbackState.TrackID > 0 {
-		var dbTrack models.Track
-		c.db.First(&dbTrack, playbackState.TrackID)
-		var album models.Album
-		c.db.First(&album, dbTrack.AlbumID)
-		trackWithAlbum = c.buildTrackResponse(dbTrack, album)
-	}
-
-	queueTracks := c.getQueueTracks(playbackState.PlaylistID)
-
-	response := gin.H{
-		"position":              currentPosition,
-		"revision":              playbackState.Revision,
-		"base_position_seconds": playbackState.BasePositionSeconds,
-		"updated_at":            playbackState.UpdatedAt.Format(time.RFC3339),
-		"server_time":           time.Now().UTC().Format(time.RFC3339),
-		"last_update":           time.Now().UTC().Format(time.RFC3339),
-		"playlist_id":           playlistID,
-		"playlist_name":         playbackState.PlaylistName,
-		"queue_index":           playbackState.QueueIndex,
-		"queue":                 queueTracks,
-		"queue_position":        playbackState.QueuePosition,
-		"status":                playbackState.Status,
-		"is_playing":            isPlaying,
-		"is_paused":             isPaused,
-	}
-
-	if trackWithAlbum != nil {
-		response["track"] = trackWithAlbum
-	}
-
-	ctx.JSON(200, response)
+	ctx.JSON(200, c.buildPlaybackStateResponse(playlistID))
 }
 
 func (c *PlaybackController) Previous(ctx *gin.Context) {
@@ -393,6 +487,7 @@ func (c *PlaybackController) Previous(ctx *gin.Context) {
 	}
 
 	c.db.Save(&playbackState)
+	c.broadcastState(playlistID)
 
 	queueTracks := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -428,6 +523,7 @@ func (c *PlaybackController) Stop(ctx *gin.Context) {
 	}
 
 	c.playbackManager.StopPlayback(playlistID)
+	c.broadcastState(playlistID)
 
 	ctx.JSON(200, gin.H{"status": "Playback stopped", "playlist_id": playlistID})
 }
@@ -461,6 +557,7 @@ func (c *PlaybackController) Clear(ctx *gin.Context) {
 	c.db.Where("session_id = ?", playlistID).Delete(&models.SessionPlaylist{})
 
 	c.playbackManager.StopPlayback(playlistID)
+	c.broadcastState(playlistID)
 
 	ctx.JSON(200, gin.H{"status": "Playback state cleared"})
 }
@@ -533,6 +630,7 @@ func (c *PlaybackController) RestoreSession(ctx *gin.Context) {
 
 	c.playbackManager.SetCurrentTrack(playlistID, &track)
 	c.playbackManager.StartPlayback(playlistID, &playbackState)
+	c.broadcastState(playlistID)
 
 	queueWithAlbums := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -702,6 +800,7 @@ func (c *PlaybackController) StartPlaylist(ctx *gin.Context) {
 
 	c.playbackManager.StartPlayback(playbackState.PlaylistID, &playbackState)
 	c.playbackManager.SetCurrentTrack(playbackState.PlaylistID, &firstTrack)
+	c.broadcastState(playbackState.PlaylistID)
 
 	queueWithAlbums := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -781,18 +880,26 @@ func (c *PlaybackController) Pause(ctx *gin.Context) {
 		return
 	}
 
-	c.playbackManager.PausePlayback(playlistID)
-	if playbackState.BasePositionSeconds > 0 {
-		elapsed := int(time.Since(playbackState.UpdatedAt).Seconds())
-		playbackState.QueuePosition = playbackState.BasePositionSeconds + elapsed
-	} else {
-		playbackState.QueuePosition = c.playbackManager.GetPosition(playlistID)
+	if playbackState.Status == "paused" || c.playbackManager.IsPaused(playlistID) {
+		ctx.JSON(200, gin.H{
+			"status":      "Playback already paused",
+			"is_playing":  false,
+			"is_paused":   true,
+			"revision":    playbackState.Revision,
+			"playlist_id": playlistID,
+		})
+		return
 	}
+
+	c.playbackManager.PausePlayback(playlistID)
+	elapsed := int(time.Since(playbackState.UpdatedAt).Seconds())
+	playbackState.QueuePosition = playbackState.BasePositionSeconds + elapsed
 	playbackState.BasePositionSeconds = 0
 	playbackState.Status = "paused"
 	playbackState.UpdatedAt = time.Now()
 	playbackState.Revision++
 	c.db.Save(&playbackState)
+	c.broadcastState(playlistID)
 
 	ctx.JSON(200, gin.H{
 		"status":      "Playback paused",
@@ -825,6 +932,7 @@ func (c *PlaybackController) Resume(ctx *gin.Context) {
 	playbackState.Status = "playing"
 	playbackState.Revision++
 	c.db.Save(&playbackState)
+	c.broadcastState(playlistID)
 
 	ctx.JSON(200, gin.H{
 		"status":      "Playback resumed",
@@ -885,6 +993,7 @@ func (c *PlaybackController) Skip(ctx *gin.Context) {
 	}
 
 	c.db.Save(&playbackState)
+	c.broadcastState(playlistID)
 
 	queueTracks := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -952,6 +1061,7 @@ func (c *PlaybackController) PlayIndex(ctx *gin.Context) {
 	}
 
 	c.db.Save(&playbackState)
+	c.broadcastState(playlistID)
 
 	queueTracks := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -970,6 +1080,41 @@ func (c *PlaybackController) GetCurrent(ctx *gin.Context) {
 	playlistID := c.playbackManager.GetCurrentPlaylistID()
 	playlistName := c.playbackManager.GetCurrentPlaylistName()
 
+	if playlistID == "" {
+		var session models.PlaybackSession
+		result := c.db.Order("updated_at DESC").First(&session)
+		if result.Error == nil {
+			playlistID = session.PlaylistID
+			playlistName = session.PlaylistName
+
+			var track models.Track
+			if session.TrackID > 0 {
+				c.db.First(&track, session.TrackID)
+			}
+
+			var album models.Album
+			if track.AlbumID > 0 {
+				c.db.First(&album, track.AlbumID)
+			}
+
+			trackResponse := c.buildTrackResponse(track, album)
+
+			ctx.JSON(200, gin.H{
+				"is_playing":    false,
+				"is_paused":     true,
+				"position":      session.QueuePosition,
+				"playlist_id":   playlistID,
+				"playlist_name": playlistName,
+				"track":         trackResponse,
+				"queue_index":   session.QueueIndex,
+				"revision":      session.Revision,
+				"status":        session.Status,
+				"has_state":     true,
+			})
+			return
+		}
+	}
+
 	ctx.JSON(200, gin.H{
 		"is_playing":    c.playbackManager.IsPlaying(playlistID),
 		"is_paused":     c.playbackManager.IsPaused(playlistID),
@@ -977,6 +1122,7 @@ func (c *PlaybackController) GetCurrent(ctx *gin.Context) {
 		"playlist_id":   playlistID,
 		"playlist_name": playlistName,
 		"track":         c.playbackManager.GetCurrentTrack(),
+		"has_state":     playlistID != "",
 	})
 }
 
@@ -1025,6 +1171,7 @@ func (c *PlaybackController) Seek(ctx *gin.Context) {
 	playbackState.LastPlayedAt = time.Now()
 	playbackState.Revision++
 	c.db.Save(&playbackState)
+	c.broadcastState(playlistID)
 
 	c.playbackManager.UpdateSessionState(playlistID, func(sess *PlaybackSessionState) {
 		sess.Revision = playbackState.Revision
@@ -1061,27 +1208,30 @@ func (c *PlaybackController) SimulateTimer(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			var advancePlaylistID string
+			var positionPlaylistID string
+			var positionToBroadcast int
 
 			c.playbackManager.Lock()
 			playlistID := c.playbackManager.playlistID
 			sess := c.playbackManager.sessions[playlistID]
 			track := c.playbackManager.currentTrack
 			if playlistID != "" && sess != nil && track != nil && sess.IsPlaying && !sess.IsPaused {
-				var currentPosition int
-				if sess.PlaybackSession.BasePositionSeconds > 0 {
-					elapsed := int(time.Since(sess.PlaybackSession.UpdatedAt).Seconds())
-					currentPosition = sess.PlaybackSession.BasePositionSeconds + elapsed
-				} else {
-					currentPosition = sess.Position
-				}
+				elapsed := int(time.Since(sess.PlaybackSession.UpdatedAt).Seconds())
+				currentPosition := sess.PlaybackSession.BasePositionSeconds + elapsed
 
 				if track.Duration <= 0 || currentPosition < track.Duration {
 					sess.Position = currentPosition
+					positionPlaylistID = playlistID
+					positionToBroadcast = currentPosition
 				} else {
 					advancePlaylistID = playlistID
 				}
 			}
 			c.playbackManager.Unlock()
+
+			if positionPlaylistID != "" {
+				c.broadcastPosition(positionPlaylistID, positionToBroadcast)
+			}
 
 			if advancePlaylistID != "" {
 				if err := c.advanceAfterTrackEnd(advancePlaylistID); err != nil {

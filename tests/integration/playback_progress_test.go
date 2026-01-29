@@ -31,7 +31,7 @@ func setupPlaybackController(t *testing.T) (*controllers.PlaybackController, *go
 	return controllers.NewPlaybackController(db), db
 }
 
-func TestUpdateProgressDoesNotRegressSmallDelta(t *testing.T) {
+func TestUpdateProgressRejectsWhilePlaying(t *testing.T) {
 	controller, db := setupPlaybackController(t)
 
 	session := models.PlaybackSession{
@@ -72,33 +72,20 @@ func TestUpdateProgressDoesNotRegressSmallDelta(t *testing.T) {
 
 	controller.UpdateProgress(ctx)
 
-	if recorder.Code != 200 {
-		t.Fatalf("expected status 200, got %d", recorder.Code)
+	if recorder.Code != 400 {
+		t.Fatalf("expected status 400 when updating progress while playing, got %d", recorder.Code)
 	}
 
 	var response map[string]interface{}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
-	if response["status"] != "Progress saved" {
-		t.Fatalf("expected response status 'Progress saved', got %v", response["status"])
-	}
-
-	var updated models.PlaybackSession
-	if err := db.First(&updated, "playlist_id = ?", session.PlaylistID).Error; err != nil {
-		t.Fatalf("failed to reload session: %v", err)
-	}
-
-	if updated.QueuePosition != 10 {
-		t.Fatalf("expected queue position to remain 10, got %d", updated.QueuePosition)
-	}
-
-	if pm.GetPosition(session.PlaylistID) != 10 {
-		t.Fatalf("expected playback manager position to remain 10, got %d", pm.GetPosition(session.PlaylistID))
+	if response["error"] == nil {
+		t.Fatalf("expected error response when updating progress while playing, got %v", response)
 	}
 }
 
-func TestUpdateProgressAllowsLargeBackwardSeek(t *testing.T) {
+func TestUpdateProgressAcceptsWhilePaused(t *testing.T) {
 	controller, db := setupPlaybackController(t)
 
 	session := models.PlaybackSession{
@@ -118,8 +105,17 @@ func TestUpdateProgressAllowsLargeBackwardSeek(t *testing.T) {
 	pm.StartPlayback(session.PlaylistID, &session)
 	pm.UpdatePosition(session.PlaylistID, 10)
 
-	if pm.GetPosition(session.PlaylistID) != 10 {
-		t.Fatalf("expected playback manager position to be 10 before update, got %d", pm.GetPosition(session.PlaylistID))
+	pauseBody, _ := json.Marshal(map[string]interface{}{
+		"playlist_id": session.PlaylistID,
+	})
+	pauseRecorder := httptest.NewRecorder()
+	pauseCtx, _ := gin.CreateTestContext(pauseRecorder)
+	pauseCtx.Request = httptest.NewRequest("POST", "/playback/pause", bytes.NewReader(pauseBody))
+	pauseCtx.Request.Header.Set("Content-Type", "application/json")
+	controller.Pause(pauseCtx)
+
+	if pauseRecorder.Code != 200 {
+		t.Fatalf("failed to pause playback: %d", pauseRecorder.Code)
 	}
 
 	body, err := json.Marshal(map[string]interface{}{
@@ -140,7 +136,7 @@ func TestUpdateProgressAllowsLargeBackwardSeek(t *testing.T) {
 	controller.UpdateProgress(ctx)
 
 	if recorder.Code != 200 {
-		t.Fatalf("expected status 200, got %d", recorder.Code)
+		t.Fatalf("expected status 200 when updating progress while paused, got %d", recorder.Code)
 	}
 
 	var response map[string]interface{}
@@ -158,9 +154,5 @@ func TestUpdateProgressAllowsLargeBackwardSeek(t *testing.T) {
 
 	if updated.QueuePosition != 6 {
 		t.Fatalf("expected queue position to be 6, got %d", updated.QueuePosition)
-	}
-
-	if pm.GetPosition(session.PlaylistID) != 6 {
-		t.Fatalf("expected playback manager position to be 6, got %d", pm.GetPosition(session.PlaylistID))
 	}
 }

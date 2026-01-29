@@ -70,6 +70,9 @@ class PlaybackManager {
         this.lastSyncDebug = 0;
         this.lastSaveDebug = 0;
         this.pendingSeekRevision = null;
+
+        this.eventSource = null;
+        this.usingRealtimeEvents = false;
     }
 
     async init() {
@@ -84,8 +87,146 @@ class PlaybackManager {
         this.setupVisibilityHandlers();
         this.startStatusUpdate();
         this.setupBeforeUnload();
-        this.startPeriodicStateSync();
+        this.startRealtimeStateSync();
         console.log('[PlaybackManager] Initialization complete');
+    }
+
+    startRealtimeStateSync() {
+        // Prefer SSE for real-time multi-tab sync; fall back to polling.
+        if (typeof window.EventSource !== 'function') {
+            this.startPeriodicStateSync();
+            return;
+        }
+
+        const playlistId = this.currentPlaylistId || localStorage.getItem('vinylfo_currentPlaylistId');
+        const url = playlistId
+            ? `/playback/events?playlist_id=${encodeURIComponent(playlistId)}`
+            : '/playback/events';
+
+        try {
+            this.eventSource = new EventSource(url);
+            this.usingRealtimeEvents = true;
+
+            this.eventSource.addEventListener('message', (e) => {
+                try {
+                    const msg = JSON.parse(e.data);
+                    this.handleRealtimeEvent(msg);
+                } catch (err) {
+                    console.error('[PlaybackManager] Failed to parse SSE message:', err);
+                }
+            });
+
+            this.eventSource.addEventListener('error', () => {
+                console.warn('[PlaybackManager] SSE error; falling back to polling');
+                this.stopRealtimeStateSync();
+                this.startPeriodicStateSync();
+            });
+        } catch (err) {
+            console.warn('[PlaybackManager] SSE unavailable; falling back to polling', err);
+            this.stopRealtimeStateSync();
+            this.startPeriodicStateSync();
+        }
+    }
+
+    stopRealtimeStateSync() {
+        this.usingRealtimeEvents = false;
+        if (this.eventSource) {
+            try {
+                this.eventSource.close();
+            } catch (_) {
+                // ignore
+            }
+            this.eventSource = null;
+        }
+    }
+
+    handleRealtimeEvent(msg) {
+        if (!msg || !msg.type) {
+            return;
+        }
+
+        // Ignore realtime updates while we are intentionally blocking state sync.
+        if (this.stateSyncBlocked) {
+            return;
+        }
+
+        if (msg.type === 'position') {
+            const position = msg.data?.position;
+            if (typeof position === 'number' && !Number.isNaN(position)) {
+                this.setPositionFromAuthoritative(position);
+            }
+            return;
+        }
+
+        if (msg.type !== 'state') {
+            return;
+        }
+
+        const data = msg.data || {};
+
+        if (data.has_state === false) {
+            this.isPlaying = false;
+            this.isPaused = false;
+            this.currentPlaylistId = null;
+            this.currentPlaylistName = null;
+            this.currentTrack = null;
+            this.queue = [];
+            this.queueIndex = 0;
+            this.currentPosition = 0;
+            this.cachedPosition = 0;
+            this.forcePositionResync = false;
+            this.stopProgressSaving();
+            this.updatePlaybackStatus();
+            this.renderQueue();
+            this.updateButtonStates();
+            return;
+        }
+
+        if (typeof data.revision === 'number' && data.revision > this.lastAppliedRevision) {
+            this.lastAppliedRevision = data.revision;
+        }
+
+        if (data.playlist_id) {
+            this.currentPlaylistId = data.playlist_id;
+        }
+        if (data.playlist_name) {
+            this.currentPlaylistName = data.playlist_name;
+        }
+        if (data.track) {
+            if (!this.currentTrack || data.track.id !== this.currentTrack.id) {
+                this.displayTrack(data.track, data.playlist_name);
+            }
+        }
+
+        if (typeof data.is_playing === 'boolean') {
+            this.isPlaying = data.is_playing;
+        }
+        if (typeof data.is_paused === 'boolean') {
+            this.isPaused = data.is_paused;
+        }
+        this.updateButtonStates();
+
+        if (typeof data.position === 'number' && !Number.isNaN(data.position)) {
+            this.setPositionFromAuthoritative(data.position);
+        }
+
+        if (Array.isArray(data.queue)) {
+            const serverQueueIds = data.queue.map(t => t.id).join(',');
+            const localQueueIds = this.queue.map(t => t.id).join(',');
+
+            const serverQueueIndex = (typeof data.queue_index === 'number' && !Number.isNaN(data.queue_index))
+                ? data.queue_index
+                : 0;
+
+            const queueChanged = serverQueueIds !== localQueueIds;
+            const indexChanged = this.queueIndex !== serverQueueIndex;
+
+            if (queueChanged || indexChanged) {
+                this.queue = data.queue;
+                this.queueIndex = serverQueueIndex;
+                this.renderQueue();
+            }
+        }
     }
 
     setupVisibilityHandlers() {
@@ -239,12 +380,33 @@ class PlaybackManager {
             const response = await fetch(url);
             const data = await response.json();
 
-            const serverRevision = data.revision || 0;
-            if (serverRevision <= this.lastAppliedRevision) {
+            // Don't gate syncing on revision.
+            // While playing, the server's `position` advances without changing `revision`, and
+            // some state transitions (eg. start/advance) may not bump `revision`.
+            const serverRevision = typeof data.revision === 'number' ? data.revision : 0;
+            if (serverRevision > this.lastAppliedRevision) {
+                this.lastAppliedRevision = serverRevision;
+            }
+
+            if (data && data.has_state === false) {
+                // Another tab (or the server) stopped playback; clear our UI/state.
+                this.isPlaying = false;
+                this.isPaused = false;
+                this.currentPlaylistId = null;
+                this.currentPlaylistName = null;
+                this.currentTrack = null;
+                this.queue = [];
+                this.queueIndex = 0;
+                this.currentPosition = 0;
+                this.cachedPosition = 0;
+                this.forcePositionResync = false;
+                this.stopProgressSaving();
+                this.updatePlaybackStatus();
+                this.renderQueue();
+                this.updateButtonStates();
                 return;
             }
-            this.lastAppliedRevision = serverRevision;
-            
+             
             // Track/state/position are authoritative from the server.
             // This ensures the UI stays correct even if the tab was backgrounded.
             if (data.playlist_id) {
@@ -274,6 +436,14 @@ class PlaybackManager {
                 const driftSeconds = Math.abs(drift);
                 const now = Date.now();
 
+                // When paused/stopped, we want the UI to match exactly.
+                if (!this.isPlaying || this.isPaused) {
+                    if (serverPosition !== localPosition) {
+                        this.setPositionFromAuthoritative(serverPosition);
+                    }
+                    this.forcePositionResync = false;
+                } else {
+
                 if (serverPosition < localPosition && driftSeconds >= 1 && now - this.lastSyncDebug >= 2000) {
                     console.log('[TimeDebug] Server position behind local', {
                         serverPosition,
@@ -287,14 +457,11 @@ class PlaybackManager {
                 }
 
                 const shouldResyncForward = drift >= 2;
-                const shouldResyncBackward = drift <= -2 && this.forcePositionResync;
+                // Allow backward resync when drift is large (cross-tab/state correctness > jitter).
+                const shouldResyncBackward = drift <= -2 && (this.forcePositionResync || driftSeconds >= 5);
 
-                // Avoid backward jitter while visible; allow backward resync only when forced.
                 if (shouldResyncForward || shouldResyncBackward) {
-                    this.currentPosition = serverPosition;
-                    this.cachedPosition = this.currentPosition;
-                    this.lastWallClockUpdate = Date.now();
-                    this.updatePositionDisplay();
+                    this.setPositionFromAuthoritative(serverPosition);
                     console.log('[TimeDebug] Resynced position from server', {
                         serverPosition,
                         localPositionBefore: localPosition,
@@ -305,20 +472,23 @@ class PlaybackManager {
                 }
 
                 this.forcePositionResync = false;
+                }
             }
 
-            if (data.queue && data.queue.length > 0) {
+            if (Array.isArray(data.queue)) {
                 const serverQueueIds = data.queue.map(t => t.id).join(',');
                 const localQueueIds = this.queue.map(t => t.id).join(',');
-                
+
+                const serverQueueIndex = (typeof data.queue_index === 'number' && !Number.isNaN(data.queue_index))
+                    ? data.queue_index
+                    : 0;
+                 
                 const queueChanged = serverQueueIds !== localQueueIds;
-                const indexChanged = this.queueIndex !== data.queue_index;
-                
+                const indexChanged = this.queueIndex !== serverQueueIndex;
+                 
                 if (queueChanged || indexChanged) {
                     this.queue = data.queue;
-                    if (indexChanged && this.queueIndex === data.queue_index) {
-                        this.queueIndex = data.queue_index || 0;
-                    }
+                    this.queueIndex = serverQueueIndex;
                     this.renderQueue();
                 }
             }
@@ -458,6 +628,17 @@ class PlaybackManager {
         this.isPlaying = false;
         this.isPaused = false;
         this.stopProgressSaving();
+
+        this.currentPlaylistId = null;
+        this.currentPlaylistName = null;
+        this.currentTrack = null;
+        this.queue = [];
+        this.queueIndex = 0;
+        this.currentPosition = 0;
+        this.cachedPosition = 0;
+
+        this.updatePlaybackStatus();
+        this.renderQueue();
         this.updateButtonStates();
     }
 
@@ -1273,6 +1454,7 @@ class PlaybackManager {
             if (this.isPlaying || this.isPaused) {
                 this.saveProgress();
             }
+            this.stopRealtimeStateSync();
             if (this.syncInterval) {
                 clearInterval(this.syncInterval);
             }

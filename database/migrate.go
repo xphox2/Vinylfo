@@ -188,7 +188,7 @@ func InitDB() (*gorm.DB, error) {
 		var nullCount int64
 		db.Raw("SELECT COUNT(*) FROM track_youtube_matches WHERE (youtube_video_id IS NULL OR youtube_video_id = '') AND you_tube_video_id IS NOT NULL AND you_tube_video_id != ''").Scan(&nullCount)
 		if nullCount > 0 {
-			log.Printf("Found %d records with NULL youtube_video_id but with you_tube_video_id - copying values...")
+			log.Printf("Found %d records with NULL youtube_video_id but with you_tube_video_id - copying values...", nullCount)
 			db.Exec("UPDATE track_youtube_matches SET youtube_video_id = you_tube_video_id WHERE (youtube_video_id IS NULL OR youtube_video_id = '') AND you_tube_video_id IS NOT NULL AND you_tube_video_id != ''")
 		}
 		// Check if there are still null values
