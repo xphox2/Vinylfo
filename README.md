@@ -90,15 +90,15 @@ If tracks are missing duration information:
 
 ```
 vinylfo/
-├── main.go                 # Application entry point
-├── controllers/            # HTTP handlers
+├── main.go                # Application entry point
+├── controllers/           # HTTP handlers
 │   ├── album.go           # Album management
 │   ├── playback.go        # Playback control
 │   ├── discogs.go         # Discogs integration
 │   ├── youtube.go         # YouTube integration
 │   └── ...
 ├── services/              # Business logic
-│   ├── album_import.go   # Import from Discogs
+│   ├── album_import.go    # Import from Discogs
 │   ├── duration_resolver.go  # Duration lookup
 │   └── ...
 ├── models/                # Database models
@@ -111,12 +111,10 @@ vinylfo/
 
 ### Database
 
-Supports SQLite (default) and MySQL:
+SQLite:
 
 - Automatic migrations on startup
 - Relationships: Albums → Tracks → Playlists → Sessions
-- OAuth tokens encrypted with AES-256
-
 
 ## 🔐 Security
 
@@ -151,11 +149,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [YouTube Data API](https://developers.google.com/youtube/v3) for video integration
 - [MusicBrainz](https://musicbrainz.org/) for duration metadata
 - [Last.fm](https://www.last.fm/api) for track information
-
-## 📞 Support
-
-- **Issues:** [GitHub Issues](https://github.com/yourusername/vinylfo/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/vinylfo/discussions)
 
 ---
 
