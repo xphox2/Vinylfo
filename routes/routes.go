@@ -192,6 +192,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/sessions/playlist/:id", playlistController.GetPlaylist)
 	r.PUT("/sessions/playlist/:id", playlistController.UpdatePlaylist)
 	r.DELETE("/sessions/playlist/:id", playlistController.DeletePlaylist)
+	r.DELETE("/sessions/playlist/:id/delete-all", playlistController.DeletePlaylistWithSessions)
 	r.POST("/sessions/playlist/:id/tracks", playlistController.AddTrackToPlaylist)
 	r.DELETE("/sessions/playlist/:id/tracks/:track_id", playlistController.RemoveTrackFromPlaylist)
 	r.POST("/sessions/playlist/:id/shuffle", playlistController.ShufflePlaylist)

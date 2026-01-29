@@ -152,14 +152,21 @@ func (c *YouTubeSyncController) GetMatches(ctx *gin.Context) {
 
 	// Get playlist info including YouTube sync status
 	var session models.PlaybackSession
+	var playlistName string
 	var youtubeSyncInfo gin.H
 	if err := c.db.Where("playlist_id = ?", playlistID).First(&session).Error; err == nil {
+		playlistName = session.PlaylistName
 		youtubeSyncInfo = gin.H{
 			"youtube_playlist_id":   session.YouTubePlaylistID,
 			"youtube_playlist_name": session.YouTubePlaylistName,
 			"synced_at":             session.YouTubeSyncedAt,
 		}
 	} else {
+		// Try to get playlist name from SessionPlaylist if no PlaybackSession exists
+		var sp models.SessionPlaylist
+		if err := c.db.Where("session_id = ?", playlistID).First(&sp).Error; err == nil {
+			playlistName = sp.SessionID
+		}
 		youtubeSyncInfo = gin.H{
 			"youtube_playlist_id":   "",
 			"youtube_playlist_name": "",
@@ -170,7 +177,7 @@ func (c *YouTubeSyncController) GetMatches(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"tracks":        results,
 		"youtube_sync":  youtubeSyncInfo,
-		"playlist_name": session.PlaylistName,
+		"playlist_name": playlistName,
 	})
 }
 

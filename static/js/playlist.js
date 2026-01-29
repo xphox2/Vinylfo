@@ -76,32 +76,54 @@ function loadPlaylists() {
 
 function renderPlaylists() {
     const container = document.getElementById('playlists-container');
-    
+
     if (!playlists || playlists.length === 0) {
         container.innerHTML = '<p class="empty-message">No playlists yet. Create one to get started!</p>';
         return;
     }
-    
+
     container.innerHTML = '';
-    
+
     playlists.forEach(playlist => {
         const card = document.createElement('div');
         card.className = 'playlist-card';
         card.innerHTML = `
-            <h3>${escapeHtml(playlist.session_id || 'Untitled Playlist')}</h3>
-            <p>Created: ${formatDate(playlist.created_at)}</p>
-            <p class="track-count">Loading tracks...</p>
+            <div class="playlist-card-left">
+                <h3>${escapeHtml(playlist.session_id || 'Untitled Playlist')}</h3>
+                <p class="playlist-date">Created: ${formatDate(playlist.created_at)}</p>
+                <p class="track-count">Loading tracks...</p>
+            </div>
+            <div class="playlist-card-right">
+                <div class="playlist-card-actions">
+                    <button class="playlist-action-btn add-tracks-card-btn" data-playlist-id="${escapeHtml(playlist.session_id)}" title="Add Tracks">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                        </svg>
+                    </button>
+                    <div class="youtube-sync-wrapper">
+                        <button class="playlist-action-btn youtube-sync-card-btn sync-btn" data-playlist-id="${escapeHtml(playlist.session_id)}" title="YouTube Sync">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                            </svg>
+                        </button>
+                        <span class="youtube-label">YouTube</span>
+                    </div>
+                    <button class="playlist-action-btn delete-card-btn" data-playlist-id="${escapeHtml(playlist.session_id)}" title="Delete Playlist">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M6 19c0 1.1.9.2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
         `;
-        
-        card.addEventListener('click', function() {
-            console.log('Playlist card clicked, session_id:', playlist.session_id);
-            showPlaylistDetail(playlist.session_id);
-        });
-        
+
         container.appendChild(card);
-        
+
         loadPlaylistTracks(playlist.session_id, card);
+        updateCardSyncButtonState(playlist.session_id, card);
     });
+
+    attachPlaylistCardEventListeners();
 }
 
 function loadPlaylistTracks(sessionId, cardElement) {
@@ -132,64 +154,14 @@ function showPlaylistDetail(sessionId) {
     document.getElementById('playlist-detail-view').style.display = 'block';
     document.getElementById('playlist-name').textContent = sessionId || 'Untitled Playlist';
 
-    document.getElementById('delete-playlist-btn').onclick = function() {
-        if (confirm('Are you sure you want to delete this playlist?')) {
-            deletePlaylist(sessionId);
-        }
-    };
-
-    document.getElementById('play-playlist-btn').onclick = function() {
-        playPlaylist(sessionId);
-    };
-
-    loadPlaylistTracksForDetail(sessionId);
-    updateMainSyncButtonState(sessionId);
-}
-
-function updateMainSyncButtonState(playlistId) {
-    const syncBtn = document.getElementById('sync-youtube-btn');
-
-    fetch(`/api/youtube/matches/${playlistId}`)
-        .then(response => {
-            if (!response.ok) {
-                updateSyncButtonDisplay(syncBtn, false, null);
-                return null;
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data && data.youtube_sync && data.youtube_sync.youtube_playlist_id) {
-                updateSyncButtonDisplay(syncBtn, true, data.youtube_sync.youtube_playlist_id, data.youtube_sync.youtube_playlist_name || '');
-            } else {
-                updateSyncButtonDisplay(syncBtn, false, null, null);
-            }
-        })
-        .catch(error => {
-            console.error('Error checking sync status:', error);
-            updateSyncButtonDisplay(syncBtn, false, null, null);
-        });
-}
-
-function updateSyncButtonDisplay(btn, isSynced, youtubePlaylistId, youtubePlaylistName) {
-    if (isSynced) {
-        btn.textContent = 'Synced';
-        btn.style.backgroundColor = '#28a745';
-        btn.onclick = function() {
-            if (youtubePlaylistId) {
-                if (youtubePlaylistName) {
-                    window.location.href = `/youtube?playlist_id=${youtubePlaylistId}&playlist_title=${encodeURIComponent(youtubePlaylistName)}`;
-                } else {
-                    window.location.href = `/youtube?playlist_id=${youtubePlaylistId}`;
-                }
-            }
-        };
-    } else {
-        btn.textContent = 'YouTube Sync';
-        btn.style.backgroundColor = '#ff0000';
-        btn.onclick = function() {
-            openYouTubeSyncModal();
+    const playBtn = document.getElementById('play-playlist-btn');
+    if (playBtn) {
+        playBtn.onclick = function() {
+            playPlaylist(sessionId);
         };
     }
+
+    loadPlaylistTracksForDetail(sessionId);
 }
 
 function loadPlaylistTracksForDetail(sessionId) {
@@ -208,6 +180,144 @@ function loadPlaylistTracksForDetail(sessionId) {
             document.getElementById('playlist-tracks').innerHTML =
                 '<p class="empty-message">Error loading tracks. Please try again.</p>';
         });
+}
+
+function attachPlaylistCardEventListeners() {
+    document.querySelectorAll('.add-tracks-card-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const playlistId = this.dataset.playlistId;
+            openAddTracksForPlaylist(playlistId);
+        });
+    });
+
+    document.querySelectorAll('.youtube-sync-card-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const playlistId = this.dataset.playlistId;
+            handleSyncButtonClick(playlistId, this);
+        });
+    });
+
+    document.querySelectorAll('.delete-card-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const playlistId = this.dataset.playlistId;
+            if (confirm('Are you sure you want to delete this playlist? This will also delete all playback sessions using this playlist.')) {
+                deletePlaylistWithSessions(playlistId);
+            }
+        });
+    });
+
+    document.querySelectorAll('.playlist-card').forEach(card => {
+        card.addEventListener('click', function(e) {
+            if (e.target.closest('.playlist-action-btn') || e.target.closest('.playlist-card-center')) return;
+            const playlistId = this.querySelector('.add-tracks-card-btn').dataset.playlistId;
+            console.log('Playlist card clicked, session_id:', playlistId);
+            showPlaylistDetail(playlistId);
+        });
+    });
+}
+
+function openAddTracksForPlaylist(playlistId) {
+    savePlaylistId(playlistId);
+    document.getElementById('playlist-view').style.display = 'none';
+    document.getElementById('add-tracks-view').style.display = 'block';
+    availableTrackPagination = {
+        page: 1,
+        limit: 25,
+        query: '',
+        totalPages: 1,
+        total: 0
+    };
+    document.getElementById('available-track-search').value = '';
+    renderAvailableTracks();
+}
+
+function updateCardSyncButtonState(playlistId, cardElement) {
+    const syncBtn = cardElement.querySelector('.youtube-sync-card-btn');
+
+    fetch(`/api/youtube/matches/${playlistId}`)
+        .then(response => {
+            if (!response.ok) {
+                updateCardSyncButtonDisplay(syncBtn, false, null);
+                return null;
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.youtube_sync && data.youtube_sync.youtube_playlist_id) {
+                updateCardSyncButtonDisplay(syncBtn, true, data.youtube_sync.youtube_playlist_id, data.youtube_sync.youtube_playlist_name || '');
+            } else {
+                updateCardSyncButtonDisplay(syncBtn, false, null, null);
+            }
+        })
+        .catch(error => {
+            console.error('Error checking sync status:', error);
+            updateCardSyncButtonDisplay(syncBtn, false, null, null);
+        });
+}
+
+function updateCardSyncButtonDisplay(btn, isSynced, youtubePlaylistId, youtubePlaylistName) {
+    const wrapper = btn.closest('.youtube-sync-wrapper');
+    const label = wrapper ? wrapper.querySelector('.youtube-label') : null;
+    if (isSynced) {
+        if (label) label.textContent = 'Synced';
+        btn.style.backgroundColor = '#28a745';
+        btn.classList.add('synced');
+        btn.onclick = function(e) {
+            e.stopPropagation();
+            if (youtubePlaylistId) {
+                if (youtubePlaylistName) {
+                    window.location.href = `/youtube?playlist_id=${youtubePlaylistId}&playlist_title=${encodeURIComponent(youtubePlaylistName)}`;
+                } else {
+                    window.location.href = `/youtube?playlist_id=${youtubePlaylistId}`;
+                }
+            }
+        };
+    } else {
+        if (label) label.textContent = 'YouTube';
+        btn.style.backgroundColor = '#333';
+        btn.classList.remove('synced');
+        btn.onclick = function(e) {
+            e.stopPropagation();
+            const playlistId = this.dataset.playlistId;
+            savePlaylistId(playlistId);
+            openYouTubeSyncModal();
+        };
+    }
+}
+
+function handleSyncButtonClick(playlistId, btnElement) {
+    if (btnElement.classList.contains('synced')) {
+        if (btnElement.onclick) {
+            btnElement.onclick({ stopPropagation: () => {} });
+        }
+    } else {
+        savePlaylistId(playlistId);
+        openYouTubeSyncModal();
+    }
+}
+
+function deletePlaylistWithSessions(playlistId) {
+    fetch(`/sessions/playlist/${playlistId}/delete-all`, {
+        method: 'DELETE'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error('Failed to delete playlist: ' + text);
+            });
+        }
+        return response.json().catch(() => ({}));
+    })
+    .then(data => {
+        loadPlaylists();
+    })
+    .catch(error => {
+        console.error('Error deleting playlist:', error);
+        alert('Error deleting playlist. Please try again.');
+    });
 }
 
 function createTrackListItem(track, index, sessionId) {
@@ -749,26 +859,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('playlist-detail-view').style.display = 'block';
     });
 
-    // Add tracks button
-    document.getElementById('add-tracks-btn').addEventListener('click', function() {
-        if (!window.currentPlaylistId) {
-            alert('No playlist selected');
-            return;
-        }
-        document.getElementById('playlist-detail-view').style.display = 'none';
-        document.getElementById('add-tracks-view').style.display = 'block';
-        // Reset pagination and search
-        availableTrackPagination = {
-            page: 1,
-            limit: 25,
-            query: '',
-            totalPages: 1,
-            total: 0
-        };
-        document.getElementById('available-track-search').value = '';
-        renderAvailableTracks();
-    });
-
     // Create playlist button
     document.getElementById('create-playlist-btn').addEventListener('click', function() {
         document.getElementById('create-playlist-modal').style.display = 'flex';
@@ -837,18 +927,10 @@ document.addEventListener('DOMContentLoaded', function() {
         availableTrackPagination.page = 1;
         renderAvailableTracks();
     });
-
-    document.getElementById('sync-youtube-btn').addEventListener('click', function() {
-        if (!window.currentPlaylistId) {
-            showNotification('No playlist selected', 'error');
-            return;
-        }
-        openYouTubeSyncModal();
-    });
-
+    
+    // YouTube modal buttons
     document.getElementById('close-youtube-sync').addEventListener('click', closeYouTubeSyncModal);
     document.getElementById('close-youtube-review').addEventListener('click', closeYouTubeReviewModal);
-
     document.getElementById('match-playlist-btn').addEventListener('click', matchPlaylistTracks);
     document.getElementById('sync-to-youtube-btn').addEventListener('click', syncToYouTube);
     document.getElementById('clear-cache-btn').addEventListener('click', clearWebCache);
@@ -859,12 +941,6 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('new-playlist-name-yt').disabled = !isNew;
             document.getElementById('existing-playlist-id').disabled = isNew;
         });
-    });
-
-    document.getElementById('create-playlist-modal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            this.style.display = 'none';
-        }
     });
 
     document.getElementById('youtube-sync-modal').addEventListener('click', function(e) {

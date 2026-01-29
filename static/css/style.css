@@ -8,6 +8,10 @@ body {
 /* YouTube-specific styles extracted to youtube.css */
 @import "youtube.css";
 
+#create-playlist-btn {
+    margin: 0 0.5rem 0.5rem 0;
+}
+
 .main-nav {
     background-color: #333;
     color: white;
@@ -347,10 +351,117 @@ h2 {
     margin-bottom: 0.5rem;
     cursor: pointer;
     background-color: #fafafa;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
 }
 
 .playlist-card:hover {
     background-color: #f0f0f0;
+}
+
+.playlist-card-left {
+    flex: 1;
+}
+
+.playlist-card-left h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.1rem;
+    color: #333;
+}
+
+.playlist-card-left .playlist-date {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #999;
+}
+
+.playlist-card-left .track-count {
+    margin: 0.25rem 0 0 0;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.playlist-card-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.playlist-card-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.playlist-card-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+}
+
+.playlist-action-btn {
+    padding: 0.4rem 0.5rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.playlist-action-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.playlist-action-btn:hover {
+    opacity: 0.85;
+}
+
+.add-tracks-card-btn {
+    background-color: #28a745;
+    color: white;
+}
+
+.youtube-sync-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.youtube-sync-card-btn {
+    background-color: #333;
+    color: white;
+}
+
+.youtube-sync-card-btn.synced {
+    background-color: #28a745;
+}
+
+.youtube-label {
+    font-size: 0.7rem;
+    color: #333;
+    font-weight: 500;
+}
+
+.delete-card-btn {
+    background-color: #dc3545;
+    color: white;
+}
+
+.view-hint {
+    font-size: 0.8rem;
+    color: #999;
+    white-space: nowrap;
 }
 
 .playlist-actions {

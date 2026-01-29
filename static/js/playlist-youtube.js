@@ -78,6 +78,8 @@ function openYouTubeSyncModal() {
 
 function updateSyncButtonState(isSynced, youtubePlaylistId, youtubePlaylistName) {
     const syncBtn = document.getElementById('sync-youtube-btn');
+    if (!syncBtn) return;
+    
     if (isSynced) {
         syncBtn.textContent = 'Synced';
         syncBtn.style.backgroundColor = '#28a745';

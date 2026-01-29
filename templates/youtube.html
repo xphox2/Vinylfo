@@ -56,12 +56,18 @@
 
 <script>
 const API_BASE = '/api/youtube';
+let abortController = null;
 
 async function loadYouTubeData() {
     await loadPlaylists();
 }
 
 async function loadPlaylists(container) {
+    if (abortController) {
+        abortController.abort();
+    }
+    abortController = new AbortController();
+
     if (!container) {
         container = document.getElementById('playlists-container');
     }
@@ -69,9 +75,13 @@ async function loadPlaylists(container) {
         return;
     }
 
+    container.innerHTML = '<div class="loading">Loading playlists...</div>';
+
     try {
-        const response = await fetch(`${API_BASE}/playlists`);
+        const response = await fetch(`${API_BASE}/playlists`, { signal: abortController.signal });
         const data = await response.json();
+
+        if (abortController.signal.aborted) return;
 
         container.innerHTML = '';
 
@@ -85,8 +95,8 @@ async function loadPlaylists(container) {
                 playlistItem.className = 'playlist-item';
                 playlistItem.dataset.playlistId = item.id;
                 playlistItem.dataset.playlistTitle = item.title || 'Untitled';
-                const thumbnailUrl = item.id 
-                    ? `https://img.youtube.com/p/img/lg_${item.id}_default.jpg`
+                const thumbnailUrl = item.id
+                    ? `https://img.youtube.com/p/img/lv_${item.id}_default.jpg`
                     : 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiPjxyZWN0IGZpbGw9IiNlZWUiIHdpZHRoPSIxMjAiIGhlaWdodD0iNjgiLz48L3N2Zz4=';
                 playlistItem.innerHTML = `
                     <div class="playlist-cover-container">
@@ -97,21 +107,23 @@ async function loadPlaylists(container) {
                         <p class="playlist-video-count">Loading...</p>
                     </div>
                     <div class="playlist-actions">
-                        <button class="btn-delete" data-playlist-id="${item.id}" data-playlist-title="${escapeHtml(item.title)}" onclick="event.stopPropagation()">Delete</button>
+                        <button class="btn-delete" data-playlist-id="${item.id}" data-playlist-title="${escapeHtml(item.title)}" onclick="deletePlaylist('${item.id}', '${escapeHtml(item.title)}'); event.stopPropagation();">Delete</button>
                     </div>
                 `;
                 playlistItem.addEventListener('click', () => loadPlaylistItems(item.id, item.title));
                 container.appendChild(playlistItem);
 
-                fetch(`${API_BASE}/playlists/${item.id}`, { method: 'GET' })
+                fetch(`${API_BASE}/playlists/${item.id}`, { signal: abortController.signal })
                     .then(response => response.json())
                     .then(data => {
+                        if (abortController.signal.aborted) return;
                         const countElem = playlistItem.querySelector('.playlist-video-count');
                         if (countElem && data.items) {
                             countElem.textContent = `${data.items.length} videos`;
                         }
                     })
                     .catch(() => {
+                        if (abortController.signal.aborted) return;
                         const countElem = playlistItem.querySelector('.playlist-video-count');
                         if (countElem) {
                             countElem.textContent = item.content_details?.item_count ? `${item.content_details.item_count} videos` : 'View';
@@ -120,12 +132,18 @@ async function loadPlaylists(container) {
             });
         }
     } catch (err) {
+        if (err.name === 'AbortError') return;
         console.error('Playlists load error:', err);
         container.innerHTML = '<p class="error-message">Failed to load playlists. Please try reconnecting from Settings.</p>';
     }
 }
 
 async function loadPlaylistItems(playlistId, playlistTitle) {
+    if (abortController) {
+        abortController.abort();
+    }
+    abortController = new AbortController();
+
     const container = document.getElementById('playlist-items-container');
     const playlistsView = document.getElementById('playlists-view');
     const playlistItemsView = document.getElementById('playlist-items-view');
@@ -140,14 +158,20 @@ async function loadPlaylistItems(playlistId, playlistTitle) {
 
     try {
         const response = await fetch(`${API_BASE}/playlists/${playlistId}`, {
-            method: 'GET'
+            method: 'GET',
+            signal: abortController.signal
         });
+
+        if (abortController.signal.aborted) return;
 
         if (!response.ok) {
             throw new Error('Failed to load playlist items');
         }
 
         const data = await response.json();
+
+        if (abortController.signal.aborted) return;
+
         container.innerHTML = '';
 
         if (!data.items || data.items.length === 0) {
@@ -175,6 +199,7 @@ async function loadPlaylistItems(playlistId, playlistTitle) {
             });
         }
     } catch (err) {
+        if (err.name === 'AbortError') return;
         console.error('Error loading playlist items:', err);
         container.innerHTML = '<p class="error-message">Failed to load videos. Please try again.</p>';
     }
