@@ -67,6 +67,15 @@ function loadAlbumDetail(albumId) {
             <div class="album-detail-content">
                 <div class="album-detail-cover-container">
                     ${coverHtml}
+                    <button class="btn-update-cover" id="btn-update-cover">Change Cover</button>
+                    <div id="cover-update-form" class="cover-update-form" style="display: none;">
+                        <input type="text" id="cover-url-input" placeholder="Enter image URL" class="cover-url-input">
+                        <div class="cover-update-buttons">
+                            <button class="btn-save-cover" id="btn-save-cover">Update</button>
+                            <button class="btn-cancel-cover" id="btn-cancel-cover">Cancel</button>
+                        </div>
+                        <div id="cover-update-error" class="cover-update-error"></div>
+                    </div>
                 </div>
                 <div class="album-detail-info">
                     <h2>${escapeHtml(album.title || 'Unknown Title')}</h2>
@@ -96,6 +105,9 @@ function loadAlbumDetail(albumId) {
             </div>
             ${tracksHtml}
         `;
+        
+        // Attach event listeners for cover update UI
+        attachCoverUpdateListeners(album.id);
     })
     .catch(error => {
         console.error('Error loading album detail:', error);
@@ -116,4 +128,93 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Cover image update functions
+function attachCoverUpdateListeners(albumId) {
+    const updateBtn = document.getElementById('btn-update-cover');
+    const saveBtn = document.getElementById('btn-save-cover');
+    const cancelBtn = document.getElementById('btn-cancel-cover');
+    
+    if (updateBtn) {
+        updateBtn.addEventListener('click', () => showUpdateCoverForm(albumId));
+    }
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => updateAlbumCover(albumId));
+    }
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', hideUpdateCoverForm);
+    }
+}
+
+function showUpdateCoverForm(albumId) {
+    const form = document.getElementById('cover-update-form');
+    const errorDiv = document.getElementById('cover-update-error');
+    const input = document.getElementById('cover-url-input');
+    if (form) {
+        form.style.display = 'block';
+        input.value = '';
+        input.focus();
+        if (errorDiv) errorDiv.textContent = '';
+    }
+}
+
+function hideUpdateCoverForm() {
+    const form = document.getElementById('cover-update-form');
+    const errorDiv = document.getElementById('cover-update-error');
+    if (form) {
+        form.style.display = 'none';
+    }
+    if (errorDiv) {
+        errorDiv.textContent = '';
+    }
+}
+
+function updateAlbumCover(albumId) {
+    const input = document.getElementById('cover-url-input');
+    const errorDiv = document.getElementById('cover-update-error');
+    const imageUrl = input.value.trim();
+    
+    if (!imageUrl) {
+        if (errorDiv) errorDiv.textContent = 'Please enter an image URL';
+        return;
+    }
+    
+    // Show loading state
+    const saveButton = document.querySelector('.btn-save-cover');
+    const originalText = saveButton ? saveButton.textContent : 'Update';
+    if (saveButton) {
+        saveButton.textContent = 'Updating...';
+        saveButton.disabled = true;
+    }
+    if (errorDiv) errorDiv.textContent = '';
+    
+    fetch('/albums/' + albumId + '/image', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ image_url: imageUrl })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => {
+                throw new Error(data.error || 'Failed to update cover image');
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Success - reload the album detail to show new image
+        hideUpdateCoverForm();
+        loadAlbumDetail(albumId);
+    })
+    .catch(error => {
+        console.error('Error updating cover:', error);
+        if (errorDiv) errorDiv.textContent = error.message;
+        if (saveButton) {
+            saveButton.textContent = originalText;
+            saveButton.disabled = false;
+        }
+    });
 }

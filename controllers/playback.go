@@ -120,7 +120,7 @@ func (c *PlaybackController) advanceAfterTrackEnd(playlistID string) error {
 		}
 	})
 
-	c.broadcastState(playlistID)
+	c.BroadcastState(playlistID)
 
 	return nil
 }
@@ -155,7 +155,7 @@ func (c *PlaybackController) broadcastEvent(playlistID string, event PlaybackEve
 	}
 }
 
-func (c *PlaybackController) broadcastState(playlistID string) {
+func (c *PlaybackController) BroadcastState(playlistID string) {
 	state := c.buildPlaybackStateResponse(playlistID)
 	c.broadcastEvent(playlistID, PlaybackEvent{Type: "state", Data: state})
 }
@@ -487,7 +487,7 @@ func (c *PlaybackController) Previous(ctx *gin.Context) {
 	}
 
 	c.db.Save(&playbackState)
-	c.broadcastState(playlistID)
+	c.BroadcastState(playlistID)
 
 	queueTracks := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -523,7 +523,7 @@ func (c *PlaybackController) Stop(ctx *gin.Context) {
 	}
 
 	c.playbackManager.StopPlayback(playlistID)
-	c.broadcastState(playlistID)
+	c.BroadcastState(playlistID)
 
 	ctx.JSON(200, gin.H{"status": "Playback stopped", "playlist_id": playlistID})
 }
@@ -557,7 +557,7 @@ func (c *PlaybackController) Clear(ctx *gin.Context) {
 	c.db.Where("session_id = ?", playlistID).Delete(&models.SessionPlaylist{})
 
 	c.playbackManager.StopPlayback(playlistID)
-	c.broadcastState(playlistID)
+	c.BroadcastState(playlistID)
 
 	ctx.JSON(200, gin.H{"status": "Playback state cleared"})
 }
@@ -630,7 +630,7 @@ func (c *PlaybackController) RestoreSession(ctx *gin.Context) {
 
 	c.playbackManager.SetCurrentTrack(playlistID, &track)
 	c.playbackManager.StartPlayback(playlistID, &playbackState)
-	c.broadcastState(playlistID)
+	c.BroadcastState(playlistID)
 
 	queueWithAlbums := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -800,7 +800,7 @@ func (c *PlaybackController) StartPlaylist(ctx *gin.Context) {
 
 	c.playbackManager.StartPlayback(playbackState.PlaylistID, &playbackState)
 	c.playbackManager.SetCurrentTrack(playbackState.PlaylistID, &firstTrack)
-	c.broadcastState(playbackState.PlaylistID)
+	c.BroadcastState(playbackState.PlaylistID)
 
 	queueWithAlbums := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -899,7 +899,7 @@ func (c *PlaybackController) Pause(ctx *gin.Context) {
 	playbackState.UpdatedAt = time.Now()
 	playbackState.Revision++
 	c.db.Save(&playbackState)
-	c.broadcastState(playlistID)
+	c.BroadcastState(playlistID)
 
 	ctx.JSON(200, gin.H{
 		"status":      "Playback paused",
@@ -932,7 +932,7 @@ func (c *PlaybackController) Resume(ctx *gin.Context) {
 	playbackState.Status = "playing"
 	playbackState.Revision++
 	c.db.Save(&playbackState)
-	c.broadcastState(playlistID)
+	c.BroadcastState(playlistID)
 
 	ctx.JSON(200, gin.H{
 		"status":      "Playback resumed",
@@ -993,7 +993,7 @@ func (c *PlaybackController) Skip(ctx *gin.Context) {
 	}
 
 	c.db.Save(&playbackState)
-	c.broadcastState(playlistID)
+	c.BroadcastState(playlistID)
 
 	queueTracks := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -1061,7 +1061,7 @@ func (c *PlaybackController) PlayIndex(ctx *gin.Context) {
 	}
 
 	c.db.Save(&playbackState)
-	c.broadcastState(playlistID)
+	c.BroadcastState(playlistID)
 
 	queueTracks := c.getQueueTracks(playbackState.PlaylistID)
 
@@ -1088,8 +1088,51 @@ func (c *PlaybackController) GetCurrent(ctx *gin.Context) {
 			playlistName = session.PlaylistName
 
 			var track models.Track
+			trackExists := false
 			if session.TrackID > 0 {
-				c.db.First(&track, session.TrackID)
+				result = c.db.First(&track, session.TrackID)
+				trackExists = result.Error == nil
+			}
+
+			// Handle deleted track
+			if !trackExists && session.TrackID > 0 {
+				log.Printf("[Playback] GetCurrent: Track %d not found, trying to find valid track", session.TrackID)
+
+				// Get queue and find next valid track
+				queue := c.getQueueTracks(playlistID)
+				if len(queue) > 0 {
+					if session.QueueIndex < len(queue) {
+						if nextTrackID, ok := queue[session.QueueIndex]["id"].(uint); ok {
+							result = c.db.First(&track, nextTrackID)
+							trackExists = result.Error == nil
+							if trackExists {
+								session.TrackID = track.ID
+							}
+						}
+					}
+
+					if !trackExists {
+						// Try first track
+						if firstTrackID, ok := queue[0]["id"].(uint); ok {
+							result = c.db.First(&track, firstTrackID)
+							trackExists = result.Error == nil
+							if trackExists {
+								session.TrackID = track.ID
+								session.QueueIndex = 0
+							}
+						}
+					}
+
+					if !trackExists {
+						session.Status = "stopped"
+						session.TrackID = 0
+						session.QueuePosition = 0
+					}
+
+					// Save updated session
+					session.Revision++
+					c.db.Save(&session)
+				}
 			}
 
 			var album models.Album
@@ -1153,8 +1196,50 @@ func (c *PlaybackController) Seek(ctx *gin.Context) {
 	}
 
 	var track models.Track
+	trackExists := false
 	if playbackState.TrackID > 0 {
-		c.db.First(&track, playbackState.TrackID)
+		result = c.db.First(&track, playbackState.TrackID)
+		trackExists = result.Error == nil
+	}
+
+	// Handle case where current track was deleted
+	if !trackExists && playbackState.TrackID > 0 {
+		log.Printf("[Playback] Seek: Current track %d not found, advancing to next track", playbackState.TrackID)
+
+		// Get queue and find next valid track
+		queue := c.getQueueTracks(playlistID)
+		if len(queue) > 0 && playbackState.QueueIndex < len(queue) {
+			// Get the track at current index (which should be valid after album deletion cleanup)
+			if nextTrackID, ok := queue[playbackState.QueueIndex]["id"].(uint); ok {
+				result = c.db.First(&track, nextTrackID)
+				trackExists = result.Error == nil
+				if trackExists {
+					playbackState.TrackID = track.ID
+				}
+			}
+		}
+
+		// If still no valid track, try first track in queue
+		if !trackExists && len(queue) > 0 {
+			if firstTrackID, ok := queue[0]["id"].(uint); ok {
+				result = c.db.First(&track, firstTrackID)
+				trackExists = result.Error == nil
+				if trackExists {
+					playbackState.TrackID = track.ID
+					playbackState.QueueIndex = 0
+				}
+			}
+		}
+
+		// If no valid tracks, stop the session
+		if !trackExists {
+			log.Printf("[Playback] Seek: No valid tracks found, stopping session")
+			playbackState.Status = "stopped"
+			playbackState.TrackID = 0
+			playbackState.QueuePosition = 0
+			playbackState.BasePositionSeconds = 0
+			req.Position = 0
+		}
 	}
 
 	if track.Duration > 0 && req.Position > track.Duration {
@@ -1171,7 +1256,7 @@ func (c *PlaybackController) Seek(ctx *gin.Context) {
 	playbackState.LastPlayedAt = time.Now()
 	playbackState.Revision++
 	c.db.Save(&playbackState)
-	c.broadcastState(playlistID)
+	c.BroadcastState(playlistID)
 
 	c.playbackManager.UpdateSessionState(playlistID, func(sess *PlaybackSessionState) {
 		sess.Revision = playbackState.Revision

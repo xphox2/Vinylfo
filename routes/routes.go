@@ -54,9 +54,9 @@ func CSPMiddleware() gin.HandlerFunc {
 func SetupRoutes(r *gin.Engine) {
 	db := database.GetDB()
 
-	albumController := controllers.NewAlbumController(db)
-	trackController := controllers.NewTrackController(db)
 	playbackController := controllers.NewPlaybackController(db)
+	albumController := controllers.NewAlbumController(db, playbackController.BroadcastState)
+	trackController := controllers.NewTrackController(db)
 	playlistController := controllers.NewPlaylistController(db)
 	sessionSharingController := controllers.NewSessionSharingController(db)
 	sessionNoteController := controllers.NewSessionNoteController(db)
@@ -122,6 +122,8 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/albums/:id", albumController.GetAlbumByID)
 	r.GET("/albums/:id/image", albumController.GetAlbumImage)
 	r.GET("/albums/:id/tracks", albumController.GetTracksByAlbumID)
+	r.GET("/albums/:id/delete-preview", albumController.DeleteAlbumPreview)
+	r.POST("/albums/:id/image", albumController.UpdateAlbumImage)
 	r.POST("/albums", albumController.CreateAlbum)
 	r.PUT("/albums/:id", albumController.UpdateAlbum)
 	r.DELETE("/albums/:id", albumController.DeleteAlbum)

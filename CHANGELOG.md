@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8-alpha] - 2026-01-30
+
+### Added
+
+#### Manual Album Cover Image Update
+
+- **New API endpoint**: `POST /albums/:id/image` allows users to update album artwork by providing an image URL
+  - Accepts JSON body with `image_url` field pointing to any image file
+  - Downloads image from provided URL and stores it in the database
+  - Updates `cover_image_url`, `discogs_cover_image`, and `discogs_cover_image_type` fields
+  - Validates image content type (must be an image/* type)
+  - Returns success message with image size and content type
+  - Reuses existing `DownloadCoverImage` functionality for reliable downloads
+
+- **UI: Change Cover button on Album Detail page** (`/album/:id`)
+  - New "Change Cover" button appears below the album artwork
+  - Clicking opens a form with URL input field and Update/Cancel buttons
+  - Validates that URL is provided before submitting
+  - Shows loading state during download ("Updating...")
+  - Displays error messages inline if download fails or URL is invalid
+  - Automatically refreshes page after successful update to show new artwork
+  - Form is styled to match existing UI design (blue button, green save, gray cancel)
+
+- **Files updated**:
+  - `controllers/album.go` - Added `UpdateAlbumImage()` endpoint handler
+  - `routes/routes.go` - Registered new `POST /albums/:id/image` route
+  - `static/js/album-detail.js` - Added UI form and event handlers for cover update
+  - `static/css/style.css` - Added styles for cover update UI components
+
+## [0.3.7-alpha] - 2026-01-30
+
+### Added
+
+#### Album Deletion with Full Cascade Cleanup
+
+- **New preview endpoint**: `GET /albums/:id/delete-preview` returns impact analysis
+  - Shows album info, track count, and list of playlists that will be affected
+  - Allows users to see what will be deleted before confirming
+  
+- **Enhanced album deletion**: `DELETE /albums/:id` now requires `?confirmed=true` parameter
+  - Full cascade delete in a single database transaction
+  - Deletes all associated data to prevent orphaned records:
+    - Track YouTube candidates and matches
+    - Duration sources and resolutions  
+    - Track history entries
+    - Removes tracks from all playlists (SessionPlaylist)
+    - **Smart playback session handling**: Updates active sessions to skip deleted tracks
+      - Removes deleted tracks from session queues
+      - Renumber remaining SessionPlaylist entries to eliminate order gaps
+      - If current track was playing, automatically advances to next track
+      - Stops session only if no tracks remain in queue
+    - **Playback controller resilience**: GetCurrent and Seek endpoints now handle deleted tracks gracefully
+      - Automatically advances to next valid track if current track was deleted
+      - Stops session gracefully if no valid tracks remain
+      - Prevents "Unknown Track" errors when album is deleted during playback
+    - **Real-time UI sync**: Player page auto-refreshes when albums are deleted from another page
+      - Broadcasts state updates to all connected clients via SSE
+      - Queue updates immediately without requiring user interaction
+    - Deletes all tracks belonging to the album
+    - Finally deletes the album itself
+  - Returns success message with count of deleted tracks
+
+- **UI: Delete album icon on Albums page** (`/#albums`)
+  - Red trash can icon appears on hover over each album (similar to tracks page pattern)
+  - Tooltip shows "Delete Album" on hover
+  - Click opens confirmation modal showing impact preview
+  - Modal displays: album title/artist, track count, impacted playlists, and warning
+  - Delete button requires confirmation before executing
+
+- **Files updated**:
+  - `controllers/album.go` - Added DeleteAlbumPreview() and updated DeleteAlbum() with cascade logic
+  - `routes/routes.go` - Registered new delete-preview endpoint
+  - `static/js/app.js` - Added render logic and delete workflow functions
+  - `static/css/style.css` - Added album-delete-icon styles
+  - `templates/index.html` - Added album delete modal HTML
+
 ## [0.3.6-alpha] - 2026-01-29
 
 ### Fixed

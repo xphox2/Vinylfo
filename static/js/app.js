@@ -269,11 +269,28 @@ function renderAlbums(albums) {
         infoDiv.className = 'album-info';
         infoDiv.innerHTML = '<h3>' + (album.title || 'Unknown Title') + '</h3><p>Artist: ' + cleanArtistName(album.artist) + '</p><p>Year: ' + (album.release_year || 'Unknown Year') + '</p>';
         
+        // Add delete icon
+        const deleteIcon = document.createElement('div');
+        deleteIcon.className = 'album-delete-icon';
+        deleteIcon.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+            </svg>
+        `;
+        deleteIcon.title = 'Delete Album';
+        deleteIcon.onclick = function(e) {
+            e.stopPropagation();
+            openDeleteAlbumModal(album.id, album.title, album.artist);
+        };
+        
         item.appendChild(imageContainer);
         item.appendChild(infoDiv);
+        item.appendChild(deleteIcon);
         
-        item.addEventListener('click', function() {
-            window.location.href = '/album/' + album.id;
+        item.addEventListener('click', function(e) {
+            if (!e.target.closest('.album-delete-icon')) {
+                window.location.href = '/album/' + album.id;
+            }
         });
         list.appendChild(item);
     });
@@ -643,9 +660,15 @@ window.openYouTubeVideo = openYouTubeVideo;
 window.openYouTubeModal = openYouTubeModal;
 window.openClearYouTubeModal = openClearYouTubeModal;
 window.parseYouTubeVideoId = parseYouTubeVideoId;
+window.openDeleteAlbumModal = openDeleteAlbumModal;
+window.closeDeleteAlbumModal = closeDeleteAlbumModal;
+window.confirmDeleteAlbum = confirmDeleteAlbum;
 
 let currentTrackIdForYouTube = null;
 let currentTrackTitleForClear = null;
+let currentAlbumIdForDelete = null;
+let currentAlbumTitleForDelete = null;
+let currentAlbumArtistForDelete = null;
 
 function openYouTubeVideo(videoId) {
     if (videoId) {
@@ -696,6 +719,105 @@ function closeClearYouTubeModal() {
     }
     currentTrackIdForYouTube = null;
     currentTrackTitleForClear = null;
+}
+
+function openDeleteAlbumModal(albumId, albumTitle, albumArtist) {
+    currentAlbumIdForDelete = albumId;
+    currentAlbumTitleForDelete = albumTitle;
+    currentAlbumArtistForDelete = albumArtist;
+    
+    const modal = document.getElementById('album-delete-modal');
+    const previewDiv = document.getElementById('album-delete-preview');
+    const errorEl = document.getElementById('album-delete-modal-error');
+    
+    if (modal && previewDiv) {
+        previewDiv.innerHTML = '<p>Loading preview...</p>';
+        errorEl.textContent = '';
+        modal.style.display = 'flex';
+        
+        // Fetch delete preview
+        fetch('/albums/' + albumId + '/delete-preview')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    previewDiv.innerHTML = '<p class="modal-error">Error: ' + escapeHtml(data.error) + '</p>';
+                    return;
+                }
+                
+                let playlistsHtml = '';
+                if (data.impacted_playlists && data.impacted_playlists.length > 0) {
+                    playlistsHtml = '<div style="margin-top: 1rem;"><p><strong>Will be removed from these playlists:</strong></p><ul style="margin: 0.5rem 0; padding-left: 1.5rem;">';
+                    data.impacted_playlists.forEach(playlist => {
+                        playlistsHtml += '<li>' + escapeHtml(playlist.playlist_name) + ' (' + playlist.track_count + ' tracks)</li>';
+                    });
+                    playlistsHtml += '</ul></div>';
+                }
+                
+                previewDiv.innerHTML = 
+                    '<p>Are you sure you want to delete <strong>' + escapeHtml(data.album.title) + '</strong> by <strong>' + escapeHtml(data.album.artist) + '</strong>?</p>' +
+                    '<p style="margin-top: 0.5rem;">This will delete <strong>' + data.track_count + ' tracks</strong> and all associated data (YouTube matches, duration sources, etc.).</p>' +
+                    playlistsHtml +
+                    '<p style="margin-top: 1rem; color: #dc3545;"><strong>This action cannot be undone.</strong></p>';
+            })
+            .catch(error => {
+                console.error('Error loading delete preview:', error);
+                previewDiv.innerHTML = '<p class="modal-error">Failed to load preview</p>';
+            });
+    }
+}
+
+function closeDeleteAlbumModal() {
+    const modal = document.getElementById('album-delete-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    currentAlbumIdForDelete = null;
+    currentAlbumTitleForDelete = null;
+    currentAlbumArtistForDelete = null;
+}
+
+function confirmDeleteAlbum() {
+    if (!currentAlbumIdForDelete) {
+        return;
+    }
+    
+    const errorEl = document.getElementById('album-delete-modal-error');
+    const confirmBtn = document.getElementById('confirm-delete-album');
+    
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Deleting...';
+    
+    fetch('/albums/' + currentAlbumIdForDelete + '?confirmed=true', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Delete Album';
+        
+        if (data.error) {
+            errorEl.textContent = data.error;
+            return;
+        }
+        
+        closeDeleteAlbumModal();
+        
+        // Refresh albums list
+        if (pagination.album.query) {
+            searchAlbums(pagination.album.query);
+        } else {
+            loadAlbums();
+        }
+    })
+    .catch(error => {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Delete Album';
+        console.error('Error deleting album:', error);
+        errorEl.textContent = 'Failed to delete album';
+    });
 }
 
 function parseYouTubeVideoId(url) {
@@ -854,6 +976,32 @@ document.addEventListener('DOMContentLoaded', function() {
         clearModal.addEventListener('click', function(e) {
             if (e.target === clearModal) {
                 closeClearYouTubeModal();
+            }
+        });
+    }
+    
+    // Album delete modal event listeners
+    const deleteAlbumModal = document.getElementById('album-delete-modal');
+    const deleteAlbumCloseBtn = document.getElementById('close-album-delete-modal');
+    const deleteAlbumCancelBtn = document.getElementById('cancel-delete-album');
+    const deleteAlbumConfirmBtn = document.getElementById('confirm-delete-album');
+    
+    if (deleteAlbumCloseBtn) {
+        deleteAlbumCloseBtn.addEventListener('click', closeDeleteAlbumModal);
+    }
+    
+    if (deleteAlbumCancelBtn) {
+        deleteAlbumCancelBtn.addEventListener('click', closeDeleteAlbumModal);
+    }
+    
+    if (deleteAlbumConfirmBtn) {
+        deleteAlbumConfirmBtn.addEventListener('click', confirmDeleteAlbum);
+    }
+    
+    if (deleteAlbumModal) {
+        deleteAlbumModal.addEventListener('click', function(e) {
+            if (e.target === deleteAlbumModal) {
+                closeDeleteAlbumModal();
             }
         });
     }
