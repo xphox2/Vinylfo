@@ -46,6 +46,9 @@ class AlbumArtFeedManager {
         if (demoTrackId) {
             console.log('[AlbumArtFeed] Demo track ID found:', demoTrackId);
             this.loadDemoTrack(demoTrackId);
+
+            // Settings preview/demo: don't open SSE connections.
+            return;
         } else {
             console.log('[AlbumArtFeed] No demo track ID found in dataset');
         }

@@ -328,11 +328,17 @@ class FeedSettingsManager {
         // Add demoTrack parameter for iframe preview only
         const sampleTrack = document.getElementById(`${feed}-sample-track`);
         let previewUrl = url;
-        if (sampleTrack && sampleTrack.value) {
-            const separator = url.includes('?') ? '&' : '?';
-            previewUrl = `${url}${separator}demoTrack=${sampleTrack.value}`;
+        if (!(sampleTrack && sampleTrack.value)) {
+            const iframe = document.getElementById(`${feed}-preview`);
+            if (iframe && iframe.src !== 'about:blank') {
+                iframe.src = 'about:blank';
+            }
+            return;
         }
-        
+
+        const separator = url.includes('?') ? '&' : '?';
+        previewUrl = `${url}${separator}demoTrack=${sampleTrack.value}`;
+         
         const iframe = document.getElementById(`${feed}-preview`);
         
         if (iframe) {

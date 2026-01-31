@@ -45,6 +45,13 @@ class VideoFeedManager {
         this.visualizer = null;
         this.tabSync = null;
 
+        this.isDemoMode = false;
+        this.receivedInitialState = false;
+        this.initialStateResolver = null;
+        this.initialStatePromise = new Promise((resolve) => {
+            this.initialStateResolver = resolve;
+        });
+
         // Operation queue to prevent race conditions
         this.pendingOperation = null;
         this.operationTimeout = null;
@@ -99,11 +106,34 @@ class VideoFeedManager {
         // Wait for YouTube API to load
         await this.waitForYouTubeAPI();
 
+        // Demo mode (settings preview): render the provided track and do not open SSE.
+        this.isDemoMode = !!document.body.dataset.demoTrack || !!document.body.dataset.demoTrackId;
+        if (this.isDemoMode) {
+            console.log('[VideoFeed] Demo mode enabled - skipping SSE');
+            await this.fetchInitialState();
+            return;
+        }
+
         // Connect to SSE
         this.connectSSE();
 
-        // Fetch initial state
-        await this.fetchInitialState();
+        // Prefer SSE initial_state; fall back to HTTP if it doesn't arrive promptly.
+        await this.ensureInitialState();
+    }
+
+    delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async ensureInitialState() {
+        await Promise.race([
+            this.initialStatePromise,
+            this.delay(1500)
+        ]);
+
+        if (!this.receivedInitialState) {
+            await this.fetchInitialState();
+        }
     }
 
     handleTabSyncSeek(position) {
@@ -302,6 +332,13 @@ class VideoFeedManager {
 
         switch (event.type) {
             case 'initial_state':
+                this.receivedInitialState = true;
+                if (this.initialStateResolver) {
+                    this.initialStateResolver();
+                    this.initialStateResolver = null;
+                }
+                this.handleTrackUpdate(event.data);
+                break;
             case 'track_changed':
                 this.handleTrackUpdate(event.data);
                 break;

@@ -49,9 +49,10 @@ func InitDB() (*gorm.DB, error) {
 	}
 
 	if dbType == "sqlite" {
-		// SQLite: allow a small pool for read concurrency
-		sqlDB.SetMaxOpenConns(5)
-		sqlDB.SetMaxIdleConns(2)
+		// SQLite: increased pool for single-user local app
+		// Note: SQLite still serializes writes, but this prevents connection starvation
+		sqlDB.SetMaxOpenConns(25)
+		sqlDB.SetMaxIdleConns(10)
 		sqlDB.SetConnMaxLifetime(time.Hour)
 
 		// SQLite performance tuning
@@ -59,7 +60,7 @@ func InitDB() (*gorm.DB, error) {
 		sqlDB.Exec("PRAGMA journal_mode = WAL")
 		sqlDB.Exec("PRAGMA synchronous = NORMAL")
 		sqlDB.Exec("PRAGMA cache_size = -64000")   // 64MB cache
-		sqlDB.Exec("PRAGMA busy_timeout = 5000")   // 5 second wait for locks
+		sqlDB.Exec("PRAGMA busy_timeout = 10000")  // 10 second wait for locks (increased)
 		sqlDB.Exec("PRAGMA mmap_size = 134217728") // 128MB memory-mapped I/O
 
 		// Run integrity check on startup

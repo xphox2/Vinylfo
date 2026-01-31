@@ -27,6 +27,9 @@ type VideoFeedController struct {
 	sseClientsMux      sync.RWMutex
 	lastState          *VideoFeedState
 	lastStateMux       sync.RWMutex
+	lastTrackInfo      *VideoTrackInfo
+	lastTrackInfoID    uint
+	lastTrackInfoMux   sync.RWMutex
 	youtubeOAuth       *duration.YouTubeOAuthClient
 }
 
@@ -213,7 +216,10 @@ func (c *VideoFeedController) StreamEvents(ctx *gin.Context) {
 	}()
 
 	// Send initial state
-	c.sendCurrentState(clientChan)
+	c.sendCurrentState(ctx.Request.Context(), clientChan)
+
+	heartbeat := time.NewTicker(25 * time.Second)
+	defer heartbeat.Stop()
 
 	// Stream events
 	ctx.Stream(func(w io.Writer) bool {
@@ -224,6 +230,13 @@ func (c *VideoFeedController) StreamEvents(ctx *gin.Context) {
 			}
 			data, _ := json.Marshal(event)
 			ctx.SSEvent("message", string(data))
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			return true
+		case <-heartbeat.C:
+			// Keep the connection active and detect dead clients faster.
+			_, _ = w.Write([]byte(": ping\n\n"))
 			if flusher, ok := w.(http.Flusher); ok {
 				flusher.Flush()
 			}
@@ -813,6 +826,7 @@ func (c *VideoFeedController) stateMonitor() {
 				log.Printf("[VideoFeed] Broadcasting track_changed (trackID: %d)\n", trackID)
 				if currentTrack != nil {
 					trackInfo := c.buildVideoTrackInfo(currentTrack)
+					c.setCachedTrackInfo(trackID, trackInfo)
 					c.broadcastEvent(VideoFeedEvent{
 						Type: "track_changed",
 						Data: gin.H{
@@ -862,15 +876,44 @@ func (c *VideoFeedController) stateMonitor() {
 	}
 }
 
+func (c *VideoFeedController) getCachedTrackInfo(trackID uint) (VideoTrackInfo, bool) {
+	c.lastTrackInfoMux.RLock()
+	defer c.lastTrackInfoMux.RUnlock()
+	if c.lastTrackInfo == nil || c.lastTrackInfoID != trackID {
+		return VideoTrackInfo{}, false
+	}
+	return *c.lastTrackInfo, true
+}
+
+func (c *VideoFeedController) setCachedTrackInfo(trackID uint, info VideoTrackInfo) {
+	c.lastTrackInfoMux.Lock()
+	c.lastTrackInfoID = trackID
+	c.lastTrackInfo = &info
+	c.lastTrackInfoMux.Unlock()
+}
+
 // sendCurrentState sends the current state to a new client
-func (c *VideoFeedController) sendCurrentState(clientChan chan VideoFeedEvent) {
+func (c *VideoFeedController) sendCurrentState(reqCtx context.Context, clientChan chan VideoFeedEvent) {
 	pm := c.playbackController.GetPlaybackManager()
 	currentTrack := pm.GetCurrentTrack()
 	playlistID := pm.GetCurrentPlaylistID()
 
+	send := func(ev VideoFeedEvent) {
+		select {
+		case clientChan <- ev:
+		case <-reqCtx.Done():
+		case <-time.After(2 * time.Second):
+			log.Printf("[VideoFeed] Timeout sending initial state\n")
+		}
+	}
+
 	if currentTrack != nil {
-		trackInfo := c.buildVideoTrackInfo(currentTrack)
-		clientChan <- VideoFeedEvent{
+		trackInfo, ok := c.getCachedTrackInfo(currentTrack.ID)
+		if !ok {
+			trackInfo = c.buildVideoTrackInfo(currentTrack)
+			c.setCachedTrackInfo(currentTrack.ID, trackInfo)
+		}
+		send(VideoFeedEvent{
 			Type: "initial_state",
 			Data: gin.H{
 				"track":      trackInfo,
@@ -878,36 +921,46 @@ func (c *VideoFeedController) sendCurrentState(clientChan chan VideoFeedEvent) {
 				"is_paused":  pm.IsPaused(playlistID),
 				"position":   pm.GetPosition(playlistID),
 			},
-		}
+		})
 	} else {
-		clientChan <- VideoFeedEvent{
+		send(VideoFeedEvent{
 			Type: "initial_state",
 			Data: gin.H{
 				"has_track":  false,
 				"is_playing": false,
 				"is_paused":  false,
 			},
-		}
+		})
 	}
 }
 
 // broadcastEvent sends an event to all connected SSE clients
 func (c *VideoFeedController) broadcastEvent(event VideoFeedEvent) {
+	// Copy-on-write pattern: snapshot clients under lock, then send without lock.
 	c.sseClientsMux.RLock()
-	defer c.sseClientsMux.RUnlock()
-
 	clientCount := len(c.sseClients)
-	sentCount := 0
-
-	for _, clientChan := range c.sseClients {
-		select {
-		case clientChan <- event:
-			sentCount++
-		default:
-			// Client channel full, skip
-			log.Printf("[VideoFeed] WARNING: Client channel full, skipping event\n")
-		}
+	if clientCount == 0 {
+		c.sseClientsMux.RUnlock()
+		return
 	}
+	clients := make([]chan VideoFeedEvent, 0, clientCount)
+	for _, clientChan := range c.sseClients {
+		clients = append(clients, clientChan)
+	}
+	c.sseClientsMux.RUnlock()
 
-	log.Printf("[VideoFeed] Broadcast %s event to %d/%d clients\n", event.Type, sentCount, clientCount)
+	for _, clientChan := range clients {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Channel was closed, ignore.
+				}
+			}()
+			select {
+			case clientChan <- event:
+			default:
+				// Client channel full; drop.
+			}
+		}()
+	}
 }

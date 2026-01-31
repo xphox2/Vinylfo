@@ -140,18 +140,37 @@ func NewPlaybackController(db *gorm.DB) *PlaybackController {
 }
 
 func (c *PlaybackController) broadcastEvent(playlistID string, event PlaybackEvent) {
+	// Copy-on-write pattern: snapshot clients under lock, then send without lock
+	// This prevents writer starvation when new clients connect
 	c.sseClientsMux.RLock()
-	defer c.sseClientsMux.RUnlock()
-
+	clientCount := len(c.sseClients)
+	if clientCount == 0 {
+		c.sseClientsMux.RUnlock()
+		return
+	}
+	clients := make([]*playbackSSEClient, 0, clientCount)
 	for _, client := range c.sseClients {
+		clients = append(clients, client)
+	}
+	c.sseClientsMux.RUnlock()
+
+	for _, client := range clients {
 		if client.playlistID != "" && client.playlistID != playlistID {
 			continue
 		}
-		select {
-		case client.ch <- event:
-		default:
-			// Client channel full; drop.
-		}
+		// Recover from panic if channel was closed during iteration
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Channel was closed, ignore
+				}
+			}()
+			select {
+			case client.ch <- event:
+			default:
+				// Client channel full; drop.
+			}
+		}()
 	}
 }
 
@@ -267,8 +286,12 @@ func (c *PlaybackController) StreamEvents(ctx *gin.Context) {
 		c.sseClientsMux.Unlock()
 	}()
 
-	// Initial state snapshot.
-	clientChan <- PlaybackEvent{Type: "state", Data: c.buildPlaybackStateResponse(playlistID)}
+	// Initial state snapshot - non-blocking with timeout to prevent hangs
+	select {
+	case clientChan <- PlaybackEvent{Type: "state", Data: c.buildPlaybackStateResponse(playlistID)}:
+	case <-time.After(2 * time.Second):
+		log.Printf("[Playback] Timeout sending initial state to client %s\n", clientID)
+	}
 
 	ctx.Stream(func(w io.Writer) bool {
 		select {

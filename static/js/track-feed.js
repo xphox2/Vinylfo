@@ -29,10 +29,6 @@ class TrackFeedManager {
             marqueeWrapper: document.querySelector('.marquee-wrapper'),
             marqueeContainer: document.querySelector('.marquee-container'),
             marqueeContent: document.getElementById('marquee-content'),
-            trackText1: document.getElementById('track-text-1'),
-            trackText2: document.getElementById('track-text-2'),
-            separator1: document.getElementById('separator-1'),
-            separator2: document.getElementById('separator-2'),
             noTrackOverlay: document.getElementById('no-track-overlay'),
             connectionStatus: document.getElementById('connection-status')
         };
@@ -46,8 +42,8 @@ class TrackFeedManager {
         document.body.classList.add('theme-' + this.config.theme);
         document.body.setAttribute('data-direction', this.config.direction);
 
-        const animDuration = this.calculateAnimDuration();
-        document.body.style.setProperty('--marquee-duration', animDuration + 's');
+        // Default gap between repeats.
+        document.body.style.setProperty('--marquee-gap', '50px');
 
         // Check for demo track
         const demoTrackId = document.body.dataset.demoTrack;
@@ -55,11 +51,20 @@ class TrackFeedManager {
         if (demoTrackId) {
             console.log('[TrackFeed] Demo track ID found:', demoTrackId);
             this.loadDemoTrack(demoTrackId);
+
+            // Settings preview/demo: don't open SSE connections.
+            return;
         } else {
             console.log('[TrackFeed] No demo track ID found in dataset');
         }
 
         this.connectSSE();
+
+        window.addEventListener('resize', () => {
+            if (this.currentTrackId) {
+                this.rebuildMarquee();
+            }
+        });
     }
 
     async loadDemoTrack(trackId) {
@@ -87,22 +92,12 @@ class TrackFeedManager {
         }
     }
 
-    calculateAnimDuration() {
-        const minDuration = 10;
-        const maxDuration = 60;
-        const minSpeed = 1;
-        const maxSpeed = 10;
-
-        let duration;
-        if (this.config.speed <= 5) {
-            const t = (5 - this.config.speed) / (5 - minSpeed);
-            duration = 60 - t * (60 - 30);
-        } else {
-            const t = (this.config.speed - 5) / (maxSpeed - 5);
-            duration = 30 - t * (30 - 10);
-        }
-
-        return Math.max(minDuration, Math.min(maxDuration, duration));
+    getPixelsPerSecond() {
+        // Map speed 1..10 to a reasonable pixel velocity.
+        const min = 40;
+        const max = 260;
+        const t = (Math.max(1, Math.min(10, this.config.speed)) - 1) / 9;
+        return min + t * (max - min);
     }
 
     connectSSE() {
@@ -207,30 +202,60 @@ class TrackFeedManager {
             text += ' ' + this.config.suffix;
         }
 
-        this.elements.trackText1.textContent = text;
-        this.elements.trackText2.textContent = text;
-        this.elements.separator1.textContent = '  ';
-        this.elements.separator2.textContent = '  ';
+        this.renderMarqueeText(text);
+    }
 
+    renderMarqueeText(text) {
         this.stopAnimation();
 
-        requestAnimationFrame(() => {
-            this.startAnimation();
-        });
+        // Build enough repeated segments to always scroll, even if the text is short.
+        const wrapperWidth = this.elements.marqueeWrapper?.offsetWidth || window.innerWidth;
+
+        // Render one segment to measure its width.
+        this.elements.marqueeContent.innerHTML = '';
+        const seg = document.createElement('span');
+        seg.className = 'marquee-segment';
+        seg.textContent = text;
+        this.elements.marqueeContent.appendChild(seg);
+
+        // Force layout.
+        const segmentWidth = seg.offsetWidth || 1;
+
+        const styles = window.getComputedStyle(this.elements.marqueeContent);
+        const gapPx = parseFloat(styles.columnGap || styles.gap) || 50;
+        const stepPx = segmentWidth + gapPx;
+
+        const repeatCount = Math.max(3, Math.ceil((wrapperWidth * 2) / stepPx) + 1);
+
+        this.elements.marqueeContent.innerHTML = '';
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < repeatCount; i++) {
+            const s = document.createElement('span');
+            s.className = 'marquee-segment';
+            s.textContent = text;
+            frag.appendChild(s);
+        }
+        this.elements.marqueeContent.appendChild(frag);
+
+        document.body.style.setProperty('--marquee-shift', stepPx + 'px');
+        const pxPerSec = this.getPixelsPerSecond();
+        const durationSeconds = Math.max(2, stepPx / pxPerSec);
+        document.body.style.setProperty('--marquee-duration', durationSeconds.toFixed(3) + 's');
+
+        requestAnimationFrame(() => this.startAnimation());
+    }
+
+    rebuildMarquee() {
+        const first = this.elements.marqueeContent?.querySelector('.marquee-segment');
+        const text = first ? first.textContent : '';
+        if (text) {
+            this.renderMarqueeText(text);
+        }
     }
 
     startAnimation() {
-        const contentWidth = this.elements.marqueeContent.offsetWidth;
-        const containerWidth = this.elements.marqueeWrapper.offsetWidth;
-
-        console.log('[TrackFeed] Content width:', contentWidth, 'Container width:', containerWidth);
-
-        if (contentWidth > containerWidth) {
-            this.elements.marqueeContent.classList.add('animating');
-            this.isAnimating = true;
-        } else {
-            console.log('[TrackFeed] Content fits, no animation needed');
-        }
+        this.elements.marqueeContent.classList.add('animating');
+        this.isAnimating = true;
     }
 
     stopAnimation() {
@@ -242,10 +267,7 @@ class TrackFeedManager {
         console.log('[TrackFeed] No track playing');
         this.currentTrackId = null;
         this.stopAnimation();
-        this.elements.trackText1.textContent = '';
-        this.elements.trackText2.textContent = '';
-        this.elements.separator1.textContent = '';
-        this.elements.separator2.textContent = '';
+        this.elements.marqueeContent.innerHTML = '';
         if (this.config.showBackground) {
             this.elements.noTrackOverlay.classList.remove('hidden');
         }

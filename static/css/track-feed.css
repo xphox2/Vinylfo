@@ -44,48 +44,42 @@ body {
 .marquee-content {
     display: flex;
     white-space: nowrap;
-    gap: 50px;
+    gap: var(--marquee-gap, 50px);
 }
 
 .marquee-content.animating {
-    animation: marquee var(--marquee-duration, 30s) linear infinite;
-}
-
-[data-direction="rtl"] .marquee-content.animating {
     animation: marquee-rtl var(--marquee-duration, 30s) linear infinite;
+    will-change: transform;
 }
 
-@keyframes marquee {
-    0% {
-        transform: translateX(0);
-    }
-    100% {
-        transform: translateX(-50%);
-    }
+[data-direction="ltr"] .marquee-content.animating {
+    animation: marquee-ltr var(--marquee-duration, 30s) linear infinite;
 }
 
 @keyframes marquee-rtl {
     0% {
-        transform: translateX(-50%);
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(calc(-1 * var(--marquee-shift, 400px)));
+    }
+}
+
+@keyframes marquee-ltr {
+    0% {
+        transform: translateX(calc(-1 * var(--marquee-shift, 400px)));
     }
     100% {
         transform: translateX(0);
     }
 }
 
-.track-text {
+.marquee-segment {
     display: inline-block;
     font-size: 48px;
     font-weight: 700;
     color: #fff;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-    flex-shrink: 0;
-}
-
-.track-separator {
-    display: inline-block;
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 48px;
     flex-shrink: 0;
 }
 
@@ -164,7 +158,7 @@ body {
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
 }
 
-.theme-dark .track-text {
+.theme-dark .marquee-segment {
     color: #fff;
 }
 
@@ -172,7 +166,7 @@ body {
     background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
 }
 
-.theme-light .track-text {
+.theme-light .marquee-segment {
     color: #1a1a2e;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
@@ -181,15 +175,12 @@ body {
     color: #1a1a2e;
 }
 
-.theme-light .track-separator {
-    color: rgba(0, 0, 0, 0.3);
-}
 
 .theme-transparent body {
     background: transparent;
 }
 
-.theme-transparent .track-text {
+.theme-transparent .marquee-segment {
     color: #fff;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
 }
@@ -204,7 +195,7 @@ body.obs-mode {
 }
 
 @media (max-width: 768px) {
-    .track-text {
+    .marquee-segment {
         font-size: 32px;
     }
 }
