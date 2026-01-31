@@ -21,42 +21,6 @@
     border-color: #333;
 }
 
-.search-tabs {
-    display: flex;
-    gap: 0;
-    margin-bottom: 1.5rem;
-    border-bottom: 2px solid #ddd;
-}
-
-.tab-btn {
-    padding: 0.75rem 1.5rem;
-    background: none;
-    border: none;
-    font-size: 1rem;
-    font-weight: 600;
-    color: #666;
-    cursor: pointer;
-    position: relative;
-}
-
-.tab-btn:hover {
-    color: #333;
-}
-
-.tab-btn.active {
-    color: #333;
-}
-
-.tab-btn.active::after {
-    content: '';
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background-color: #333;
-}
-
 .search-results {
     min-height: 200px;
     background-color: white;
@@ -139,61 +103,6 @@
 .result-year {
     color: #999;
     font-size: 0.75rem;
-}
-
-.local-form {
-    background-color: white;
-    padding: 1.5rem;
-    border-radius: 5px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-.local-form h2 {
-    color: #333;
-    border-bottom: 2px solid #333;
-    padding-bottom: 0.5rem;
-    margin-top: 0;
-}
-
-.form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-}
-
-.tracks-section {
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid #eee;
-}
-
-.tracks-section h3 {
-    color: #333;
-    margin: 0 0 1rem 0;
-}
-
-.manual-tracks {
-    margin-bottom: 1rem;
-}
-
-.track-row {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-    align-items: center;
-}
-
-.track-row input {
-    flex: 1;
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 3px;
-}
-
-.form-actions {
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid #eee;
 }
 
 .loading {

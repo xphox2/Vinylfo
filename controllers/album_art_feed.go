@@ -45,12 +45,21 @@ func (c *AlbumArtFeedController) GetAlbumArtFeedPage(ctx *gin.Context) {
 	showBackgroundStr := ctx.DefaultQuery("showBackground", "true")
 	showBackground := showBackgroundStr == "true"
 
-	ctx.Header("Cache-Control", "no-store")
-	ctx.HTML(200, "album-art-feed.html", gin.H{
+	demoTrackID := ctx.Query("demoTrack")
+
+	data := gin.H{
 		"theme":          theme,
 		"animation":      animation,
 		"animDuration":   animDur,
 		"fit":            fit,
 		"showBackground": showBackground,
-	})
+	}
+
+	// Only add demoTrack if it's not empty
+	if demoTrackID != "" {
+		data["demoTrack"] = demoTrackID
+	}
+
+	ctx.Header("Cache-Control", "no-store")
+	ctx.HTML(200, "album-art-feed.html", data)
 }

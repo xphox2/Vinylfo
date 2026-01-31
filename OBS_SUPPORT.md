@@ -7,20 +7,32 @@ This document provides comprehensive documentation for using Vinylfo's OBS feeds
 1. [Quick Start](#quick-start)
 2. [Feed Types](#feed-types)
 3. [URL Configuration Options](#url-configuration-options)
-4. [Common OBS Setups](#common-obs-setups)
-5. [OBS Setup Instructions](#obs-setup-instructions)
-6. [Features Overview](#features-overview)
-7. [Troubleshooting](#troubleshooting)
+4. [Feeds Settings Page](#feeds-settings-page)
+5. [Common OBS Setups](#common-obs-setups)
+6. [OBS Setup Instructions](#obs-setup-instructions)
+7. [Features Overview](#features-overview)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Quick Start
 
-Vinylfo provides three OBS-friendly feeds. Add a **Browser Source** in OBS for each:
+Vinylfo provides a **Feeds Settings page** for easy visual configuration of all OBS feeds. Visit:
+
+**Settings → Feeds** in the Vinylfo navigation menu
+
+From there you can:
+- Configure all feed settings visually with live previews
+- See exactly how each feed will look in OBS
+- Copy ready-to-use URLs with one click
+- Save default settings for future use
+
+Or manually add a **Browser Source** in OBS for each feed:
 
 ### Video Feed (YouTube videos)
 - URL: `http://localhost:8080/feeds/video?overlay=bottom&theme=dark`
 - Shows YouTube videos synced with Vinylfo playback
+- **New:** Enable audio output with `enableAudio=true`
 
 ### Album Art Feed (Full-screen art)
 - URL: `http://localhost:8080/feeds/art?theme=dark&animation=true`
@@ -29,6 +41,7 @@ Vinylfo provides three OBS-friendly feeds. Add a **Browser Source** in OBS for e
 ### Track Info Feed (Marquee text)
 - URL: `http://localhost:8080/feeds/track?theme=dark&speed=5`
 - Infinite scrolling marquee with track metadata
+- **New:** Add suffix text with `suffix=` parameter
 
 All feeds use Server-Sent Events (SSE) for real-time synchronization.
 

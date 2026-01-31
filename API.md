@@ -76,6 +76,7 @@ These endpoints serve HTML templates for the web interface:
 | GET | `/track/:id` | Track details page |
 | GET | `/album/:id` | Album details page |
 | GET | `/settings` | Settings and configuration page |
+| GET | `/settings/feeds` | OBS Feeds configuration page |
 | GET | `/sync` | Discogs sync management page |
 | GET | `/search` | Search page for adding albums |
 | GET | `/resolution-center` | Duration resolution center |
@@ -199,7 +200,27 @@ These endpoints serve HTML templates for the web interface:
 ### Get Track
 - **GET** `/tracks/:id`
 - **Description:** Get track by ID
-- **Response:** Track details
+- **Response:**
+```json
+{
+  "id": 1,
+  "album_id": 1,
+  "title": "Come Together",
+  "duration": 259,
+  "track_number": 1,
+  "audio_file_url": "",
+  "album_title": "Abbey Road",
+  "album_artist": "The Beatles",
+  "album_cover": "https://example.com/cover.jpg",
+  "youtube_video_id": "dQw4w9WgXcQ",
+  "video_title": "Come Together - The Beatles",
+  "video_duration": 265,
+  "release_year": 1969,
+  "album_genre": "Rock",
+  "created_at": "2024-01-20T12:00:00Z",
+  "updated_at": "2024-01-20T12:00:00Z"
+}
+```
 
 ### Create Track
 - **POST** `/tracks`
@@ -373,6 +394,20 @@ These endpoints serve HTML templates for the web interface:
 ### Video Feed Page
 - **GET** `/feeds/video`
 - **Description:** Video feed page optimized for OBS browser source
+- **Query Parameters:**
+  - `theme` (optional): Theme - `dark`, `light` (default: `dark`)
+  - `overlay` (optional): Overlay position - `bottom`, `top`, `none` (default: `bottom`)
+  - `transition` (optional): Transition type - `fade`, `slide`, `none` (default: `fade`)
+  - `quality` (optional): Video quality - `auto`, `hd`, `sd` (default: `auto`)
+  - `showVisualizer` (optional): Show audio visualizer - `true`, `false` (default: `true`)
+  - `overlayDuration` (optional): Overlay display duration in seconds (default: `5`)
+  - `showBackground` (optional): Show background - `true`, `false` (default: `true`)
+  - `enableAudio` (optional): Enable audio output - `true`, `false` (default: `false`)
+  - `demoTrack` (optional): Track ID for demo/preview mode
+- **Example URL:**
+```
+http://localhost:8080/feeds/video?theme=dark&overlay=bottom&showVisualizer=true&enableAudio=false
+```
 
 ### Video Feed Events
 - **GET** `/feeds/video/events`
@@ -430,6 +465,17 @@ These endpoints serve HTML templates for the web interface:
 ### Album Art Feed
 - **GET** `/feeds/art`
 - **Description:** Album art feed page for OBS integration
+- **Query Parameters:**
+  - `theme` (optional): Theme - `dark`, `light`, `transparent` (default: `dark`)
+  - `animation` (optional): Enable Ken Burns animation - `true`, `false` (default: `true`)
+  - `animDuration` (optional): Animation duration in seconds, 5-120 (default: `20`)
+  - `fit` (optional): Image fit mode - `cover`, `contain` (default: `cover`)
+  - `showBackground` (optional): Show background - `true`, `false` (default: `true`)
+  - `demoTrack` (optional): Track ID for demo/preview mode
+- **Example URL:**
+```
+http://localhost:8080/feeds/art?theme=dark&animation=true&fit=cover
+```
 
 ---
 
@@ -438,6 +484,22 @@ These endpoints serve HTML templates for the web interface:
 ### Track Info Feed
 - **GET** `/feeds/track`
 - **Description:** Track information feed page for OBS integration
+- **Query Parameters:**
+  - `theme` (optional): Theme - `dark`, `light`, `transparent` (default: `dark`)
+  - `speed` (optional): Scroll speed, 1-10 (default: `5`)
+  - `direction` (optional): Scroll direction - `rtl` (right-to-left), `ltr` (left-to-right) (default: `rtl`)
+  - `separator` (optional): Text separator character (default: `*`)
+  - `prefix` (optional): Text prefix (default: `Now Playing:`)
+  - `suffix` (optional): Text suffix (default: empty)
+  - `showArtist` (optional): Show artist name - `true`, `false` (default: `true`)
+  - `showAlbum` (optional): Show album name - `true`, `false` (default: `true`)
+  - `showDuration` (optional): Show track duration - `true`, `false` (default: `true`)
+  - `showBackground` (optional): Show background - `true`, `false` (default: `true`)
+  - `demoTrack` (optional): Track ID for demo/preview mode
+- **Example URL:**
+```
+http://localhost:8080/feeds/track?theme=dark&speed=5&direction=rtl&prefix=Now Playing:
+```
 
 ---
 
@@ -702,6 +764,82 @@ These endpoints serve HTML templates for the web interface:
 - **PUT** `/api/settings`
 - **Description:** Update settings
 - **Request Body:** Settings to update
+
+### Get Feed Settings
+- **GET** `/api/settings/feeds`
+- **Description:** Get OBS feed configuration settings
+- **Response:**
+```json
+{
+  "video": {
+    "theme": "dark",
+    "overlay": "bottom",
+    "transition": "fade",
+    "quality": "auto",
+    "show_visualizer": true,
+    "overlay_duration": 5,
+    "show_background": true,
+    "enable_audio": false
+  },
+  "art": {
+    "theme": "dark",
+    "animation": true,
+    "anim_duration": 20,
+    "fit": "cover",
+    "show_background": true
+  },
+  "track": {
+    "theme": "dark",
+    "speed": 5,
+    "direction": "rtl",
+    "separator": "*",
+    "prefix": "Now Playing:",
+    "suffix": "",
+    "show_artist": true,
+    "show_album": true,
+    "show_duration": true,
+    "show_background": true
+  }
+}
+```
+
+### Update Feed Settings
+- **PUT** `/api/settings/feeds`
+- **Description:** Update OBS feed configuration settings
+- **Request Body:**
+```json
+{
+  "video": {
+    "theme": "dark",
+    "overlay": "bottom",
+    "transition": "fade",
+    "quality": "auto",
+    "show_visualizer": true,
+    "overlay_duration": 5,
+    "show_background": true,
+    "enable_audio": false
+  },
+  "art": {
+    "theme": "dark",
+    "animation": true,
+    "anim_duration": 20,
+    "fit": "cover",
+    "show_background": true
+  },
+  "track": {
+    "theme": "dark",
+    "speed": 5,
+    "direction": "rtl",
+    "separator": "*",
+    "prefix": "Now Playing:",
+    "suffix": "",
+    "show_artist": true,
+    "show_album": true,
+    "show_duration": true,
+    "show_background": true
+  }
+}
+```
 
 ### Reset Database
 - **POST** `/api/database/reset`
@@ -1141,15 +1279,15 @@ All responses include the following security headers:
 
 ## Statistics
 
-- **Total API Endpoints:** 168+
-- **GET Endpoints:** 78+
-- **POST Endpoints:** 62+
-- **PUT Endpoints:** 16+
+- **Total API Endpoints:** 174+
+- **GET Endpoints:** 82+
+- **POST Endpoints:** 64+
+- **PUT Endpoints:** 18+
 - **DELETE Endpoints:** 18+
 
 ### Categories:
 1. System & Health (4 endpoints)
-2. Web Pages (9 endpoints)
+2. Web Pages (10 endpoints)
 3. Albums (8 endpoints)
 4. Tracks (9 endpoints)
 5. Playback Control (14 endpoints)
@@ -1161,7 +1299,7 @@ All responses include the following security headers:
 11. Session Sharing (5 endpoints)
 12. Session Notes (5 endpoints)
 13. Discogs Integration (22 endpoints)
-14. Settings & Config (7 endpoints)
+14. Settings & Config (9 endpoints)
 15. Log Management (2 endpoints)
 16. Audit Logs (2 endpoints)
 17. Database Backup (3 endpoints)

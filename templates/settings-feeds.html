@@ -1,0 +1,310 @@
+{{ define "settings-feeds-page" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feed Settings - Vinylfo</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/settings.css">
+    <link rel="stylesheet" href="/static/css/settings-feeds.css">
+    <link rel="icon" type="image/x-icon" href="/icons/vinyl-icon.ico">
+</head>
+<body>
+{{ template "header" }}
+<main class="container">
+    <h1>Feed Settings</h1>
+    <p class="page-description">Configure your OBS feeds and preview how they'll look. Copy the generated URLs and paste them into OBS Browser Sources.</p>
+
+    <!-- Video Feed Section -->
+    <div class="feed-section" id="video-feed-section">
+        <div class="feed-header" onclick="toggleAccordion('video')">
+            <h2>Video Feed</h2>
+            <span class="accordion-icon">▼</span>
+        </div>
+        <div class="feed-content" id="video-content">
+            <div class="feed-layout">
+                <div class="config-panel">
+                    <h3>Configuration</h3>
+                    
+                    <div class="form-group">
+                        <label for="video-theme">Theme</label>
+                        <select id="video-theme" data-feed="video" data-param="theme">
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-overlay">Overlay Position</label>
+                        <select id="video-overlay" data-feed="video" data-param="overlay">
+                            <option value="bottom">Bottom</option>
+                            <option value="top">Top</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-transition">Transition</label>
+                        <select id="video-transition" data-feed="video" data-param="transition">
+                            <option value="fade">Fade</option>
+                            <option value="slide">Slide</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-quality">Quality</label>
+                        <select id="video-quality" data-feed="video" data-param="quality">
+                            <option value="auto">Auto</option>
+                            <option value="hd">HD</option>
+                            <option value="sd">SD</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-overlay-duration">Overlay Duration (seconds)</label>
+                        <input type="range" id="video-overlay-duration" data-feed="video" data-param="overlayDuration" min="1" max="60" value="5">
+                        <span class="range-value" id="video-overlay-duration-value">5s</span>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="video-show-visualizer" data-param="showVisualizer" data-default="true">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Show Visualizer</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="video-show-background" data-param="showBackground" data-default="true">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Show Background</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="video-enable-audio" data-param="enableAudio">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Enable Audio</span>
+                        </label>
+                    </div>
+
+                    <div class="sample-track-section">
+                        <label for="video-sample-track">Preview Track</label>
+                        <select id="video-sample-track" class="sample-track-select">
+                            <option value="">-- Loading tracks... --</option>
+                        </select>
+                        <button class="btn btn-secondary btn-small" id="video-use-current">Use Currently Playing</button>
+                    </div>
+
+                    <div class="url-builder">
+                        <label>Feed URL</label>
+                        <div class="url-display">
+                            <input type="text" id="video-url" readonly>
+                            <button class="btn btn-primary copy-btn" data-feed="video">Copy</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="preview-panel">
+                    <h3>Live Preview</h3>
+                    <div class="preview-container">
+                        <iframe id="video-preview" src="/feeds/video"></iframe>
+                    </div>
+                    <p class="preview-note">This preview shows how the feed will appear in OBS</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Album Art Feed Section -->
+    <div class="feed-section" id="art-feed-section">
+        <div class="feed-header" onclick="toggleAccordion('art')">
+            <h2>Album Art Feed</h2>
+            <span class="accordion-icon">▼</span>
+        </div>
+        <div class="feed-content" id="art-content">
+            <div class="feed-layout">
+                <div class="config-panel">
+                    <h3>Configuration</h3>
+                    
+                    <div class="form-group">
+                        <label for="art-theme">Theme</label>
+                        <select id="art-theme" data-feed="art" data-param="theme">
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
+                            <option value="transparent">Transparent</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="art-animation" data-param="animation" data-default="true">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Enable Animation (Ken Burns)</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="art-anim-duration">Animation Duration (seconds)</label>
+                        <input type="range" id="art-anim-duration" data-feed="art" data-param="animDuration" min="5" max="120" value="20">
+                        <span class="range-value" id="art-anim-duration-value">20s</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="art-fit">Image Fit</label>
+                        <select id="art-fit" data-feed="art" data-param="fit">
+                            <option value="cover">Cover (fill, may crop)</option>
+                            <option value="contain">Contain (full image visible)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="art-show-background" data-param="showBackground" data-default="true">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Show Background</span>
+                        </label>
+                    </div>
+
+                    <div class="sample-track-section">
+                        <label for="art-sample-track">Preview Track</label>
+                        <select id="art-sample-track" class="sample-track-select">
+                            <option value="">-- Loading tracks... --</option>
+                        </select>
+                        <button class="btn btn-secondary btn-small" id="art-use-current">Use Currently Playing</button>
+                    </div>
+
+                    <div class="url-builder">
+                        <label>Feed URL</label>
+                        <div class="url-display">
+                            <input type="text" id="art-url" readonly>
+                            <button class="btn btn-primary copy-btn" data-feed="art">Copy</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="preview-panel">
+                    <h3>Live Preview</h3>
+                    <div class="preview-container">
+                        <iframe id="art-preview" src="/feeds/art"></iframe>
+                    </div>
+                    <p class="preview-note">This preview shows how the feed will appear in OBS</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Track Info Feed Section -->
+    <div class="feed-section" id="track-feed-section">
+        <div class="feed-header" onclick="toggleAccordion('track')">
+            <h2>Track Info Feed</h2>
+            <span class="accordion-icon">▼</span>
+        </div>
+        <div class="feed-content" id="track-content">
+            <div class="feed-layout">
+                <div class="config-panel">
+                    <h3>Configuration</h3>
+                    
+                    <div class="form-group">
+                        <label for="track-theme">Theme</label>
+                        <select id="track-theme" data-feed="track" data-param="theme">
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
+                            <option value="transparent">Transparent</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="track-speed">Scroll Speed</label>
+                        <input type="range" id="track-speed" data-feed="track" data-param="speed" min="1" max="10" value="5">
+                        <span class="range-value" id="track-speed-value">5</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="track-direction">Direction</label>
+                        <select id="track-direction" data-feed="track" data-param="direction">
+                            <option value="rtl">Right to Left</option>
+                            <option value="ltr">Left to Right</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="track-separator">Separator</label>
+                        <input type="text" id="track-separator" data-feed="track" data-param="separator" value="*" maxlength="10">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="track-prefix">Prefix Text</label>
+                        <input type="text" id="track-prefix" data-feed="track" data-param="prefix" value="Now Playing:" maxlength="100">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="track-suffix">Suffix Text</label>
+                        <input type="text" id="track-suffix" data-feed="track" data-param="suffix" value="" maxlength="100">
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="track-show-artist" data-param="showArtist" data-default="true">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Show Artist</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="track-show-album" data-param="showAlbum" data-default="true">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Show Album</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="track-show-duration" data-param="showDuration" data-default="true">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Show Duration</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="track-show-background" data-param="showBackground" data-default="true">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Show Background</span>
+                        </label>
+                    </div>
+
+                    <div class="sample-track-section">
+                        <label for="track-sample-track">Preview Track</label>
+                        <select id="track-sample-track" class="sample-track-select">
+                            <option value="">-- Loading tracks... --</option>
+                        </select>
+                        <button class="btn btn-secondary btn-small" id="track-use-current">Use Currently Playing</button>
+                    </div>
+
+                    <div class="url-builder">
+                        <label>Feed URL</label>
+                        <div class="url-display">
+                            <input type="text" id="track-url" readonly>
+                            <button class="btn btn-primary copy-btn" data-feed="track">Copy</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="preview-panel">
+                    <h3>Live Preview</h3>
+                    <div class="preview-container">
+                        <iframe id="track-preview" src="/feeds/track"></iframe>
+                    </div>
+                    <p class="preview-note">This preview shows how the feed will appear in OBS</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="save-section">
+        <button class="btn btn-primary btn-large" id="save-feed-settings">Save Default Settings</button>
+        <span id="save-status" class="status-message"></span>
+    </div>
+</main>
+{{ template "footer" }}
+<script src="/static/js/settings-feeds.js"></script>
+</body>
+</html>
+{{ end }}

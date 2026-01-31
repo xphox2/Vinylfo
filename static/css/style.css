@@ -203,6 +203,60 @@ h2 {
     color: #333;
 }
 
+.album-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.sort-controls label {
+    font-size: 0.9rem;
+    color: #666;
+    white-space: nowrap;
+}
+
+.sort-controls select {
+    padding: 0.5rem 1.5rem 0.5rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    background-color: white;
+    cursor: pointer;
+    min-width: 120px;
+}
+
+.sort-controls select:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.sort-order-btn {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    min-width: 36px;
+}
+
+.sort-order-btn:hover {
+    background-color: #f0f0f0;
+    border-color: #999;
+}
+
+.sort-order-btn:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
 .track-item, .session-item {
     padding: 0.5rem;
     border-bottom: 1px solid #eee;

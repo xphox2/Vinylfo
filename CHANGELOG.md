@@ -5,6 +5,119 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0-alpha] - 2026-01-31
+
+### Changed
+
+#### Feeds Settings Page UI Improvements
+
+- **Pure CSS Toggle Sliders**: Replaced checkbox-based toggles with pure CSS sliders
+  - Removed all `<input type="checkbox">` elements
+  - State now managed via `data-checked` attribute on labels
+  - Cleaner UI with no hidden form elements
+  - All toggles work via click on label element
+
+- **Album Art Display Improvements**:
+  - Fixed album art to display in proper square format with `object-fit: cover`
+  - Ken Burns animation now applies directly to image element with proper transform origin
+  - Animation smoothly scales from 1.0 to 1.15
+  - Responds correctly to "Enable Animation" toggle
+
+- **Placeholder Support**:
+  - All feeds now show vinyl icon placeholder when no album art or video is available
+  - Falls back gracefully when images fail to load
+  - No empty screens - always shows something meaningful
+
+- **Track Info Feed Suffix**:
+  - Added optional suffix text that appears at end of scrolling track info
+  - Prefix and suffix can be used together or separately
+  - Example: "Now Playing: Pink Floyd - Money - Requested by @user"
+
+- **Demo Track Loading**:
+  - Fixed album art URL fetching from `/tracks/{id}` endpoint
+  - Added YouTube video ID lookup for demo tracks
+  - Demo tracks now properly show video or album art fallback
+
+### Fixed
+
+- Fixed track dropdown showing "Unknown" artist - now uses correct `album_artist` field
+- Fixed toggle formatting CSS overlapping issues
+- Fixed album art feed animation not working
+- Fixed video feed not loading demo tracks with YouTube videos
+
+### Files Modified
+
+- `templates/settings-feeds.html` - Removed checkboxes, added data-toggle attributes
+- `static/css/settings-feeds.css` - Pure CSS toggle slider implementation, removed preset styles
+- `static/css/album-art-feed.css` - Fixed Ken Burns animation and image display
+- `static/js/settings-feeds.js` - Toggle state management via data attributes, removed preset functionality
+- `static/js/album-art-feed.js` - Animation fixes and placeholder support
+- `static/js/video-feed.js` - Demo track YouTube lookup and placeholder fallback
+- `static/js/track-feed.js` - Fixed artist field reference
+- `controllers/track.go` - Added album_cover and YouTube video fields to single track endpoint
+- `models/app_config.go` - Added FeedTrackSuffix field
+- `API.md` - Updated API documentation with new feed settings endpoints and URL parameters
+
+## [0.3.9-alpha] - 2026-01-31
+
+### Added
+
+#### Feeds Settings Page - OBS Stream Configuration
+
+- **New Settings submenu**: Settings dropdown now has "General" and "Feeds" options
+  - Accessible via Settings → Feeds in the header navigation
+  - Dedicated page for configuring all OBS feed settings
+
+- **Comprehensive feed configuration** with three accordion sections:
+  - **Video Feed**: Configure YouTube video playback, visualizer, overlay, and audio
+  - **Album Art Feed**: Configure album art display with Ken Burns animation
+  - **Track Info Feed**: Configure scrolling marquee text display
+
+- **Live preview system**: Real-time iframe previews showing exactly how feeds will appear in OBS
+  - Updates instantly as you change settings
+  - Sample track selector to preview with actual library tracks
+  - "Use Currently Playing" button to preview with active playback
+
+- **Dynamic URL builder**: Generates complete feed URLs with all parameters
+  - One-click copy to clipboard
+  - URLs update in real-time as settings change
+  - Ready to paste directly into OBS Browser Sources
+
+- **Quick preset buttons** for rapid configuration:
+  - **Minimal**: Clean, minimal display with most features disabled
+  - **Full Info**: Maximum information display with all features enabled
+  - **Toggle Visualizer** (Video): Quick toggle for visualizer display
+  - **Toggle Audio** (Video): Enable/disable YouTube audio output
+  - **Toggle Animation** (Album Art): Quick toggle for Ken Burns effect
+  - **Toggle Transparent** (All): Switch between transparent and solid backgrounds
+
+- **Persistent settings storage**: All feed configurations saved to database
+  - New API endpoints: `GET /api/settings/feeds` and `PUT /api/settings/feeds`
+  - Settings persist across application restarts
+  - "Save Default Settings" button on the page
+
+- **New Video Feed features**:
+  - **Enable Audio toggle**: Option to unmute YouTube videos (previously always muted)
+  - **Demo track support**: Preview feeds with specific tracks from your library
+
+- **Files created**:
+  - `templates/settings-feeds.html` - Complete feeds settings page template
+  - `static/css/settings-feeds.css` - Styling for feeds configuration UI
+  - `static/js/settings-feeds.js` - Interactive settings manager with live previews
+
+- **Files modified**:
+  - `models/app_config.go` - Added 26 new feed settings database fields
+  - `controllers/settings.go` - Added `GetFeedSettings()` and `UpdateFeedSettings()` methods
+  - `routes/routes.go` - Added `/api/settings/feeds` endpoints
+  - `main.go` - Added `/settings/feeds` route and template registration
+  - `templates/header.html` - Added Settings dropdown navigation
+  - `controllers/video_feed.go` - Added `enableAudio` and `demoTrack` parameter support
+  - `controllers/album_art_feed.go` - Added `demoTrack` parameter support
+  - `controllers/track_feed.go` - Added `demoTrack` parameter support
+  - `templates/video-feed.html` - Added `data-enable-audio` and demo track attributes
+  - `templates/album-art-feed.html` - Added demo track attribute
+  - `templates/track-feed.html` - Added demo track attribute
+
 ## [0.3.8-alpha] - 2026-01-30
 
 ### Added

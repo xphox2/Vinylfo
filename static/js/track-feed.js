@@ -14,6 +14,7 @@ class TrackFeedManager {
             showArtist: document.body.dataset.showArtist !== 'false',
             direction: document.body.dataset.direction || 'rtl',
             prefix: document.body.dataset.prefix || 'Now Playing:',
+            suffix: document.body.dataset.suffix || '',
             showBackground: document.body.dataset.showBackground !== 'false'
         };
 
@@ -40,7 +41,7 @@ class TrackFeedManager {
     }
 
     init() {
-        console.log('[TrackFeed] Initializing with config:', this.config);
+        console.log('[TrackFeed] Initializing with config:', JSON.stringify(this.config));
 
         document.body.classList.add('theme-' + this.config.theme);
         document.body.setAttribute('data-direction', this.config.direction);
@@ -48,7 +49,42 @@ class TrackFeedManager {
         const animDuration = this.calculateAnimDuration();
         document.body.style.setProperty('--marquee-duration', animDuration + 's');
 
+        // Check for demo track
+        const demoTrackId = document.body.dataset.demoTrack;
+        console.log('[TrackFeed] Checking for demo track, dataset:', JSON.stringify(document.body.dataset));
+        if (demoTrackId) {
+            console.log('[TrackFeed] Demo track ID found:', demoTrackId);
+            this.loadDemoTrack(demoTrackId);
+        } else {
+            console.log('[TrackFeed] No demo track ID found in dataset');
+        }
+
         this.connectSSE();
+    }
+
+    async loadDemoTrack(trackId) {
+        try {
+            const response = await fetch(`/tracks/${trackId}`);
+            if (response.ok) {
+                const track = await response.json();
+                console.log('[TrackFeed] Loaded demo track:', track);
+                
+                // Create track data in the format expected by updateTrackText
+                const trackData = {
+                    track_id: track.id,
+                    track_title: track.title,
+                    artist: track.album_artist || 'Unknown Artist',
+                    album_title: track.album_title || 'Unknown Album',
+                    duration: track.duration
+                };
+                
+                this.updateTrackText(trackData);
+            } else {
+                console.error('[TrackFeed] Failed to load demo track:', response.status);
+            }
+        } catch (error) {
+            console.error('[TrackFeed] Error loading demo track:', error);
+        }
     }
 
     calculateAnimDuration() {
@@ -164,6 +200,11 @@ class TrackFeedManager {
             const mins = Math.floor(track.duration / 60);
             const secs = track.duration % 60;
             text += ' (' + mins + ':' + (secs < 10 ? '0' : '') + secs + ')';
+        }
+
+        // Add suffix if provided
+        if (this.config.suffix && this.config.suffix.trim() !== '') {
+            text += ' ' + this.config.suffix;
         }
 
         this.elements.trackText1.textContent = text;

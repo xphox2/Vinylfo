@@ -7,7 +7,7 @@
     <title>Vinylfo Track Feed</title>
     <link rel="stylesheet" href="/static/css/track-feed.css">
 </head>
-<body data-theme="{{ .theme }}" data-speed="{{ .speed }}" data-separator="{{ .separator }}" data-show-duration="{{ .showDuration }}" data-show-album="{{ .showAlbum }}" data-show-artist="{{ .showArtist }}" data-direction="{{ .direction }}" data-prefix="{{ .prefix }}" data-show-background="{{ .showBackground }}">
+<body data-theme="{{ .theme }}" data-speed="{{ .speed }}" data-separator="{{ .separator }}" data-show-duration="{{ .showDuration }}" data-show-album="{{ .showAlbum }}" data-show-artist="{{ .showArtist }}" data-direction="{{ .direction }}" data-prefix="{{ .prefix }}" data-suffix="{{ .suffix }}" data-show-background="{{ .showBackground }}"{{ if .demoTrack }} data-demo-track="{{ .demoTrack }}"{{ end }}>
 
     <div id="track-feed-container">
 

@@ -245,6 +245,10 @@ func SetupRoutes(r *gin.Engine) {
 	r.PUT("/api/settings/logs", settingsController.UpdateLogSettings)
 	r.POST("/api/settings/logs/cleanup", settingsController.CleanupLogs)
 
+	// Feed settings endpoints
+	r.GET("/api/settings/feeds", settingsController.GetFeedSettings)
+	r.PUT("/api/settings/feeds", settingsController.UpdateFeedSettings)
+
 	// Log export endpoint for bug reports
 	r.GET("/api/logs/export", func(c *gin.Context) {
 		zipPath, err := utils.CreateSupportZip("logs", 10)

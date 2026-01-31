@@ -153,6 +153,7 @@ func main() {
 		"templates/search.html",
 		"templates/sync.html",
 		"templates/settings.html",
+		"templates/settings-feeds.html",
 		"templates/playback-dashboard.html",
 		"templates/playlist.html",
 		"templates/track-detail.html",
@@ -187,6 +188,10 @@ func main() {
 
 	r.GET("/settings", func(c *gin.Context) {
 		c.HTML(200, "settings-page", nil)
+	})
+
+	r.GET("/settings/feeds", func(c *gin.Context) {
+		c.HTML(200, "settings-feeds-page", nil)
 	})
 
 	r.GET("/sync", func(c *gin.Context) {

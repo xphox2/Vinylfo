@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -28,6 +29,8 @@ func NewAlbumController(db *gorm.DB, broadcast func(playlistID string)) *AlbumCo
 func (c *AlbumController) GetAlbums(ctx *gin.Context) {
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "25"))
+	sortBy := ctx.DefaultQuery("sort", "artist")
+	order := ctx.DefaultQuery("order", "asc")
 
 	if page < 1 {
 		page = 1
@@ -39,6 +42,23 @@ func (c *AlbumController) GetAlbums(ctx *gin.Context) {
 		limit = 100
 	}
 
+	// Validate sort field
+	allowedSorts := map[string]bool{
+		"title":        true,
+		"artist":       true,
+		"release_year": true,
+		"genre":        true,
+		"created_at":   true,
+	}
+	if !allowedSorts[sortBy] {
+		sortBy = "artist"
+	}
+
+	// Validate order
+	if order != "asc" && order != "desc" {
+		order = "asc"
+	}
+
 	offset := (page - 1) * limit
 
 	var albums []models.Album
@@ -46,7 +66,7 @@ func (c *AlbumController) GetAlbums(ctx *gin.Context) {
 
 	c.db.Model(&models.Album{}).Count(&total)
 
-	result := c.db.Offset(offset).Limit(limit).Find(&albums)
+	result := c.db.Order(fmt.Sprintf("LOWER(%s) %s", sortBy, order)).Offset(offset).Limit(limit).Find(&albums)
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to fetch albums"})
 		return
@@ -63,6 +83,8 @@ func (c *AlbumController) GetAlbums(ctx *gin.Context) {
 		"limit":      limit,
 		"total":      total,
 		"totalPages": totalPages,
+		"sort":       sortBy,
+		"order":      order,
 	})
 }
 
@@ -75,6 +97,8 @@ func (c *AlbumController) SearchAlbums(ctx *gin.Context) {
 
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "25"))
+	sortBy := ctx.DefaultQuery("sort", "artist")
+	order := ctx.DefaultQuery("order", "asc")
 
 	if page < 1 {
 		page = 1
@@ -86,6 +110,23 @@ func (c *AlbumController) SearchAlbums(ctx *gin.Context) {
 		limit = 100
 	}
 
+	// Validate sort field
+	allowedSorts := map[string]bool{
+		"title":        true,
+		"artist":       true,
+		"release_year": true,
+		"genre":        true,
+		"created_at":   true,
+	}
+	if !allowedSorts[sortBy] {
+		sortBy = "artist"
+	}
+
+	// Validate order
+	if order != "asc" && order != "desc" {
+		order = "asc"
+	}
+
 	offset := (page - 1) * limit
 
 	var albums []models.Album
@@ -94,7 +135,7 @@ func (c *AlbumController) SearchAlbums(ctx *gin.Context) {
 
 	c.db.Model(&models.Album{}).Where("LOWER(title) LIKE ? OR LOWER(artist) LIKE ?", searchTerm, searchTerm).Count(&total)
 
-	result := c.db.Where("LOWER(title) LIKE ? OR LOWER(artist) LIKE ?", searchTerm, searchTerm).Offset(offset).Limit(limit).Find(&albums)
+	result := c.db.Where("LOWER(title) LIKE ? OR LOWER(artist) LIKE ?", searchTerm, searchTerm).Order(fmt.Sprintf("LOWER(%s) %s", sortBy, order)).Offset(offset).Limit(limit).Find(&albums)
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to search albums"})
 		return
@@ -111,6 +152,8 @@ func (c *AlbumController) SearchAlbums(ctx *gin.Context) {
 		"limit":      limit,
 		"total":      total,
 		"totalPages": totalPages,
+		"sort":       sortBy,
+		"order":      order,
 	})
 }
 

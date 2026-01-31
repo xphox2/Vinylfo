@@ -26,7 +26,8 @@ class VideoFeedManager {
             showVisualizer: document.body.dataset.showVisualizer !== 'false',
             quality: document.body.dataset.quality || 'auto',
             overlayDuration: parseInt(document.body.dataset.overlayDuration) || 5,
-            showBackground: document.body.dataset.showBackground !== 'false'
+            showBackground: document.body.dataset.showBackground !== 'false',
+            enableAudio: document.body.dataset.enableAudio === 'true'
         };
 
         // State
@@ -74,7 +75,7 @@ class VideoFeedManager {
     }
 
     async init() {
-        console.log('[VideoFeed] Initializing with config:', this.config);
+        console.log('[VideoFeed] Initializing with config:', JSON.stringify(this.config));
 
         // Initialize TabSync for tab-to-tab communication
         if (typeof TabSyncManager !== 'undefined') {
@@ -211,7 +212,12 @@ class VideoFeedManager {
     onPlayerReady(event) {
         console.log('[VideoFeed] Player ready');
         this.playerReady = true;
-        event.target.setVolume(0); // Mute video - audio comes from main player
+        
+        // Set volume based on enableAudio config (default muted for OBS)
+        const volume = this.config.enableAudio ? 100 : 0;
+        event.target.setVolume(volume);
+        console.log('[VideoFeed] Audio enabled:', this.config.enableAudio, 'Volume set to:', volume);
+        
         event.target.setPlaybackQuality(this.getQualitySetting());
 
         // Don't auto-play on initial load - user must click play
@@ -438,6 +444,7 @@ class VideoFeedManager {
 
     transitionToTrack(track) {
         const hasVideo = track.has_video && track.youtube_video_id;
+        console.log('[VideoFeed] transitionToTrack - hasVideo:', hasVideo, 'youtube_video_id:', track.youtube_video_id);
 
         if (hasVideo) {
             this.transitionTo('video', () => {
@@ -460,6 +467,7 @@ class VideoFeedManager {
                 }
             });
         } else {
+            console.log('[VideoFeed] No YouTube video, showing album art fallback');
             this.transitionTo('album-art', () => {
                 this.showAlbumArtFallback(track);
             });
@@ -546,11 +554,18 @@ class VideoFeedManager {
     showAlbumArtFallback(track = null) {
         const displayTrack = track || this.currentTrack;
 
-        if (displayTrack && displayTrack.album_art_url) {
-            this.elements.albumArt.src = displayTrack.album_art_url;
+        // Handle different field names for album art URL
+        const albumArtUrl = displayTrack?.album_art_url || displayTrack?.AlbumArtURL || displayTrack?.album_cover;
+        
+        if (albumArtUrl) {
+            this.elements.albumArt.src = albumArtUrl;
             this.elements.albumArt.onerror = () => {
-                this.elements.albumArt.src = '/static/images/default-album.png';
+                console.log('[VideoFeed] Album art failed to load, using placeholder');
+                this.elements.albumArt.src = '/icons/vinyl-icon.png';
             };
+        } else {
+            // No album art URL, use placeholder
+            this.elements.albumArt.src = '/icons/vinyl-icon.png';
         }
 
         this.elements.videoLayer.classList.add('hidden');
@@ -574,10 +589,14 @@ class VideoFeedManager {
             this.player.stopVideo();
         }
 
+        // Show placeholder vinyl icon instead of empty screen
+        this.elements.albumArt.src = '/icons/vinyl-icon.png';
+        
         this.elements.videoLayer.classList.add('hidden');
-        this.elements.albumArtLayer.classList.add('hidden');
+        this.elements.albumArtLayer.classList.remove('hidden');
         this.elements.visualizerLayer.classList.add('hidden');
         this.elements.trackOverlay.classList.add('hidden');
+        
         if (this.config.showBackground) {
             this.elements.noTrackOverlay.classList.remove('hidden');
         }
@@ -648,6 +667,32 @@ class VideoFeedManager {
     }
 
     async fetchInitialState() {
+        // Check for demo track data in data attribute
+        const demoTrackData = document.body.dataset.demoTrack;
+        if (demoTrackData) {
+            console.log('[VideoFeed] Demo track data found:', demoTrackData);
+            try {
+                const track = JSON.parse(demoTrackData);
+                this.handleTrackUpdate({
+                    track: track,
+                    is_playing: false,
+                    is_paused: true
+                });
+                return;
+            } catch (e) {
+                console.error('[VideoFeed] Error parsing demo track data:', e);
+            }
+        }
+
+        // Check for demo track ID
+        const demoTrackId = document.body.dataset.demoTrackId;
+        if (demoTrackId) {
+            console.log('[VideoFeed] Demo track ID found:', demoTrackId);
+            await this.loadDemoTrack(demoTrackId);
+            return;
+        }
+
+        // Normal operation - fetch current playback state
         try {
             const response = await fetch('/playback/current-youtube');
             const data = await response.json();
@@ -663,6 +708,45 @@ class VideoFeedManager {
             }
         } catch (error) {
             console.error('[VideoFeed] Error fetching initial state:', error);
+            this.showNoTrack();
+        }
+    }
+
+    async loadDemoTrack(trackId) {
+        try {
+            const response = await fetch(`/tracks/${trackId}`);
+            if (response.ok) {
+                const track = await response.json();
+                console.log('[VideoFeed] Loaded demo track:', track);
+                console.log('[VideoFeed] YouTube video ID:', track.youtube_video_id);
+                
+                // Create track data in the format expected by handleTrackUpdate
+                const trackData = {
+                    track_id: track.id,
+                    track_title: track.title,
+                    artist: track.album_artist || 'Unknown Artist',
+                    album_title: track.album_title || 'Unknown Album',
+                    album_art_url: track.album_cover || track.album_art_url || '/icons/vinyl-icon.png',
+                    duration: track.duration,
+                    has_video: track.youtube_video_id ? true : false,
+                    youtube_video_id: track.youtube_video_id,
+                    video_title: track.video_title,
+                    video_duration: track.video_duration
+                };
+                
+                console.log('[VideoFeed] Demo track data:', trackData);
+                
+                this.handleTrackUpdate({
+                    track: trackData,
+                    is_playing: false,
+                    is_paused: true
+                });
+            } else {
+                console.error('[VideoFeed] Failed to load demo track:', response.status);
+                this.showNoTrack();
+            }
+        } catch (error) {
+            console.error('[VideoFeed] Error loading demo track:', error);
             this.showNoTrack();
         }
     }

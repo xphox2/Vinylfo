@@ -232,6 +232,37 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Album sort controls
+    const albumSortSelect = document.getElementById('album-sort');
+    const albumSortOrderBtn = document.getElementById('album-sort-order');
+    
+    if (albumSortSelect) {
+        albumSortSelect.value = pagination.album.sort;
+        albumSortSelect.addEventListener('change', function() {
+            pagination.album.sort = this.value;
+            pagination.album.page = 1;
+            if (pagination.album.query) {
+                searchAlbums(pagination.album.query);
+            } else {
+                loadAlbums();
+            }
+        });
+    }
+    
+    if (albumSortOrderBtn) {
+        albumSortOrderBtn.textContent = pagination.album.order === 'asc' ? '↑' : '↓';
+        albumSortOrderBtn.addEventListener('click', function() {
+            pagination.album.order = pagination.album.order === 'asc' ? 'desc' : 'asc';
+            this.textContent = pagination.album.order === 'asc' ? '↑' : '↓';
+            pagination.album.page = 1;
+            if (pagination.album.query) {
+                searchAlbums(pagination.album.query);
+            } else {
+                loadAlbums();
+            }
+        });
+    }
+
     loadAlbums();
 });
 
@@ -353,7 +384,7 @@ function renderTracks(tracks) {
 
 function searchAlbums(query) {
     pagination.album.query = query;
-    const url = `/albums/search?q=${encodeURIComponent(query)}&page=${pagination.album.page}&limit=${pagination.album.limit}`;
+    const url = `/albums/search?q=${encodeURIComponent(query)}&page=${pagination.album.page}&limit=${pagination.album.limit}&sort=${pagination.album.sort}&order=${pagination.album.order}`;
     fetch(url)
         .then(response => response.json())
         .then(data => {
@@ -397,7 +428,7 @@ function searchTracks(query) {
 
 function loadAlbums() {
     pagination.album.query = '';
-    const url = `/albums?page=${pagination.album.page}&limit=${pagination.album.limit}`;
+    const url = `/albums?page=${pagination.album.page}&limit=${pagination.album.limit}&sort=${pagination.album.sort}&order=${pagination.album.order}`;
     fetch(url)
         .then(response => response.json())
         .then(data => {

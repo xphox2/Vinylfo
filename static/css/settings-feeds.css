@@ -1,0 +1,370 @@
+/* Settings Feeds Page Styles */
+
+.page-description {
+    color: #666;
+    margin-bottom: 2rem;
+    font-size: 0.95rem;
+}
+
+/* Feed Section Accordion */
+.feed-section {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.feed-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem 1.5rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.feed-header:hover {
+    background: #e9ecef;
+}
+
+.feed-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #333;
+}
+
+.accordion-icon {
+    font-size: 0.875rem;
+    color: #666;
+    transition: transform 0.3s;
+}
+
+.feed-section.collapsed .accordion-icon {
+    transform: rotate(-90deg);
+}
+
+.feed-content {
+    max-height: 2000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.feed-section.collapsed .feed-content {
+    max-height: 0;
+}
+
+/* Feed Layout */
+.feed-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    padding: 1.5rem;
+}
+
+@media (max-width: 1024px) {
+    .feed-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Configuration Panel */
+.config-panel h3 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    color: #333;
+    font-size: 1.1rem;
+}
+
+/* Form Groups */
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+/* Regular form-group labels */
+.form-group:not(.toggle-group) > label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #444;
+    font-size: 0.9rem;
+}
+
+.form-group select,
+.form-group input[type="text"] {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.form-group input[type="range"] {
+    width: calc(100% - 50px);
+    vertical-align: middle;
+}
+
+.range-value {
+    display: inline-block;
+    width: 40px;
+    margin-left: 10px;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+/* Toggle Switches - completely separate from form-group styles */
+.toggle-group {
+    display: block;
+    margin-bottom: 0.75rem;
+    min-height: 32px;
+    width: 100%;
+}
+
+.toggle-group .toggle-label {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    cursor: pointer;
+    width: 100%;
+    min-height: 32px;
+    box-sizing: border-box;
+    padding: 4px 0;
+}
+
+.toggle-group .toggle-label {
+    display: flex;
+    align-items: center;
+    position: relative;
+    padding-left: 54px;
+    min-height: 32px;
+    cursor: pointer;
+}
+
+.toggle-group .toggle-label .toggle-slider {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 24px;
+    background: #ccc;
+    border-radius: 12px;
+    transition: background 0.3s;
+    cursor: pointer;
+}
+
+.toggle-group .toggle-label .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: white;
+    border-radius: 50%;
+    top: 3px;
+    left: 3px;
+    transition: transform 0.3s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.toggle-group .toggle-label[data-checked="true"] .toggle-slider {
+    background: #4CAF50;
+}
+
+.toggle-group .toggle-label[data-checked="true"] .toggle-slider::before {
+    transform: translateX(20px);
+}
+
+.toggle-group .toggle-label .toggle-text {
+    flex: 1;
+    line-height: 1.4;
+    font-size: 0.9rem;
+    color: #444;
+    white-space: nowrap;
+}
+
+.form-group.toggle-group {
+    margin-bottom: 0.75rem;
+    min-height: 32px;
+}
+
+.form-group.toggle-group > label {
+    margin-bottom: 0;
+}
+
+/* Sample Track Section */
+.sample-track-section {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.sample-track-section label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #444;
+}
+
+.sample-track-select {
+    width: 100%;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.btn-small {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8rem;
+}
+
+/* URL Builder */
+.url-builder {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e9ecef;
+}
+
+.url-builder label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.url-display {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.url-display input {
+    flex: 1;
+    padding: 0.625rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    background: #f8f9fa;
+}
+
+.copy-btn {
+    white-space: nowrap;
+}
+
+/* Preview Panel */
+.preview-panel h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #333;
+    font-size: 1.1rem;
+}
+
+.preview-container {
+    position: relative;
+    width: 100%;
+    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+    background: #f0f0f0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.preview-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.preview-note {
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+    color: #666;
+    font-style: italic;
+}
+
+/* Save Section */
+.save-section {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.btn-large {
+    padding: 0.75rem 2rem;
+    font-size: 1rem;
+}
+
+#save-status {
+    margin-left: 1rem;
+    font-size: 0.9rem;
+}
+
+/* Notification */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 1rem 1.5rem;
+    border-radius: 4px;
+    color: white;
+    font-weight: 500;
+    z-index: 1000;
+    animation: slideIn 0.3s ease-out;
+}
+
+.notification.success {
+    background: #4CAF50;
+}
+
+.notification.error {
+    background: #f44336;
+}
+
+.notification.info {
+    background: #2196F3;
+}
+
+.notification.fade-out {
+    animation: fadeOut 0.3s ease-out forwards;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+/* Status Messages */
+.status-message {
+    font-size: 0.85rem;
+}
+
+.status-message.success {
+    color: #4CAF50;
+}
+
+.status-message.error {
+    color: #f44336;
+}

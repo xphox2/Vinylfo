@@ -18,6 +18,7 @@ type TrackFeedParams struct {
 	ShowArtist     bool
 	Direction      string
 	Prefix         string
+	Suffix         string
 	ShowBackground bool
 }
 
@@ -58,11 +59,15 @@ func (c *TrackFeedController) GetTrackFeedPage(ctx *gin.Context) {
 	prefix := ctx.DefaultQuery("prefix", "Now Playing:")
 	prefix = strings.TrimSpace(prefix)
 
+	suffix := ctx.DefaultQuery("suffix", "")
+	suffix = strings.TrimSpace(suffix)
+
 	showBackgroundStr := ctx.DefaultQuery("showBackground", "true")
 	showBackground := showBackgroundStr == "true"
 
-	ctx.Header("Cache-Control", "no-store")
-	ctx.HTML(200, "track-feed.html", gin.H{
+	demoTrackID := ctx.Query("demoTrack")
+
+	data := gin.H{
 		"theme":          theme,
 		"speed":          speed,
 		"separator":      separator,
@@ -71,6 +76,15 @@ func (c *TrackFeedController) GetTrackFeedPage(ctx *gin.Context) {
 		"showArtist":     showArtist,
 		"direction":      direction,
 		"prefix":         prefix,
+		"suffix":         suffix,
 		"showBackground": showBackground,
-	})
+	}
+
+	// Only add demoTrack if it's not empty
+	if demoTrackID != "" {
+		data["demoTrack"] = demoTrackID
+	}
+
+	ctx.Header("Cache-Control", "no-store")
+	ctx.HTML(200, "track-feed.html", data)
 }

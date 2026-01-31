@@ -30,17 +30,53 @@ class AlbumArtFeedManager {
     }
 
     init() {
-        console.log('[AlbumArtFeed] Initializing with config:', this.config);
+        console.log('[AlbumArtFeed] Initializing with config:', JSON.stringify(this.config));
 
         document.body.classList.add('theme-' + this.config.theme);
-
+        document.body.setAttribute('data-fit', this.config.fit);
         document.body.style.setProperty('--anim-duration', this.config.animDuration + 's');
 
         if (!this.config.animation) {
             document.body.setAttribute('data-animation', 'false');
         }
 
+        // Check for demo track
+        const demoTrackId = document.body.dataset.demoTrack;
+        console.log('[AlbumArtFeed] Checking for demo track, dataset:', JSON.stringify(document.body.dataset));
+        if (demoTrackId) {
+            console.log('[AlbumArtFeed] Demo track ID found:', demoTrackId);
+            this.loadDemoTrack(demoTrackId);
+        } else {
+            console.log('[AlbumArtFeed] No demo track ID found in dataset');
+        }
+
         this.connectSSE();
+    }
+
+    async loadDemoTrack(trackId) {
+        try {
+            const response = await fetch(`/tracks/${trackId}`);
+            if (response.ok) {
+                const track = await response.json();
+                console.log('[AlbumArtFeed] Loaded demo track:', track);
+                
+                // Create track data in the format expected by showAlbumArt
+                const trackData = {
+                    track_id: track.id,
+                    track_title: track.title,
+                    artist: track.album_artist || 'Unknown Artist',
+                    album_title: track.album_title || 'Unknown Album',
+                    album_art_url: track.album_cover || '/icons/vinyl-icon.png'
+                };
+                
+                console.log('[AlbumArtFeed] Showing album art, URL:', trackData.album_art_url);
+                this.showAlbumArt(trackData);
+            } else {
+                console.error('[AlbumArtFeed] Failed to load demo track:', response.status);
+            }
+        } catch (error) {
+            console.error('[AlbumArtFeed] Error loading demo track:', error);
+        }
     }
 
     connectSSE() {
@@ -118,30 +154,45 @@ class AlbumArtFeedManager {
     }
 
     showAlbumArt(track) {
-        console.log('[AlbumArtFeed] Showing album art for track:', track.track_title);
+        console.log('[AlbumArtFeed] Showing album art for track:', track.track_title, 'URL:', track.album_art_url || track.AlbumArtURL || track.album_cover);
 
         this.elements.noTrackOverlay.classList.add('hidden');
 
-        const albumArtUrl = track.album_art_url;
+        // Handle different field names from different sources
+        const albumArtUrl = track.album_art_url || track.AlbumArtURL || track.album_cover;
+        const placeholderUrl = '/icons/vinyl-icon.png';
+        
+        if (!albumArtUrl) {
+            // No album art URL available, use placeholder immediately
+            console.log('[AlbumArtFeed] No album art URL, using placeholder');
+            this.elements.albumArt.src = placeholderUrl;
+            this.elements.albumArt.classList.add('loaded');
+            return;
+        }
+
         const cacheBustedUrl = albumArtUrl + '?v=' + track.track_id;
 
         const img = new Image();
         img.onload = () => {
+            console.log('[AlbumArtFeed] Album art loaded successfully');
             this.elements.albumArt.src = cacheBustedUrl;
             this.elements.albumArt.classList.add('loaded');
         };
         img.onerror = () => {
-            console.error('[AlbumArtFeed] Failed to load album art:', cacheBustedUrl);
-            this.handleNoTrack();
+            console.error('[AlbumArtFeed] Failed to load album art:', cacheBustedUrl, 'using placeholder');
+            this.elements.albumArt.src = placeholderUrl;
+            this.elements.albumArt.classList.add('loaded');
         };
         img.src = cacheBustedUrl;
     }
 
     handleNoTrack() {
-        console.log('[AlbumArtFeed] No track playing');
+        console.log('[AlbumArtFeed] No track playing, showing placeholder');
         this.currentTrackId = null;
         this.elements.albumArt.classList.remove('loaded');
-        this.elements.albumArt.src = '';
+        // Show vinyl icon placeholder instead of empty
+        this.elements.albumArt.src = '/icons/vinyl-icon.png';
+        this.elements.albumArt.classList.add('loaded');
         if (this.config.showBackground) {
             this.elements.noTrackOverlay.classList.remove('hidden');
         }

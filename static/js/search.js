@@ -21,16 +21,6 @@ class SearchManager {
             this.searchDiscogs();
         });
 
-        document.getElementById('tab-discogs').addEventListener('click', () => this.showDiscogsTab());
-        document.getElementById('tab-local').addEventListener('click', () => this.showLocalTab());
-
-        document.getElementById('manual-album-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.saveLocalAlbum();
-        });
-
-        document.getElementById('add-track').addEventListener('click', () => this.addTrackField());
-
         document.addEventListener('click', (e) => {
             if (e.target && (e.target.id === 'modal-close' || e.target.classList.contains('modal-close'))) {
                 this.closeModal();
@@ -40,20 +30,6 @@ class SearchManager {
                 this.confirmAddAlbum();
             }
         });
-    }
-
-    showDiscogsTab() {
-        document.getElementById('tab-discogs').classList.add('active');
-        document.getElementById('tab-local').classList.remove('active');
-        document.getElementById('discogs-results').classList.remove('hidden');
-        document.getElementById('local-form').classList.add('hidden');
-    }
-
-    showLocalTab() {
-        document.getElementById('tab-discogs').classList.remove('active');
-        document.getElementById('tab-local').classList.add('active');
-        document.getElementById('discogs-results').classList.add('hidden');
-        document.getElementById('local-form').classList.remove('hidden');
     }
 
     async searchDiscogs() {
@@ -326,77 +302,6 @@ class SearchManager {
             console.error('Failed to add album:', error);
             this.showNotification('Failed to add album', 'error');
         }
-    }
-
-    addTrackField() {
-        const container = document.getElementById('manual-tracks');
-        const trackIndex = container.children.length;
-
-        const trackRow = document.createElement('div');
-        trackRow.className = 'track-row';
-        trackRow.innerHTML = `
-            <input type="text" name="track_title_${trackIndex}" placeholder="Track title" class="track-title-input">
-            <input type="number" name="track_number_${trackIndex}" placeholder="#" class="track-number-input" style="width: 60px;">
-            <button type="button" class="btn btn-danger btn-sm remove-track">&times;</button>
-        `;
-
-        trackRow.querySelector('.remove-track').addEventListener('click', () => {
-            trackRow.remove();
-        });
-
-        container.appendChild(trackRow);
-    }
-
-    async saveLocalAlbum() {
-        const title = document.getElementById('album-title').value.trim();
-        const artist = document.getElementById('album-artist').value.trim();
-        const releaseYear = parseInt(document.getElementById('album-year').value) || 0;
-        const genre = document.getElementById('album-genre').value.trim();
-        const coverImage = document.getElementById('album-cover').value.trim();
-
-        const tracks = [];
-        const trackRows = document.querySelectorAll('#manual-tracks .track-row');
-        trackRows.forEach(row => {
-            const trackTitle = row.querySelector('.track-title-input').value.trim();
-            const trackNumber = parseInt(row.querySelector('.track-number-input').value) || 0;
-            if (trackTitle) {
-                tracks.push({
-                    title: trackTitle,
-                    track_number: trackNumber
-                });
-            }
-        });
-
-        try {
-            const response = await fetch(`${API_BASE}/albums`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    title,
-                    artist,
-                    release_year: releaseYear,
-                    genre,
-                    cover_image_url: coverImage,
-                    tracks
-                })
-            });
-
-            if (response.ok) {
-                this.showNotification('Album added to collection!', 'success');
-                this.resetLocalForm();
-            } else {
-                const error = await response.json();
-                this.showNotification(error.error || 'Failed to add album', 'error');
-            }
-        } catch (error) {
-            console.error('Failed to save album:', error);
-            this.showNotification('Failed to save album', 'error');
-        }
-    }
-
-    resetLocalForm() {
-        document.getElementById('manual-album-form').reset();
-        document.getElementById('manual-tracks').innerHTML = '';
     }
 
     escapeHtml(text) {

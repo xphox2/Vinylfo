@@ -236,21 +236,26 @@ func (c *TrackController) GetTrackByID(ctx *gin.Context) {
 	}
 
 	var trackData struct {
-		ID           uint   `json:"id"`
-		AlbumID      uint   `json:"album_id"`
-		Title        string `json:"title"`
-		Duration     int    `json:"duration"`
-		TrackNumber  int    `json:"track_number"`
-		AudioFileURL string `json:"audio_file_url"`
-		AlbumTitle   string `json:"album_title"`
-		AlbumArtist  string `json:"album_artist"`
-		ReleaseYear  int    `json:"release_year"`
-		AlbumGenre   string `json:"album_genre"`
-		CreatedAt    string `json:"created_at"`
-		UpdatedAt    string `json:"updated_at"`
+		ID             uint   `json:"id"`
+		AlbumID        uint   `json:"album_id"`
+		Title          string `json:"title"`
+		Duration       int    `json:"duration"`
+		TrackNumber    int    `json:"track_number"`
+		AudioFileURL   string `json:"audio_file_url"`
+		AlbumTitle     string `json:"album_title"`
+		AlbumArtist    string `json:"album_artist"`
+		AlbumCover     string `json:"album_cover"`
+		YouTubeVideoID string `json:"youtube_video_id"`
+		VideoTitle     string `json:"video_title"`
+		VideoDuration  int    `json:"video_duration"`
+		ReleaseYear    int    `json:"release_year"`
+		AlbumGenre     string `json:"album_genre"`
+		CreatedAt      string `json:"created_at"`
+		UpdatedAt      string `json:"updated_at"`
 	}
 
-	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist, albums.release_year as release_year, albums.genre as album_genre").
+	// First get track with album info
+	result := c.db.Table("tracks").Select("tracks.*, albums.title as album_title, albums.artist as album_artist, albums.cover_image_url as album_cover, albums.release_year as release_year, albums.genre as album_genre").
 		Joins("left join albums on tracks.album_id = albums.id").
 		Where("tracks.id = ?", trackID).
 		First(&trackData)
@@ -258,6 +263,15 @@ func (c *TrackController) GetTrackByID(ctx *gin.Context) {
 	if result.Error != nil {
 		utils.NotFound(ctx, "Track not found")
 		return
+	}
+
+	// Then get YouTube match if it exists
+	var youTubeMatch models.TrackYouTubeMatch
+	c.db.Where("track_id = ? AND is_manual = ?", trackID, true).Or("track_id = ? AND match_score >= ?", trackID, 80).First(&youTubeMatch)
+	if youTubeMatch.YouTubeVideoID != "" {
+		trackData.YouTubeVideoID = youTubeMatch.YouTubeVideoID
+		trackData.VideoTitle = youTubeMatch.VideoTitle
+		trackData.VideoDuration = youTubeMatch.VideoDuration
 	}
 
 	utils.Success(ctx, 200, trackData)

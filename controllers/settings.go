@@ -49,6 +49,149 @@ func (c *SettingsController) Get(ctx *gin.Context) {
 	})
 }
 
+func (c *SettingsController) GetFeedSettings(ctx *gin.Context) {
+	var config models.AppConfig
+	result := c.db.First(&config)
+	if result.Error != nil {
+		ctx.JSON(500, gin.H{"error": "Failed to fetch feed settings"})
+		return
+	}
+
+	ctx.JSON(200, gin.H{
+		"video": gin.H{
+			"theme":            config.FeedVideoTheme,
+			"overlay":          config.FeedVideoOverlay,
+			"transition":       config.FeedVideoTransition,
+			"quality":          config.FeedVideoQuality,
+			"show_visualizer":  config.FeedVideoShowVisualizer,
+			"overlay_duration": config.FeedVideoOverlayDuration,
+			"show_background":  config.FeedVideoShowBackground,
+			"enable_audio":     config.FeedVideoEnableAudio,
+		},
+		"art": gin.H{
+			"theme":           config.FeedArtTheme,
+			"animation":       config.FeedArtAnimation,
+			"anim_duration":   config.FeedArtAnimDuration,
+			"fit":             config.FeedArtFit,
+			"show_background": config.FeedArtShowBackground,
+		},
+		"track": gin.H{
+			"theme":           config.FeedTrackTheme,
+			"speed":           config.FeedTrackSpeed,
+			"direction":       config.FeedTrackDirection,
+			"separator":       config.FeedTrackSeparator,
+			"prefix":          config.FeedTrackPrefix,
+			"suffix":          config.FeedTrackSuffix,
+			"show_artist":     config.FeedTrackShowArtist,
+			"show_album":      config.FeedTrackShowAlbum,
+			"show_duration":   config.FeedTrackShowDuration,
+			"show_background": config.FeedTrackShowBackground,
+		},
+	})
+}
+
+func (c *SettingsController) UpdateFeedSettings(ctx *gin.Context) {
+	var input struct {
+		Video struct {
+			Theme           string `json:"theme"`
+			Overlay         string `json:"overlay"`
+			Transition      string `json:"transition"`
+			Quality         string `json:"quality"`
+			ShowVisualizer  bool   `json:"show_visualizer"`
+			OverlayDuration int    `json:"overlay_duration"`
+			ShowBackground  bool   `json:"show_background"`
+			EnableAudio     bool   `json:"enable_audio"`
+		} `json:"video"`
+		Art struct {
+			Theme          string `json:"theme"`
+			Animation      bool   `json:"animation"`
+			AnimDuration   int    `json:"anim_duration"`
+			Fit            string `json:"fit"`
+			ShowBackground bool   `json:"show_background"`
+		} `json:"art"`
+		Track struct {
+			Theme          string `json:"theme"`
+			Speed          int    `json:"speed"`
+			Direction      string `json:"direction"`
+			Separator      string `json:"separator"`
+			Prefix         string `json:"prefix"`
+			Suffix         string `json:"suffix"`
+			ShowArtist     bool   `json:"show_artist"`
+			ShowAlbum      bool   `json:"show_album"`
+			ShowDuration   bool   `json:"show_duration"`
+			ShowBackground bool   `json:"show_background"`
+		} `json:"track"`
+	}
+
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	updates := make(map[string]interface{})
+
+	// Video feed settings
+	if input.Video.Theme != "" {
+		updates["feed_video_theme"] = input.Video.Theme
+	}
+	if input.Video.Overlay != "" {
+		updates["feed_video_overlay"] = input.Video.Overlay
+	}
+	if input.Video.Transition != "" {
+		updates["feed_video_transition"] = input.Video.Transition
+	}
+	if input.Video.Quality != "" {
+		updates["feed_video_quality"] = input.Video.Quality
+	}
+	updates["feed_video_show_visualizer"] = input.Video.ShowVisualizer
+	if input.Video.OverlayDuration > 0 {
+		updates["feed_video_overlay_duration"] = input.Video.OverlayDuration
+	}
+	updates["feed_video_show_background"] = input.Video.ShowBackground
+	updates["feed_video_enable_audio"] = input.Video.EnableAudio
+
+	// Art feed settings
+	if input.Art.Theme != "" {
+		updates["feed_art_theme"] = input.Art.Theme
+	}
+	updates["feed_art_animation"] = input.Art.Animation
+	if input.Art.AnimDuration > 0 {
+		updates["feed_art_anim_duration"] = input.Art.AnimDuration
+	}
+	if input.Art.Fit != "" {
+		updates["feed_art_fit"] = input.Art.Fit
+	}
+	updates["feed_art_show_background"] = input.Art.ShowBackground
+
+	// Track feed settings
+	if input.Track.Theme != "" {
+		updates["feed_track_theme"] = input.Track.Theme
+	}
+	if input.Track.Speed > 0 {
+		updates["feed_track_speed"] = input.Track.Speed
+	}
+	if input.Track.Direction != "" {
+		updates["feed_track_direction"] = input.Track.Direction
+	}
+	if input.Track.Separator != "" {
+		updates["feed_track_separator"] = input.Track.Separator
+	}
+	updates["feed_track_prefix"] = input.Track.Prefix
+	updates["feed_track_suffix"] = input.Track.Suffix
+	updates["feed_track_show_artist"] = input.Track.ShowArtist
+	updates["feed_track_show_album"] = input.Track.ShowAlbum
+	updates["feed_track_show_duration"] = input.Track.ShowDuration
+	updates["feed_track_show_background"] = input.Track.ShowBackground
+
+	result := c.db.Model(&models.AppConfig{}).Where("id = ?", 1).Updates(updates)
+	if result.Error != nil {
+		ctx.JSON(500, gin.H{"error": "Failed to update feed settings"})
+		return
+	}
+
+	c.GetFeedSettings(ctx)
+}
+
 func (c *SettingsController) Update(ctx *gin.Context) {
 	var input struct {
 		ItemsPerPage      *int `json:"items_per_page"`

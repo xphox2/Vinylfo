@@ -76,6 +76,32 @@ func NewVideoFeedController(db *gorm.DB, playbackController *PlaybackController,
 func (c *VideoFeedController) GetVideoFeedPage(ctx *gin.Context) {
 	showBackgroundStr := ctx.DefaultQuery("showBackground", "true")
 	showBackground := showBackgroundStr == "true"
+	enableAudioStr := ctx.DefaultQuery("enableAudio", "false")
+	enableAudio := enableAudioStr == "true"
+
+	// Check for demo track parameter
+	demoTrackID := ctx.Query("demoTrack")
+	if demoTrackID != "" {
+		// Store demo track info in context for JavaScript to use
+		var track models.Track
+		if err := c.db.First(&track, demoTrackID).Error; err == nil {
+			trackInfo := c.buildVideoTrackInfo(&track)
+			// Marshal to JSON so it renders properly in the template
+			trackInfoJSON, _ := json.Marshal(trackInfo)
+			ctx.HTML(200, "video-feed.html", gin.H{
+				"overlay":         ctx.DefaultQuery("overlay", "bottom"),
+				"theme":           ctx.DefaultQuery("theme", "dark"),
+				"transition":      ctx.DefaultQuery("transition", "fade"),
+				"showVisualizer":  ctx.DefaultQuery("showVisualizer", "true"),
+				"quality":         ctx.DefaultQuery("quality", "auto"),
+				"overlayDuration": ctx.DefaultQuery("overlayDuration", "5"),
+				"showBackground":  showBackground,
+				"enableAudio":     enableAudio,
+				"demoTrack":       string(trackInfoJSON),
+			})
+			return
+		}
+	}
 
 	ctx.HTML(200, "video-feed.html", gin.H{
 		"overlay":         ctx.DefaultQuery("overlay", "bottom"),
@@ -85,6 +111,7 @@ func (c *VideoFeedController) GetVideoFeedPage(ctx *gin.Context) {
 		"quality":         ctx.DefaultQuery("quality", "auto"),
 		"overlayDuration": ctx.DefaultQuery("overlayDuration", "5"),
 		"showBackground":  showBackground,
+		"enableAudio":     enableAudio,
 	})
 }
 
