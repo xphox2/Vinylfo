@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"log"
 	"regexp"
 	"strconv"
@@ -44,6 +45,39 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 	pageStr := ctx.DefaultQuery("page", "1")
 	limitStr := ctx.DefaultQuery("limit", "25")
 	excludeIDs := ctx.Query("exclude_track_ids")
+	sortBy := ctx.DefaultQuery("sort", "title")
+	order := ctx.DefaultQuery("order", "asc")
+
+	allowedSorts := map[string]bool{
+		"title":        true,
+		"album_title":  true,
+		"album_artist": true,
+		"track_number": true,
+		"duration":     true,
+		"created_at":   true,
+	}
+	if !allowedSorts[sortBy] {
+		sortBy = "title"
+	}
+	if order != "asc" && order != "desc" {
+		order = "asc"
+	}
+
+	sortColumn := sortBy
+	switch sortBy {
+	case "album_title":
+		sortColumn = "albums.title"
+	case "album_artist":
+		sortColumn = "albums.artist"
+	case "track_number":
+		sortColumn = "tracks.track_number"
+	case "duration":
+		sortColumn = "tracks.duration"
+	case "created_at":
+		sortColumn = "tracks.created_at"
+	default:
+		sortColumn = "tracks.title"
+	}
 
 	if !utils.ValidateRequest(ctx,
 		utils.ValidatePageParams(pageStr, limitStr),
@@ -85,7 +119,7 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 	}
 
 	baseQuery.Count(&total)
-	result := baseQuery.Offset(offset).Limit(limit).Find(&tracks)
+	result := baseQuery.Order(fmt.Sprintf("LOWER(%s) %s", sortColumn, order)).Offset(offset).Limit(limit).Find(&tracks)
 
 	if result.Error != nil {
 		utils.InternalError(ctx, "Failed to fetch tracks")
@@ -122,6 +156,8 @@ func (c *TrackController) GetTracks(ctx *gin.Context) {
 		"limit":      limit,
 		"total":      total,
 		"totalPages": (int(total) + limit - 1) / limit,
+		"sort":       sortBy,
+		"order":      order,
 	})
 }
 
@@ -149,6 +185,40 @@ func (c *TrackController) SearchTracks(ctx *gin.Context) {
 		YouTubeVideoID string `json:"youtube_video_id"`
 		CreatedAt      string `json:"created_at"`
 		UpdatedAt      string `json:"updated_at"`
+	}
+
+	sortBy := ctx.DefaultQuery("sort", "title")
+	order := ctx.DefaultQuery("order", "asc")
+
+	allowedSorts := map[string]bool{
+		"title":        true,
+		"album_title":  true,
+		"album_artist": true,
+		"track_number": true,
+		"duration":     true,
+		"created_at":   true,
+	}
+	if !allowedSorts[sortBy] {
+		sortBy = "title"
+	}
+	if order != "asc" && order != "desc" {
+		order = "asc"
+	}
+
+	sortColumn := sortBy
+	switch sortBy {
+	case "album_title":
+		sortColumn = "albums.title"
+	case "album_artist":
+		sortColumn = "albums.artist"
+	case "track_number":
+		sortColumn = "tracks.track_number"
+	case "duration":
+		sortColumn = "tracks.duration"
+	case "created_at":
+		sortColumn = "tracks.created_at"
+	default:
+		sortColumn = "tracks.title"
 	}
 
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
@@ -187,7 +257,7 @@ func (c *TrackController) SearchTracks(ctx *gin.Context) {
 	}
 
 	baseQuery.Count(&total)
-	result := baseQuery.Offset(offset).Limit(limit).Find(&tracks)
+	result := baseQuery.Order(fmt.Sprintf("LOWER(%s) %s", sortColumn, order)).Offset(offset).Limit(limit).Find(&tracks)
 
 	if result.Error != nil {
 		ctx.JSON(500, gin.H{"error": "Failed to search tracks"})
@@ -224,6 +294,8 @@ func (c *TrackController) SearchTracks(ctx *gin.Context) {
 		"limit":      limit,
 		"total":      total,
 		"totalPages": (int(total) + limit - 1) / limit,
+		"sort":       sortBy,
+		"order":      order,
 	})
 }
 

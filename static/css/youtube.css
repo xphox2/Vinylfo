@@ -485,3 +485,38 @@
     font-weight: bold;
     margin-right: 0.25rem;
 }
+
+.youtube-review-logo {
+    height: 100px;
+    width: auto;
+    display: block;
+    margin: 1rem auto;
+}
+
+.youtube-candidate-logo {
+    height: 100px;
+    width: auto;
+    flex-shrink: 0;
+}
+
+.youtube-sync-header-logo {
+    height: 100px;
+    width: auto;
+    display: block;
+    margin: 0.5rem 0 1rem 0;
+    background-color: transparent;
+}
+
+.youtube-delete-logo {
+    height: 100px;
+    width: auto;
+    vertical-align: middle;
+    margin-right: 0.5rem;
+}
+
+.video-youtube-logo {
+    height: 80px;
+    width: auto;
+    margin-left: auto;
+    flex-shrink: 0;
+}

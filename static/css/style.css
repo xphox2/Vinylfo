@@ -209,6 +209,12 @@ h2 {
     gap: 0.5rem;
 }
 
+.track-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .sort-controls {
     display: flex;
     align-items: center;
@@ -1238,6 +1244,10 @@ h3 {
 .tracks-list {
     display: flex;
     flex-direction: column;
+    background-color: white;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    overflow: hidden;
 }
 
 .track-item {
@@ -1247,6 +1257,11 @@ h3 {
     border-bottom: 1px solid #eee;
     cursor: pointer;
     transition: background-color 0.15s ease;
+    min-height: 60px;
+}
+
+.track-item:last-child {
+    border-bottom: none;
 }
 
 .track-item:hover {
@@ -1262,6 +1277,7 @@ h3 {
 .track-item .track-title {
     flex: 1;
     color: #333;
+}
 }
 
 .track-item .track-duration {

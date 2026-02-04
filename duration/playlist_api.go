@@ -261,16 +261,25 @@ func (c *YouTubeOAuthClient) RemoveVideoFromPlaylist(ctx context.Context, playli
 }
 
 func (c *YouTubeOAuthClient) DeletePlaylist(ctx context.Context, playlistID string) error {
+	fmt.Printf("DEBUG: DeletePlaylist called with playlistID: %s\n", playlistID)
+
 	if err := c.ensureValidToken(); err != nil {
+		fmt.Printf("DEBUG: ensureValidToken failed: %v\n", err)
 		return err
 	}
+	fmt.Printf("DEBUG: Token is valid\n")
 
 	url := youtubeAPIBaseURL + "/playlists?id=" + url.QueryEscape(playlistID)
+	fmt.Printf("DEBUG: DELETE URL: %s\n", url)
+
 	resp, err := c.makeAuthenticatedRequest(ctx, "DELETE", url, nil)
 	if err != nil {
+		fmt.Printf("DEBUG: makeAuthenticatedRequest failed: %v\n", err)
 		return err
 	}
 	defer resp.Body.Close()
+
+	fmt.Printf("DEBUG: DELETE response status: %d\n", resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		respBody, _ := io.ReadAll(resp.Body)

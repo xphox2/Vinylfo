@@ -263,6 +263,37 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Track sort controls
+    const trackSortSelect = document.getElementById('track-sort');
+    const trackSortOrderBtn = document.getElementById('track-sort-order');
+
+    if (trackSortSelect) {
+        trackSortSelect.value = pagination.track.sort;
+        trackSortSelect.addEventListener('change', function() {
+            pagination.track.sort = this.value;
+            pagination.track.page = 1;
+            if (pagination.track.query) {
+                searchTracks(pagination.track.query);
+            } else {
+                loadTracks();
+            }
+        });
+    }
+
+    if (trackSortOrderBtn) {
+        trackSortOrderBtn.textContent = pagination.track.order === 'asc' ? '↑' : '↓';
+        trackSortOrderBtn.addEventListener('click', function() {
+            pagination.track.order = pagination.track.order === 'asc' ? 'desc' : 'asc';
+            this.textContent = pagination.track.order === 'asc' ? '↑' : '↓';
+            pagination.track.page = 1;
+            if (pagination.track.query) {
+                searchTracks(pagination.track.query);
+            } else {
+                loadTracks();
+            }
+        });
+    }
+
     loadAlbums();
 });
 
@@ -406,7 +437,7 @@ function searchAlbums(query) {
 
 function searchTracks(query) {
     pagination.track.query = query;
-    const url = `/tracks/search?q=${encodeURIComponent(query)}&page=${pagination.track.page}&limit=${pagination.track.limit}`;
+    const url = `/tracks/search?q=${encodeURIComponent(query)}&page=${pagination.track.page}&limit=${pagination.track.limit}&sort=${pagination.track.sort}&order=${pagination.track.order}`;
     fetch(url)
         .then(response => response.json())
         .then(data => {
@@ -450,7 +481,7 @@ function loadAlbums() {
 
 function loadTracks() {
     pagination.track.query = '';
-    const url = `/tracks?page=${pagination.track.page}&limit=${pagination.track.limit}`;
+    const url = `/tracks?page=${pagination.track.page}&limit=${pagination.track.limit}&sort=${pagination.track.sort}&order=${pagination.track.order}`;
     console.log('Loading tracks from:', url);
     fetch(url)
         .then(response => {

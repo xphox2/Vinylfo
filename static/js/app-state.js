@@ -1,6 +1,6 @@
 export const pagination = {
     album: { page: 1, limit: 25, totalPages: 1, query: '', sort: 'artist', order: 'asc' },
-    track: { page: 1, limit: 25, totalPages: 1, query: '' }
+    track: { page: 1, limit: 25, totalPages: 1, query: '', sort: 'title', order: 'asc' }
 };
 
 import { normalizeArtistName, normalizeTitle, formatDuration } from './modules/utils.js';

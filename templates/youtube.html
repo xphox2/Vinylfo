@@ -107,6 +107,7 @@ async function loadPlaylists(container) {
                         <p class="playlist-video-count">Loading...</p>
                     </div>
                     <div class="playlist-actions">
+                        <img src="/icons/yt_icon_red_digital.png" alt="YouTube" class="youtube-delete-logo">
                         <button class="btn-delete" data-playlist-id="${item.id}" data-playlist-title="${escapeHtml(item.title)}" onclick="deletePlaylist('${item.id}', '${escapeHtml(item.title)}'); event.stopPropagation();">Delete</button>
                     </div>
                 `;
@@ -194,6 +195,7 @@ async function loadPlaylistItems(playlistId, playlistTitle) {
                         <h3>${escapeHtml(videoTitle)}</h3>
                         <p>${escapeHtml(channelTitle)}</p>
                     </div>
+                    <img src="/icons/yt_icon_red_digital.png" alt="YouTube" class="video-youtube-logo">
                 `;
                 container.appendChild(videoItem);
             });

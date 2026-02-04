@@ -350,12 +350,16 @@ func (c *YouTubeController) RemoveTrackFromPlaylist(ctx *gin.Context) {
 
 func (c *YouTubeController) DeletePlaylist(ctx *gin.Context) {
 	playlistID := ctx.Param("id")
+	fmt.Printf("CONTROLLER: DeletePlaylist called with id: %s\n", playlistID)
+
 	if playlistID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Playlist ID is required"})
 		return
 	}
 
+	fmt.Printf("CONTROLLER: Calling oauth.DeletePlaylist...\n")
 	if err := c.oauth.DeletePlaylist(ctx.Request.Context(), playlistID); err != nil {
+		fmt.Printf("CONTROLLER: DeletePlaylist failed: %v\n", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

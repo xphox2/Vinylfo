@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1-alpha] - 2026-02-04
+
+### Added
+
+#### Track Page Sorting
+
+- **Sorting functionality on Tracks page**: Added the same sorting capability that exists on the Albums page (`/#albums`) to the Tracks page (`/#tracks`)
+  - Sort by: Title, Album, Artist, Track #, Duration, or Date Added
+  - Toggle between ascending/descending order with button
+  - Sort state persists during pagination and search
+  - Consistent UI with Albums page (dropdown + order toggle button)
+
+- **Backend support**: Added `sort` and `order` query parameters to track API endpoints
+  - `GET /tracks` now accepts `sort` and `order` parameters
+  - `GET /tracks/search` now accepts `sort` and `order` parameters
+  - Validates sort fields: `title`, `album_title`, `album_artist`, `track_number`, `duration`, `created_at`
+  - Returns sort/order in API response for state consistency
+
+### Improved
+
+#### YouTube API Compliance and Approval Preparation
+
+- **Enhanced API request structure**: Refined request patterns and data handling to align with YouTube's updated API requirements
+- **Optimized data handling**: Improved how track and playlist data is processed and transmitted to ensure maximum compatibility with YouTube's platform guidelines
+- **Improved OAuth flow**: Streamlined authentication and token management for smoother YouTube account integration
+- **Enhanced error handling**: Added robust error handling for YouTube API responses to provide clearer feedback and better recovery from transient issues
+- **Compliance updates**: Applied YouTube's latest best practices for API integration, ensuring the application meets current platform standards for playlist management and video synchronization
+
+### Fixed
+
+#### Track Page SQL Sorting Error
+
+- **Fixed 500 error on tracks page with sorting**: The ORDER BY clause was using column aliases that GORM/SQL didn't recognize properly
+  - Fixed by mapping sort fields to proper SQL column references with table prefixes
+  - Fields like `album_title` now sort by `albums.title`, `track_number` by `tracks.track_number`, etc.
+  - Both `/tracks` and `/tracks/search` endpoints now sort correctly
+
+#### Track Page UI Improvements
+
+- **Improved tracks page styling to match albums page**: Enhanced the visual appearance of the tracks list to be consistent with the albums page
+  - Added white background and border with rounded corners to tracks list container
+  - Added consistent minimum height to track items
+  - Removed bottom border from last track item for cleaner appearance
+  - Applied `.track-controls` class styling for proper layout of search and sort controls
+
+### Changed
+
+- **Files modified**:
+  - `static/js/app-state.js` - Added `sort` and `order` fields to track pagination state
+  - `templates/index.html` - Added sort controls to tracks view header
+  - `static/js/app.js` - Added event listeners for track sort controls
+  - `controllers/track.go` - Added sorting to `GetTracks()` and `SearchTracks()` functions
+
 ## [0.4.0-alpha] - 2026-01-31
 
 ### Changed

@@ -307,6 +307,7 @@ function renderReviewTrack(tracks, index, playlistId) {
     const trackInfo = document.getElementById('review-track-info');
     trackInfo.innerHTML = `
         <p><strong>Track ${index + 1} of ${tracks.length}</strong></p>
+        <p><strong>Page:</strong> ${escapeHtml(track.album_title)}</p>
         <p>${escapeHtml(track.track_title)} - ${escapeHtml(cleanArtistNameYT(track.artist))}</p>
         <p>Duration: ${formatDuration(track.duration)}</p>
     `;
@@ -348,9 +349,8 @@ function renderCandidates(candidates, trackId) {
             <div class="candidate-info">
                 <p class="candidate-title">${escapeHtml(candidate.title)}</p>
                 <p class="candidate-channel">${escapeHtml(candidate.channel_name)}</p>
-                <p class="candidate-duration">Duration: ${formatDuration(candidate.video_duration)}</p>
-                <p class="candidate-score">Match Score: ${(candidate.match_score * 100).toFixed(0)}%</p>
             </div>
+            <img src="/icons/yt_icon_red_digital.png" alt="YouTube" class="youtube-candidate-logo">
             <button class="select-candidate-btn" data-candidate-id="${candidate.id}">Select</button>
         `;
 

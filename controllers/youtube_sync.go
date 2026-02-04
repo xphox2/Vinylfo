@@ -108,6 +108,7 @@ func (c *YouTubeSyncController) GetMatches(ctx *gin.Context) {
 		TrackTitle string                         `json:"track_title"`
 		Artist     string                         `json:"artist"`
 		Duration   int                            `json:"duration"`
+		AlbumTitle string                         `json:"album_title"`
 		Match      *models.TrackYouTubeMatch      `json:"match,omitempty"`
 		Candidates []models.TrackYouTubeCandidate `json:"candidates,omitempty"`
 		Status     string                         `json:"status"` // matched, needs_review, unavailable, pending
@@ -130,6 +131,7 @@ func (c *YouTubeSyncController) GetMatches(ctx *gin.Context) {
 			TrackTitle: track.Title,
 			Artist:     album.Artist,
 			Duration:   track.Duration,
+			AlbumTitle: album.Title,
 			Status:     "pending",
 		}
 
