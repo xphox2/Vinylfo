@@ -1,7 +1,8 @@
 /**
- * Vinylfo Video Feed Manager
+ * Vinylfo Video Feed Manager - Enhanced
  * Handles YouTube video playback synced with Vinylfo playback queue
  * Uses SSE for real-time updates and TabSync for tab-to-tab communication
+ * Enhanced with multiple visualization modes, beat detection, and dynamic backgrounds
  */
 
 import { normalizeArtistName, normalizeTitle } from './modules/utils.js';
@@ -24,10 +25,17 @@ class VideoFeedManager {
             theme: document.body.dataset.theme || 'dark',
             transition: document.body.dataset.transition || 'fade',
             showVisualizer: document.body.dataset.showVisualizer !== 'false',
+            visualizerMode: document.body.dataset.visualizerMode || 'bars',
             quality: document.body.dataset.quality || 'auto',
             overlayDuration: parseInt(document.body.dataset.overlayDuration) || 5,
             showBackground: document.body.dataset.showBackground !== 'false',
-            enableAudio: document.body.dataset.enableAudio === 'true'
+            enableAudio: document.body.dataset.enableAudio === 'true',
+            showParticles: document.body.dataset.showParticles !== 'false',
+            showBeatEffects: document.body.dataset.showBeatEffects !== 'false',
+            visualizerSensitivity: parseFloat(document.body.dataset.visualizerSensitivity) || 1.0,
+            backgroundMode: document.body.dataset.backgroundMode || 'none',
+            albumArtAnimation: document.body.dataset.albumArtAnimation || 'kenburns',
+            particleCount: parseInt(document.body.dataset.particleCount) || 50
         };
 
         // State
@@ -43,6 +51,7 @@ class VideoFeedManager {
         this.maxReconnectAttempts = 10;
         this.eventSource = null;
         this.visualizer = null;
+        this.backgroundEffect = null;
         this.tabSync = null;
 
         this.isDemoMode = false;
@@ -59,6 +68,8 @@ class VideoFeedManager {
         // DOM Elements
         this.elements = {
             container: document.getElementById('video-feed-container'),
+            backgroundLayer: document.getElementById('background-layer'),
+            backgroundCanvas: document.getElementById('background-canvas'),
             videoLayer: document.getElementById('video-layer'),
             albumArtLayer: document.getElementById('album-art-layer'),
             visualizerLayer: document.getElementById('visualizer-layer'),
@@ -67,6 +78,8 @@ class VideoFeedManager {
             trackOverlay: document.getElementById('track-overlay'),
             connectionStatus: document.getElementById('connection-status'),
             albumArt: document.getElementById('album-art'),
+            albumArtParallax: document.getElementById('album-art-parallax'),
+            albumArtVignette: document.getElementById('album-art-vignette'),
             overlayAlbumArt: document.getElementById('overlay-album-art'),
             trackTitle: document.getElementById('track-title'),
             trackArtist: document.getElementById('track-artist'),
@@ -74,8 +87,9 @@ class VideoFeedManager {
             visualizerCanvas: document.getElementById('visualizer-canvas')
         };
 
-        // Apply theme
+        // Apply theme and settings
         this.applyTheme();
+        this.applyAlbumArtAnimation();
 
         // Initialize
         this.init();
@@ -96,10 +110,26 @@ class VideoFeedManager {
             });
         }
 
+        // Initialize dynamic background if enabled
+        if (this.config.backgroundMode !== 'none' && typeof DynamicBackground !== 'undefined') {
+            this.backgroundEffect = new DynamicBackground(this.elements.backgroundCanvas, {
+                mode: this.config.backgroundMode,
+                theme: this.config.theme,
+                speed: 0.5,
+                intensity: 0.5
+            });
+            this.backgroundEffect.start();
+        }
+
         // Initialize visualizer if enabled
         if (this.config.showVisualizer && typeof AudioVisualizer !== 'undefined') {
             this.visualizer = new AudioVisualizer(this.elements.visualizerCanvas, {
-                theme: this.config.theme
+                theme: this.config.theme,
+                visualizerMode: this.config.visualizerMode,
+                showParticles: this.config.showParticles,
+                showBeatEffects: this.config.showBeatEffects,
+                sensitivity: this.config.visualizerSensitivity,
+                particleCount: this.config.particleCount
             });
         }
 
@@ -159,6 +189,17 @@ class VideoFeedManager {
 
         // Apply transition type
         this.elements.container.classList.add(`transition-${this.config.transition}`);
+
+        // Apply visualizer mode class
+        if (this.config.showVisualizer) {
+            document.body.classList.add(`visualizer-${this.config.visualizerMode}`);
+        }
+    }
+
+    applyAlbumArtAnimation() {
+        if (this.elements.albumArt) {
+            this.elements.albumArt.parentElement.setAttribute('data-animation', this.config.albumArtAnimation);
+        }
     }
 
     waitForYouTubeAPI() {
@@ -512,7 +553,7 @@ class VideoFeedManager {
     }
 
     transitionTo(target, callback) {
-        const layers = ['video', 'album-art', 'visualizer'];
+        const layers = ['background', 'video', 'album-art', 'visualizer'];
         const targetLayer = this.elements[`${target}Layer`] || this.elements.albumArtLayer;
 
         if (this.config.transition === 'none') {
@@ -531,10 +572,25 @@ class VideoFeedManager {
             return;
         }
 
-        // Fade transition
-        const duration = this.config.transition === 'fade' ? 500 : 300;
+        // Get transition duration based on type
+        let duration = 500;
+        switch (this.config.transition) {
+            case 'fade':
+            case 'slide':
+                duration = 500;
+                break;
+            case 'zoom':
+            case 'blur':
+                duration = 600;
+                break;
+            case 'glitch':
+                duration = 300;
+                break;
+            default:
+                duration = 500;
+        }
 
-        // Fade out current
+        // Fade out current visible layers
         layers.forEach(layer => {
             const el = this.elements[`${layer}Layer`];
             if (el && !el.classList.contains('hidden')) {
@@ -567,6 +623,11 @@ class VideoFeedManager {
                 this.visualizer.stop();
             }
 
+            // Show background layer
+            if (this.config.backgroundMode !== 'none' && this.elements.backgroundLayer) {
+                this.elements.backgroundLayer.classList.remove('hidden');
+            }
+
             if (callback) callback();
 
             setTimeout(() => {
@@ -596,6 +657,12 @@ class VideoFeedManager {
         
         if (albumArtUrl) {
             this.elements.albumArt.src = albumArtUrl;
+            
+            // Set parallax background
+            if (this.elements.albumArtParallax) {
+                this.elements.albumArtParallax.style.backgroundImage = `url(${albumArtUrl})`;
+            }
+            
             this.elements.albumArt.onerror = () => {
                 console.log('[VideoFeed] Album art failed to load, using placeholder');
                 this.elements.albumArt.src = '/icons/vinyl-icon.png';

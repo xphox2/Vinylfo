@@ -32,6 +32,9 @@
                         <select id="video-theme" data-feed="video" data-param="theme">
                             <option value="dark">Dark</option>
                             <option value="light">Light</option>
+                            <option value="transparent">Transparent</option>
+                            <option value="neon">Neon</option>
+                            <option value="sunset">Sunset</option>
                         </select>
                     </div>
 
@@ -49,6 +52,9 @@
                         <select id="video-transition" data-feed="video" data-param="transition">
                             <option value="fade">Fade</option>
                             <option value="slide">Slide</option>
+                            <option value="zoom">Zoom</option>
+                            <option value="blur">Blur</option>
+                            <option value="glitch">Glitch</option>
                             <option value="none">None</option>
                         </select>
                     </div>
@@ -57,15 +63,64 @@
                         <label for="video-quality">Quality</label>
                         <select id="video-quality" data-feed="video" data-param="quality">
                             <option value="auto">Auto</option>
-                            <option value="hd">HD</option>
-                            <option value="sd">SD</option>
+                            <option value="1080">1080p</option>
+                            <option value="720">720p</option>
+                            <option value="480">480p</option>
+                            <option value="360">360p</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-album-art-animation">Album Art Animation</label>
+                        <select id="video-album-art-animation" data-feed="video" data-param="albumArtAnimation">
+                            <option value="kenburns">Ken Burns</option>
+                            <option value="pulse">Pulse</option>
+                            <option value="float">Float</option>
+                            <option value="spin">Spin</option>
+                            <option value="glitch">Glitch</option>
+                            <option value="zoom">Zoom</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-visualizer-mode">Visualizer Mode</label>
+                        <select id="video-visualizer-mode" data-feed="video" data-param="visualizerMode">
+                            <option value="bars">Bars</option>
+                            <option value="circular">Circular</option>
+                            <option value="waveform">Waveform</option>
+                            <option value="spectrum">Spectrum Ring</option>
+                            <option value="kaleidoscope">Kaleidoscope</option>
+                            <option value="particles">Particles</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-background-mode">Background Mode</label>
+                        <select id="video-background-mode" data-feed="video" data-param="backgroundMode">
+                            <option value="none">None</option>
+                            <option value="mesh">Mesh Gradient</option>
+                            <option value="flow">Flow Gradient</option>
+                            <option value="noise">Noise Texture</option>
+                            <option value="aurora">Aurora</option>
                         </select>
                     </div>
 
                     <div class="form-group">
                         <label for="video-overlay-duration">Overlay Duration (seconds)</label>
-                        <input type="range" id="video-overlay-duration" data-feed="video" data-param="overlayDuration" min="1" max="60" value="5">
+                        <input type="range" id="video-overlay-duration" data-feed="video" data-param="overlayDuration" min="0" max="60" value="5">
                         <span class="range-value" id="video-overlay-duration-value">5s</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-visualizer-sensitivity">Visualizer Sensitivity</label>
+                        <input type="range" id="video-visualizer-sensitivity" data-feed="video" data-param="visualizerSensitivity" min="0.1" max="3.0" step="0.1" value="1.0">
+                        <span class="range-value" id="video-visualizer-sensitivity-value">1.0</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-particle-count">Particle Count</label>
+                        <input type="range" id="video-particle-count" data-feed="video" data-param="particleCount" min="0" max="200" value="50">
+                        <span class="range-value" id="video-particle-count-value">50</span>
                     </div>
 
                     <div class="form-group toggle-group">
@@ -86,6 +141,20 @@
                         <label class="toggle-label" data-toggle="video-enable-audio" data-param="enableAudio">
                             <span class="toggle-slider"></span>
                             <span class="toggle-text">Enable Audio</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="video-show-particles" data-param="showParticles" data-default="true">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Show Particles</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group toggle-group">
+                        <label class="toggle-label" data-toggle="video-show-beat-effects" data-param="showBeatEffects" data-default="true">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Show Beat Effects</span>
                         </label>
                     </div>
 

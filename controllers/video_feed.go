@@ -81,6 +81,8 @@ func (c *VideoFeedController) GetVideoFeedPage(ctx *gin.Context) {
 	showBackground := showBackgroundStr == "true"
 	enableAudioStr := ctx.DefaultQuery("enableAudio", "false")
 	enableAudio := enableAudioStr == "true"
+	showParticlesStr := ctx.DefaultQuery("showParticles", "true")
+	showBeatEffectsStr := ctx.DefaultQuery("showBeatEffects", "true")
 
 	// Check for demo track parameter
 	demoTrackID := ctx.Query("demoTrack")
@@ -92,29 +94,43 @@ func (c *VideoFeedController) GetVideoFeedPage(ctx *gin.Context) {
 			// Marshal to JSON so it renders properly in the template
 			trackInfoJSON, _ := json.Marshal(trackInfo)
 			ctx.HTML(200, "video-feed.html", gin.H{
-				"overlay":         ctx.DefaultQuery("overlay", "bottom"),
-				"theme":           ctx.DefaultQuery("theme", "dark"),
-				"transition":      ctx.DefaultQuery("transition", "fade"),
-				"showVisualizer":  ctx.DefaultQuery("showVisualizer", "true"),
-				"quality":         ctx.DefaultQuery("quality", "auto"),
-				"overlayDuration": ctx.DefaultQuery("overlayDuration", "5"),
-				"showBackground":  showBackground,
-				"enableAudio":     enableAudio,
-				"demoTrack":       string(trackInfoJSON),
+				"overlay":               ctx.DefaultQuery("overlay", "bottom"),
+				"theme":                 ctx.DefaultQuery("theme", "dark"),
+				"transition":            ctx.DefaultQuery("transition", "fade"),
+				"showVisualizer":        ctx.DefaultQuery("showVisualizer", "true"),
+				"visualizerMode":        ctx.DefaultQuery("visualizerMode", "bars"),
+				"quality":               ctx.DefaultQuery("quality", "auto"),
+				"overlayDuration":       ctx.DefaultQuery("overlayDuration", "5"),
+				"showBackground":        showBackground,
+				"enableAudio":           enableAudio,
+				"showParticles":         showParticlesStr,
+				"showBeatEffects":       showBeatEffectsStr,
+				"visualizerSensitivity": ctx.DefaultQuery("visualizerSensitivity", "1.0"),
+				"backgroundMode":        ctx.DefaultQuery("backgroundMode", "none"),
+				"albumArtAnimation":     ctx.DefaultQuery("albumArtAnimation", "kenburns"),
+				"particleCount":         ctx.DefaultQuery("particleCount", "50"),
+				"demoTrack":             string(trackInfoJSON),
 			})
 			return
 		}
 	}
 
 	ctx.HTML(200, "video-feed.html", gin.H{
-		"overlay":         ctx.DefaultQuery("overlay", "bottom"),
-		"theme":           ctx.DefaultQuery("theme", "dark"),
-		"transition":      ctx.DefaultQuery("transition", "fade"),
-		"showVisualizer":  ctx.DefaultQuery("showVisualizer", "true"),
-		"quality":         ctx.DefaultQuery("quality", "auto"),
-		"overlayDuration": ctx.DefaultQuery("overlayDuration", "5"),
-		"showBackground":  showBackground,
-		"enableAudio":     enableAudio,
+		"overlay":               ctx.DefaultQuery("overlay", "bottom"),
+		"theme":                 ctx.DefaultQuery("theme", "dark"),
+		"transition":            ctx.DefaultQuery("transition", "fade"),
+		"showVisualizer":        ctx.DefaultQuery("showVisualizer", "true"),
+		"visualizerMode":        ctx.DefaultQuery("visualizerMode", "bars"),
+		"quality":               ctx.DefaultQuery("quality", "auto"),
+		"overlayDuration":       ctx.DefaultQuery("overlayDuration", "5"),
+		"showBackground":        showBackground,
+		"enableAudio":           enableAudio,
+		"showParticles":         showParticlesStr,
+		"showBeatEffects":       showBeatEffectsStr,
+		"visualizerSensitivity": ctx.DefaultQuery("visualizerSensitivity", "1.0"),
+		"backgroundMode":        ctx.DefaultQuery("backgroundMode", "none"),
+		"albumArtAnimation":     ctx.DefaultQuery("albumArtAnimation", "kenburns"),
+		"particleCount":         ctx.DefaultQuery("particleCount", "50"),
 	})
 }
 

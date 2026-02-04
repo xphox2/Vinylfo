@@ -1,6 +1,6 @@
 /**
- * Vinylfo Video Feed Styles
- * Professional styling for OBS streaming overlay
+ * Vinylfo Video Feed Styles - Enhanced
+ * Professional styling for OBS streaming overlay with advanced animations
  */
 
 /* Reset and Base */
@@ -29,6 +29,21 @@ body {
     overflow: hidden;
 }
 
+/* Background Layer */
+#background-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+}
+
+#background-canvas {
+    width: 100%;
+    height: 100%;
+}
+
 /* Layers */
 .layer {
     position: absolute;
@@ -36,7 +51,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    transition: opacity 0.5s ease;
+    transition: opacity 0.5s ease, transform 0.5s ease;
 }
 
 .layer.hidden {
@@ -46,10 +61,12 @@ body {
 
 .layer.fading-out {
     opacity: 0;
+    transform: scale(1.05);
 }
 
 .layer.fading-in {
     opacity: 1;
+    transform: scale(1);
 }
 
 /* Video Layer */
@@ -76,18 +93,7 @@ body {
     transform: translate(-50%, -50%);
 }
 
-/* Hide YouTube controls overlay */
-#youtube-player-container::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-}
-
-/* Album Art Layer */
+/* Album Art Layer - Enhanced */
 #album-art-layer {
     z-index: 2;
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
@@ -96,15 +102,17 @@ body {
     justify-content: center;
 }
 
+/* Parallax Album Art Container */
 #album-art-wrapper {
     position: relative;
     width: 60vmin;
     height: 60vmin;
     max-width: 600px;
     max-height: 600px;
-    animation: kenBurns 20s ease-in-out infinite alternate;
+    perspective: 1000px;
 }
 
+/* Enhanced Ken Burns with multiple layers */
 #album-art {
     width: 100%;
     height: 100%;
@@ -113,14 +121,155 @@ body {
     box-shadow:
         0 25px 50px -12px rgba(0, 0, 0, 0.5),
         0 0 0 1px rgba(255, 255, 255, 0.1);
+    transition: transform 0.5s ease, filter 0.5s ease;
+}
+
+/* Parallax layer for depth effect */
+#album-art-parallax {
+    position: absolute;
+    top: -10%;
+    left: -10%;
+    width: 120%;
+    height: 120%;
+    background-size: cover;
+    background-position: center;
+    opacity: 0.3;
+    filter: blur(30px);
+    z-index: -1;
+    animation: parallaxPulse 10s ease-in-out infinite;
+}
+
+/* Animation modes */
+[data-animation="kenburns"] #album-art {
+    animation: kenBurns 20s ease-in-out infinite alternate;
+}
+
+[data-animation="pulse"] #album-art {
+    animation: albumPulse 4s ease-in-out infinite;
+}
+
+[data-animation="float"] #album-art {
+    animation: albumFloat 6s ease-in-out infinite;
+}
+
+[data-animation="spin"] #album-art {
+    animation: albumSpin 20s linear infinite;
+}
+
+[data-animation="glitch"] #album-art {
+    animation: albumGlitch 3s ease-in-out infinite;
+}
+
+[data-animation="zoom"] #album-art {
+    animation: albumZoom 15s ease-in-out infinite alternate;
 }
 
 @keyframes kenBurns {
     0% {
-        transform: scale(1) translate(0, 0);
+        transform: scale(1) translate(0, 0) rotate(0deg);
+    }
+    50% {
+        transform: scale(1.1) translate(-1%, -1%) rotate(0.5deg);
     }
     100% {
-        transform: scale(1.1) translate(-2%, -2%);
+        transform: scale(1.15) translate(-2%, -2%) rotate(-0.5deg);
+    }
+}
+
+@keyframes albumPulse {
+    0%, 100% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+    50% {
+        transform: scale(1.02);
+        filter: brightness(1.1);
+    }
+}
+
+@keyframes albumFloat {
+    0%, 100% {
+        transform: translateY(0) rotate(0deg);
+    }
+    25% {
+        transform: translateY(-10px) rotate(1deg);
+    }
+    75% {
+        transform: translateY(10px) rotate(-1deg);
+    }
+}
+
+@keyframes albumSpin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes albumGlitch {
+    0%, 90%, 100% {
+        transform: translate(0);
+        filter: none;
+    }
+    92% {
+        transform: translate(-2px, 1px);
+        filter: hue-rotate(90deg);
+    }
+    94% {
+        transform: translate(2px, -1px);
+        filter: hue-rotate(180deg);
+    }
+    96% {
+        transform: translate(-1px, 2px);
+        filter: hue-rotate(270deg);
+    }
+    98% {
+        transform: translate(1px, -2px);
+        filter: none;
+    }
+}
+
+@keyframes albumZoom {
+    0% {
+        transform: scale(1);
+    }
+    100% {
+        transform: scale(1.2);
+    }
+}
+
+@keyframes parallaxPulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.3;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.4;
+    }
+}
+
+/* Vignette overlay with beat reaction */
+#album-art-vignette {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.4) 100%);
+    pointer-events: none;
+    animation: vignettePulse 2s ease-in-out infinite;
+}
+
+@keyframes vignettePulse {
+    0%, 100% {
+        box-shadow: inset 0 0 100px rgba(0,0,0,0.3);
+    }
+    50% {
+        box-shadow: inset 0 0 150px rgba(0,0,0,0.5);
     }
 }
 
@@ -139,7 +288,7 @@ body {
 .overlay {
     position: absolute;
     z-index: 10;
-    transition: opacity 0.5s ease;
+    transition: opacity 0.5s ease, transform 0.5s ease;
 }
 
 .overlay.hidden {
@@ -350,6 +499,47 @@ body {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
+/* Theme: Neon */
+.theme-neon #track-info {
+    background: rgba(10, 10, 20, 0.8);
+    border: 1px solid rgba(255, 0, 255, 0.3);
+    box-shadow: 0 0 20px rgba(255, 0, 255, 0.2);
+}
+
+.theme-neon #track-title {
+    color: #fff;
+    text-shadow: 0 0 10px rgba(255, 0, 255, 0.8);
+}
+
+.theme-neon #track-artist {
+    color: #00ffff;
+    text-shadow: 0 0 5px rgba(0, 255, 255, 0.6);
+}
+
+.theme-neon #track-album {
+    color: #ffff00;
+    text-shadow: 0 0 5px rgba(255, 255, 0, 0.4);
+}
+
+/* Theme: Sunset */
+.theme-sunset #track-info {
+    background: rgba(45, 27, 46, 0.8);
+    border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+.theme-sunset #track-title {
+    color: #fff;
+    text-shadow: 0 2px 10px rgba(255, 107, 107, 0.5);
+}
+
+.theme-sunset #track-artist {
+    color: #feca57;
+}
+
+.theme-sunset #track-album {
+    color: #ff9ff3;
+}
+
 /* Track Info Content */
 #overlay-album-art {
     width: 80px;
@@ -436,7 +626,11 @@ body {
     letter-spacing: 1px;
 }
 
-/* Transition: Slide */
+/* Transitions */
+.transition-fade .layer {
+    transition: opacity 0.5s ease;
+}
+
 .transition-slide .layer.fading-out {
     transform: translateX(-100%);
     opacity: 1;
@@ -454,6 +648,95 @@ body {
     to {
         transform: translateX(0);
     }
+}
+
+.transition-zoom .layer.fading-out {
+    transform: scale(1.5);
+    opacity: 0;
+}
+
+.transition-zoom .layer.fading-in {
+    animation: zoomIn 0.5s ease forwards;
+}
+
+@keyframes zoomIn {
+    from {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.transition-blur .layer.fading-out {
+    filter: blur(20px);
+    opacity: 0;
+}
+
+.transition-blur .layer.fading-in {
+    animation: blurIn 0.5s ease forwards;
+}
+
+@keyframes blurIn {
+    from {
+        filter: blur(20px);
+        opacity: 0;
+    }
+    to {
+        filter: blur(0);
+        opacity: 1;
+    }
+}
+
+.transition-glitch .layer.fading-in {
+    animation: glitchIn 0.3s ease forwards;
+}
+
+@keyframes glitchIn {
+    0% {
+        transform: translate(0);
+        filter: hue-rotate(0deg);
+        opacity: 0;
+    }
+    20% {
+        transform: translate(-5px, 2px);
+        filter: hue-rotate(90deg);
+        opacity: 0.5;
+    }
+    40% {
+        transform: translate(5px, -2px);
+        filter: hue-rotate(180deg);
+    }
+    60% {
+        transform: translate(-3px, 3px);
+        filter: hue-rotate(270deg);
+    }
+    80% {
+        transform: translate(3px, -3px);
+        filter: hue-rotate(360deg);
+    }
+    100% {
+        transform: translate(0);
+        filter: hue-rotate(0deg);
+        opacity: 1;
+    }
+}
+
+/* Visualizer Mode: Circular */
+.visualizer-circular #visualizer-canvas {
+    mix-blend-mode: screen;
+}
+
+/* Visualizer Mode: Waveform */
+.visualizer-waveform #visualizer-canvas {
+    mix-blend-mode: lighten;
+}
+
+/* Visualizer Mode: Kaleidoscope */
+.visualizer-kaleidoscope #visualizer-canvas {
+    mix-blend-mode: screen;
 }
 
 /* Responsive Adjustments */
@@ -507,4 +790,38 @@ body.obs-mode {
 /* Ensure crisp rendering at any resolution */
 #video-feed-container * {
     image-rendering: -webkit-optimize-contrast;
+}
+
+/* Scanline effect for retro feel */
+.scanlines::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.1) 2px,
+        rgba(0, 0, 0, 0.1) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.3;
+}
+
+/* Film grain effect */
+.film-grain::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.05;
 }

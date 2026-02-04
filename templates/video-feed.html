@@ -8,10 +8,31 @@
     <link rel="icon" type="image/x-icon" href="/icons/vinyl-icon.ico">
     <link rel="stylesheet" href="/static/css/video-feed.css">
 </head>
-<body data-overlay="{{ .overlay }}" data-theme="{{ .theme }}" data-transition="{{ .transition }}" data-show-visualizer="{{ .showVisualizer }}" data-quality="{{ .quality }}" data-overlay-duration="{{ .overlayDuration }}" data-show-background="{{ .showBackground }}" data-enable-audio="{{ .enableAudio }}"{{ if .demoTrack }} data-demo-track='{{ .demoTrack }}'{{ end }}>
+<body 
+    data-overlay="{{ .overlay }}" 
+    data-theme="{{ .theme }}" 
+    data-transition="{{ .transition }}" 
+    data-show-visualizer="{{ .showVisualizer }}"
+    data-visualizer-mode="{{ .visualizerMode }}"
+    data-quality="{{ .quality }}" 
+    data-overlay-duration="{{ .overlayDuration }}" 
+    data-show-background="{{ .showBackground }}" 
+    data-enable-audio="{{ .enableAudio }}"
+    data-show-particles="{{ .showParticles }}"
+    data-show-beat-effects="{{ .showBeatEffects }}"
+    data-visualizer-sensitivity="{{ .visualizerSensitivity }}"
+    data-background-mode="{{ .backgroundMode }}"
+    data-album-art-animation="{{ .albumArtAnimation }}"
+    data-particle-count="{{ .particleCount }}"
+    {{ if .demoTrack }} data-demo-track='{{ .demoTrack }}'{{ end }}>
 
     <!-- Main Container -->
     <div id="video-feed-container">
+
+        <!-- Dynamic Background Layer -->
+        <div id="background-layer" class="layer hidden">
+            <canvas id="background-canvas"></canvas>
+        </div>
 
         <!-- Video Layer -->
         <div id="video-layer" class="layer">
@@ -20,10 +41,12 @@
             </div>
         </div>
 
-        <!-- Album Art Fallback Layer -->
+        <!-- Album Art Fallback Layer - Enhanced -->
         <div id="album-art-layer" class="layer hidden">
-            <div id="album-art-wrapper">
+            <div id="album-art-wrapper" data-animation="kenburns">
+                <div id="album-art-parallax"></div>
                 <img id="album-art" src="" alt="Album Art">
+                <div id="album-art-vignette"></div>
             </div>
         </div>
 
@@ -84,7 +107,10 @@
     <!-- Tab Sync Manager for cross-tab communication -->
     <script src="/static/js/tab-sync-manager.js"></script>
 
-    <!-- Audio Visualizer -->
+    <!-- Dynamic Background Effects -->
+    <script src="/static/js/dynamic-background.js"></script>
+
+    <!-- Audio Visualizer Pro -->
     <script src="/static/js/audio-visualizer.js"></script>
 
     <!-- Video Feed Manager -->

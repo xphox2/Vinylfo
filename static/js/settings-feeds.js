@@ -114,10 +114,17 @@ class FeedSettingsManager {
             this.setSelectValue('video-overlay', settings.video.overlay);
             this.setSelectValue('video-transition', settings.video.transition);
             this.setSelectValue('video-quality', settings.video.quality);
+            this.setSelectValue('video-album-art-animation', settings.video.album_art_animation);
+            this.setSelectValue('video-visualizer-mode', settings.video.visualizer_mode);
+            this.setSelectValue('video-background-mode', settings.video.background_mode);
             this.setCheckboxValue('video-show-visualizer', settings.video.show_visualizer);
             this.setRangeValue('video-overlay-duration', settings.video.overlay_duration);
             this.setCheckboxValue('video-show-background', settings.video.show_background);
             this.setCheckboxValue('video-enable-audio', settings.video.enable_audio);
+            this.setCheckboxValue('video-show-particles', settings.video.show_particles);
+            this.setCheckboxValue('video-show-beat-effects', settings.video.show_beat_effects);
+            this.setRangeValue('video-visualizer-sensitivity', settings.video.visualizer_sensitivity);
+            this.setRangeValue('video-particle-count', settings.video.particle_count);
         }
 
         // Art feed settings
@@ -195,8 +202,16 @@ class FeedSettingsManager {
                     input.addEventListener('input', () => {
                         const valueDisplay = document.getElementById(`${input.id}-value`);
                         if (valueDisplay) {
-                            const suffix = input.dataset.param === 'speed' ? '' : 's';
-                            valueDisplay.textContent = `${input.value}${suffix}`;
+                            const param = input.dataset.param;
+                            if (param === 'speed') {
+                                valueDisplay.textContent = input.value;
+                            } else if (param === 'visualizerSensitivity') {
+                                valueDisplay.textContent = input.value;
+                            } else if (param === 'particleCount') {
+                                valueDisplay.textContent = input.value;
+                            } else {
+                                valueDisplay.textContent = `${input.value}s`;
+                            }
                         }
                     });
                 }
@@ -406,10 +421,17 @@ class FeedSettingsManager {
                     overlay: document.getElementById('video-overlay').value,
                     transition: document.getElementById('video-transition').value,
                     quality: document.getElementById('video-quality').value,
+                    album_art_animation: document.getElementById('video-album-art-animation').value,
+                    visualizer_mode: document.getElementById('video-visualizer-mode').value,
+                    background_mode: document.getElementById('video-background-mode').value,
                     show_visualizer: getToggleState('video-show-visualizer'),
                     overlay_duration: parseInt(document.getElementById('video-overlay-duration').value),
                     show_background: getToggleState('video-show-background'),
-                    enable_audio: getToggleState('video-enable-audio')
+                    enable_audio: getToggleState('video-enable-audio'),
+                    show_particles: getToggleState('video-show-particles'),
+                    show_beat_effects: getToggleState('video-show-beat-effects'),
+                    visualizer_sensitivity: parseFloat(document.getElementById('video-visualizer-sensitivity').value),
+                    particle_count: parseInt(document.getElementById('video-particle-count').value)
                 },
                 art: {
                     theme: document.getElementById('art-theme').value,

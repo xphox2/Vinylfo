@@ -5,6 +5,84 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2-alpha] - 2026-02-04
+
+### Added
+
+#### Enhanced Video Feed Visualizations
+
+Comprehensive overhaul of video feed visualizations with 6 visualizer modes, 4 dynamic backgrounds, enhanced album art animations, and beat-reactive effects.
+
+- **New Visualizer Modes** (6 styles):
+  - **Bars** - Classic mirrored frequency bars with glow effects and reflection
+  - **Circular** - Radial bars emanating from center with rotating ring
+  - **Waveform** - Oscilloscope-style line visualization with multiple layers
+  - **Spectrum** - 360° frequency visualization with concentric rings and rotating beams
+  - **Kaleidoscope** - Mirrored symmetrical patterns with 8 segments
+  - **Particles** - Full particle system with connecting lines and beat reactivity
+
+- **Dynamic Background Effects** (4 modes):
+  - **Mesh Gradient** - Animated control points with soft color blending
+  - **Flow Gradient** - Floating orbs that drift across the screen
+  - **Noise Texture** - Organic animated noise patterns
+  - **Aurora** - Wave-like aurora borealis effect
+
+- **Enhanced Album Art Animations** (6 modes):
+  - **Ken Burns** - Slow pan/zoom with parallax depth layer
+  - **Pulse** - Beat-synced scaling and brightness
+  - **Float** - Gentle floating motion with rotation
+  - **Spin** - 360° rotation effect
+  - **Glitch** - Occasional color shift glitches
+  - **Zoom** - Smooth zoom transition
+
+- **Beat Detection & Effects**:
+  - Simulated beat detection with intensity tracking
+  - Shockwave ring effects on strong beats
+  - Screen flash on peak beats
+  - Vignette pulse effect around edges
+  - Reactive particle movement
+  - Minimum velocity enforcement to keep particles alive
+
+- **New Themes**:
+  - **Neon** - Bright magenta, cyan, yellow palette with glow effects
+  - **Sunset** - Warm oranges, pinks, and purples
+  - Existing themes updated: Dark, Light, Transparent
+
+- **Advanced Transitions**:
+  - **Zoom** - Scale-based transition with fade
+  - **Blur** - Blur dissolve effect
+  - **Glitch** - RGB shift and distortion effect
+  - Existing: Fade, Slide, None
+
+- **Configuration Options**:
+  - Visualizer sensitivity slider (0.1 - 3.0)
+  - Particle count control (0 - 200)
+  - Toggle particles on/off
+  - Toggle beat effects on/off
+  - Background mode selection
+  - Album art animation selection
+  - Visualizer mode selection
+
+- **Files Created**:
+  - `static/js/audio-visualizer.js` - Complete rewrite with 6 visualization modes and particle system
+  - `static/js/dynamic-background.js` - New background effects system
+
+- **Files Modified**:
+  - `static/js/video-feed.js` - Support for all new visualization options
+  - `static/css/video-feed.css` - New animations, transitions, and effects
+  - `templates/video-feed.html` - New configuration attributes for visualizer/background
+  - `controllers/video_feed.go` - New query parameters for visualization settings
+  - `templates/settings-feeds.html` - UI controls for new options
+  - `static/js/settings-feeds.js` - Settings management for visualization features
+
+### Fixed
+
+- Fixed `audio-visualizer.js` initialization order - particles now initialize after theme is set
+- Fixed `dynamic-background.js` initialization order - mesh points and flow particles now initialize after theme
+- Fixed rgba color string concatenation errors in beat effects (multiple locations)
+- Fixed spectrum ring gradient color stops to handle rgba colors properly
+- Fixed particle velocity decay - particles now maintain minimum velocity to prevent stopping
+
 ## [0.4.1-alpha] - 2026-02-04
 
 ### Added
